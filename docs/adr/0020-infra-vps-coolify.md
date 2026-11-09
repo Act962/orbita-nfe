@@ -10,4 +10,4 @@
 - Firewall só 443 (+ SSH restrito); painel Coolify com 2FA e acesso restrito; NTP monitorado; bundle ICP-Brasil para TLS com órgãos públicos, sem desativar verificação.
 
 ## Consequências
-Custo baixo e operação simples; VPS única é ponto único de falha (aceito na fase inicial, reavaliar com crescimento de tenants). Detalhes: [15-infraestrutura.md](../architecture/15-infraestrutura.md).
+Custo baixo e operação simples; VPS única é ponto único de falha (aceito na fase inicial, reavaliar com crescimento de empresas). Detalhes: [15-infraestrutura.md](../architecture/15-infraestrutura.md).

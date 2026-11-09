@@ -30,6 +30,23 @@ export abstract class ApplicationError extends Error {
     super(message);
     this.name = new.target.name;
   }
+
+  /**
+   * Cópia com o caminho dos campos prefixado (ex.: `cnpj` → `body.cnpj`). A camada de aplicação
+   * nomeia campos relativos à entrada do caso de uso; a apresentação sabe de onde ela veio.
+   */
+  withIssueFieldPrefix(prefix: string): this {
+    if (this.issues.length === 0) return this;
+    const copy = Object.create(Object.getPrototypeOf(this) as object) as this;
+    Object.assign(copy, this);
+    Object.defineProperty(copy, 'message', { value: this.message, writable: true, configurable: true });
+    Object.defineProperty(copy, 'stack', { value: this.stack, writable: true, configurable: true });
+    Object.defineProperty(copy, 'issues', {
+      value: this.issues.map((i) => ({ ...i, field: i.field === undefined ? prefix : `${prefix}.${i.field}` })),
+      enumerable: true,
+    });
+    return copy;
+  }
 }
 
 export class ValidationFailedError extends ApplicationError {

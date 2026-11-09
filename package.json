@@ -17,7 +17,9 @@
     "db:generate:custom": "drizzle-kit generate --custom",
     "db:migrate": "node --env-file-if-exists=.env --import tsx src/db/migrate.ts",
     "test:unit": "vitest run --project unit",
-    "test:integration": "vitest run --project integration"
+    "test:integration": "vitest run --project integration",
+    "iam": "node --env-file-if-exists=.env --import tsx src/main/iam-admin-cli.ts",
+    "dev:secrets": "node scripts/dev-secrets.mjs"
   },
   "license": "UNLICENSED",
   "type": "module",

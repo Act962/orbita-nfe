@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildApp } from '../../src/main/app.js';
-import { establishments, tenants } from '../../src/modules/taxpayer/infrastructure/persistence/schema.js';
+import { establishments, companies } from '../../src/modules/company/infrastructure/persistence/schema.js';
 import { ConflictError } from '../../src/shared/application/errors.js';
 import { createLogger } from '../../src/shared/infrastructure/logging/logger.js';
-import { createDatabase, databaseReadinessCheck, TenantTransactions, type DatabaseHandle } from '../../src/shared/infrastructure/database/database.js';
+import { createDatabase, databaseReadinessCheck, CompanyTransactions, type DatabaseHandle } from '../../src/shared/infrastructure/database/database.js';
 import type { HttpApp } from '../../src/shared/presentation/http/http-app.js';
 import { CANARIES, captureStream, expectNoCanary } from '../support/canary.js';
 import { connect, fakeCnpj, newId } from './support/db.js';
@@ -16,15 +16,15 @@ import { connect, fakeCnpj, newId } from './support/db.js';
 let api: DatabaseHandle;
 let app: HttpApp;
 const capture = captureStream();
-const tenantId = newId();
+const companyId = newId();
 const cnpj = fakeCnpj();
 
 beforeAll(async () => {
   api = connect('api');
-  const tx = new TenantTransactions(api.db);
-  await tx.run(tenantId, async (t) => {
-    await t.insert(tenants).values({ id: tenantId, legalName: 'EMPRESA FICTICIA LTDA', rootCnpj: cnpj.slice(0, 8) });
-    await t.insert(establishments).values({ id: newId(), tenantId, cnpj, tradeName: 'Matriz', municipalityCode: '2211001' });
+  const tx = new CompanyTransactions(api.db);
+  await tx.run(companyId, async (t) => {
+    await t.insert(companies).values({ id: companyId, legalName: 'EMPRESA FICTICIA LTDA', rootCnpj: cnpj.slice(0, 8) });
+    await t.insert(establishments).values({ id: newId(), companyId, cnpj, tradeName: 'Matriz', municipalityCode: '2211001' });
   });
 
   app = await buildApp({
@@ -36,20 +36,20 @@ beforeAll(async () => {
       // Rotas de teste que exercitam cada caminho de erro do banco.
       a.post('/test/establishments', { schema: { body: z.object({ cnpj: z.string(), tradeName: z.string() }) } }, async (request) => {
         await tx.run(
-          tenantId,
-          (t) => t.insert(establishments).values({ id: newId(), tenantId, cnpj: request.body.cnpj, tradeName: request.body.tradeName, municipalityCode: '2211001' }),
+          companyId,
+          (t) => t.insert(establishments).values({ id: newId(), companyId, cnpj: request.body.cnpj, tradeName: request.body.tradeName, municipalityCode: '2211001' }),
           { uq_establishments_cnpj: () => new ConflictError('ESTABLISHMENT_ALREADY_REGISTERED', 'Estabelecimento já cadastrado.') },
         );
         return { ok: true };
       });
       a.post('/test/unmapped', async () => {
         // Sem mapeamento de constraint: bug → 500 genérico.
-        await tx.run(tenantId, (t) => t.insert(tenants).values({ id: tenantId, legalName: CANARIES.password, rootCnpj: cnpj.slice(0, 8) }));
+        await tx.run(companyId, (t) => t.insert(companies).values({ id: companyId, legalName: CANARIES.password, rootCnpj: cnpj.slice(0, 8) }));
         return { ok: true };
       });
       a.post('/test/raw-drizzle-error', async () => {
         // Simula um caminho que esqueceu de traduzir: o handler global ainda protege a resposta.
-        await api.db.insert(tenants).values({ id: 'nao-e-uuid', legalName: CANARIES.password, rootCnpj: 'XX' });
+        await api.db.insert(companies).values({ id: 'nao-e-uuid', legalName: CANARIES.password, rootCnpj: 'XX' });
         return { ok: true };
       });
     },
@@ -79,7 +79,7 @@ describe('API + banco: erros sem detalhes de Drizzle/PostgreSQL', () => {
     const res = await app.inject({ method: 'POST', url: '/test/unmapped' });
     expect(res.statusCode).toBe(500);
     expect(res.json()).toMatchObject({ code: 'INTERNAL_ERROR', title: 'Erro interno' });
-    expect(res.body).not.toMatch(/Failed query|duplicate key|tenants|constraint/i);
+    expect(res.body).not.toMatch(/Failed query|duplicate key|companies|constraint/i);
     expect(capture.text()).toContain('DATABASE_UNMAPPED_UNIQUE_VIOLATION');
   });
 

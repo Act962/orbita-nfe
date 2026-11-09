@@ -27,10 +27,10 @@ describe('sanitize', () => {
       code: '22P02',
       detail: `Key (cnpj)=(${CANARIES.password}) already exists.`,
       where: `valor ${CANARIES.password}`,
-      table: 'tenants',
+      table: 'companies',
     });
     const drizzleError = Object.assign(new Error(`Failed query: insert ...\nparams: ${CANARIES.password}`), {
-      query: 'insert into "tenants" values ($1)',
+      query: 'insert into "companies" values ($1)',
       params: [CANARIES.password],
       cause: pgError,
     });
@@ -38,7 +38,7 @@ describe('sanitize', () => {
     expectNoCanary(out);
     expect(out).not.toContain('Failed query');
     expect(out).toContain('"code":"22P02"');
-    expect(out).toContain('"table":"tenants"');
+    expect(out).toContain('"table":"companies"');
   });
 
   it('lida com referências circulares e profundidade excessiva', () => {

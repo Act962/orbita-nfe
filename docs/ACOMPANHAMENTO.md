@@ -30,9 +30,9 @@ Os quatro foram aprovados, com 41 testes ([resultados](spikes/resultados-fase1.m
 ADRs atualizados: 0005 (pg-boss confirmado), 0009, 0014 (aceito), 0022.
 
 ### Persistência, isolamento e padrão de erros da API — concluído (2026-11-09)
-- [x] Drizzle ORM + Drizzle Kit somente na infraestrutura; migrations versionadas (`0000_taxpayer_tables` gerada e revisada; `0001_security_roles_rls` em SQL explícito).
-- [x] Papéis `fiscal_owner` (sem superuser), `fiscal_api/worker/general/system` (sem BYPASSRLS), RLS `ENABLE` + `FORCE`, política *fail-closed* via `app_current_tenant()`, sem `DELETE` para a aplicação.
-- [x] `TenantTransactions`: contexto de tenant por transação (`set_config(..., true)`), sem vazamento no pool.
+- [x] Drizzle ORM + Drizzle Kit somente na infraestrutura; migrations versionadas (`0000_company_tables` gerada e revisada; `0001_security_roles_rls` em SQL explícito).
+- [x] Papéis `fiscal_owner` (sem superuser), `fiscal_api/worker/general/system` (sem BYPASSRLS), RLS `ENABLE` + `FORCE`, política *fail-closed* via `app_current_company()`, sem `DELETE` para a aplicação.
+- [x] `CompanyTransactions`: contexto de empresa por transação (`set_config(..., true)`), sem vazamento no pool.
 - [x] Testcontainers (PostgreSQL 17) com a topologia de produção; **meta-teste de RLS** + "teste do teste" (4 cenários de falha detectados).
 - [x] Testes de isolamento com o papel real da aplicação: leitura, INSERT/UPDATE cruzados, DELETE negado, pool, concorrência, FORCE sobre o dono.
 - [x] **Erros da API sem genéricos nem erros do Drizzle** (ADR-0024): validação Fastify + Zod (body, params, query, headers e **resposta**), mensagens em pt-BR, hierarquia de erros de aplicação com códigos estáveis, tradução de SQLSTATE, constraint não mapeada = bug.
@@ -42,17 +42,34 @@ ADRs atualizados: 0005 (pg-boss confirmado), 0009, 0014 (aceito), 0022.
 
 Resultado: 108+ testes (unitários + integração com PostgreSQL real), cobertura geral ≈ 96% de linhas.
 
+### IAM, Company, Fiscal Settings e matriz de isolamento — concluído (2026-11-09)
+- [x] **IAM** (ADR-0012): API keys `fk_<live|test>_<keyId>_<segredo>` com HMAC-SHA256 + pepper em arquivo, comparação em tempo constante, escopos em catálogo fechado (`:manage` implica `:read`), concessões por empresa sem cache, mesma resposta para empresa inexistente e sem concessão.
+- [x] **Padrão fechado**: rota `/v1` sem `config.auth` ou com escopo fora do catálogo impede a API de subir; autenticação antes da validação (401 antes de 400).
+- [x] CLI do operador (`npm run iam`) com papel de banco próprio `fiscal_admin` (a API só lê credenciais). Runbook [credenciais-api.md](runbooks/credenciais-api.md).
+- [x] **Company**: `POST /v1/companies` (concede a empresa ao criador na mesma transação), `GET /v1/company`, estabelecimentos com regra [COMPANY-001](fiscal/regras/COMPANY-001.md).
+- [x] **Fiscal Settings**: séries por estabelecimento/modalidade/ambiente; alocação transacional (50 concorrentes → 50 números consecutivos; rollback devolve o número); trigger impede o número de voltar; grants por coluna. Regras [SERIES-001](fiscal/regras/SERIES-001.md) e [SERIES-002](fiscal/regras/SERIES-002.md) (**provisória**, R-26).
+- [x] **Matriz de isolamento da API** gerada do catálogo de rotas: 401 sem credencial, 403 sem concessão, 404/sem dados na própria empresa, CNPJ spoofing, concessão revogada; rota de empresa nova sem caso quebra o teste.
+- [x] UUID v7 para ids gerados pelo servidor.
+- [x] Teste de fumaça local: CLI → chave → empresa → estabelecimento → série, Scalar com as novas rotas, chave ausente do log.
+
+Resultado: 215+ testes (unitários + integração com PostgreSQL real).
+
+### Vocabulário "empresa" — concluído (2026-11-09, [ADR-0025](adr/0025-vocabulario-empresa.md))
+- [x] "tenant" trocado por **empresa/company** em API (`/v1/companies`, `X-Company-Id`, escopos `companies:*`, códigos `COMPANY_*`), código (módulo `company`), banco (`companies`, `company_id`, `app_current_company()`), testes, CLI e documentação.
+- [x] Migrations reescritas antes do primeiro deploy: `0000_initial_schema` + `0001_security_roles_rls`.
+
 ### Atividades permanentes (valem para todo endpoint novo)
 - [ ] Toda rota declara schemas Zod para body/params/querystring/headers **e** para cada status de resposta, inclusive erros (`ProblemSchema`).
 - [ ] Todo erro esperado é um `ApplicationError` com `code` estável registrado no [catálogo](architecture/11-api.md#catálogo-de-códigos-de-erro) e coberto por teste.
-- [ ] Todo repository declara o mapa `constraint → erro de negócio` das constraints que podem ocorrer; operações de banco passam por `TenantTransactions`/`withDatabaseErrors`.
-- [ ] Toda tabela nova com `tenant_id` ganha RLS na migration de segurança (o meta-teste bloqueia o build se faltar).
+- [ ] Todo repository declara o mapa `constraint → erro de negócio` das constraints que podem ocorrer; operações de banco passam por `CompanyTransactions`/`withDatabaseErrors`.
+- [ ] Toda tabela nova com `company_id` ganha RLS na migration de segurança (o meta-teste bloqueia o build se faltar).
 - [ ] A rota aparece corretamente no Scalar (`/docs/`) com resumo, descrição e tag.
+- [ ] A rota declara `config.auth` (escopo do catálogo) e, se for de empresa, ganha caso na matriz `test/integration/api-isolation-matrix.test.ts`.
 
 ### Próximos passos (ordem)
 1. ~~Spikes obrigatórios~~ ✔
 2. ~~Drizzle + migrations + papéis de banco + RLS + meta-teste de schema + Testcontainers~~ ✔
-3. IAM, Taxpayer, Fiscal Settings, matriz de isolamento da API.
+3. ~~IAM, Company, Fiscal Settings, matriz de isolamento da API~~ ✔
 4. Certificate Vault, Audit log, fila/outbox/write-ahead, webhooks, endpoints `ops`.
 5. Deploy no Coolify, backup WAL, runbooks.
 
@@ -79,6 +96,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-09 | Piloto NFS-e Teresina: API Nacional (Simples) primeiro, emissor municipal depois | 0017 |
 | 2026-11-09 | VPS Hostinger + Coolify; Redis adiado; S3 externo | 0020, 0010 |
 | 2026-11-09 | NFC-e Piauí: motor central primeiro, contingência local NERP/Tauri preparada | 0019 |
+| 2026-11-09 | Vocabulário único "empresa" (company) no lugar de "tenant" | 0025 |
 
 ## Pendente de decisão do responsável
 1. ~~Aprovação final da arquitetura consolidada~~ — aprovada em 2026-11-09.
@@ -94,6 +112,8 @@ R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS �
 |---|---|---|
 | `spikes/` (+ job `spikes` no CI, `vitest.spikes.config.ts`) | Provas técnicas da Fase 1 | Promover a adapters em `src/` com testes definitivos e apagar até o fim da Fase 1 |
 | Vulnerabilidade moderada `minimatch` (cadeia do ESLint, só em desenvolvimento) | — | Atualizar quando o ESLint publicar a correção; o CI audita só dependências de produção |
+| Faixas reservadas de série NF-e/NFC-e não validadas; SERIES-002 provisória | Fontes secundárias conflitantes (R-26) | Conferir MOC/XSD oficiais antes das Fases 2a e 3 |
+| Teste baseado em propriedades entre 3 empresas (docs/14 §B4, teste 10) | Ainda não escrito | Junto com o primeiro documento fiscal (Fase 2a) |
 | Porta do PostgreSQL local alterada para 54329 | Evitar conflito com outro PostgreSQL na máquina de desenvolvimento | Configurável por `POSTGRES_PORT` |
 
 ## Evidências de homologação

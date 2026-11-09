@@ -6,7 +6,7 @@
 Requisito: certificados e senhas nunca expostos em logs e **não acessíveis indiscriminadamente pelos processos**. Hospedagem inicial em VPS com Coolify (sem KMS gerenciado no primeiro momento).
 
 ## Decisão
-1. PFX e senha cifrados com DEK AES-256-GCM própria de cada certificado; AAD = tenant + certificado + finalidade.
+1. PFX e senha cifrados com DEK AES-256-GCM própria de cada certificado; AAD = empresa + certificado + finalidade.
 2. DEK embrulhada por uma **KEK assimétrica**: a `api` tem só a chave **pública** (cifra no upload, não consegue decifrar); só o `worker-fiscal` tem a chave privada.
 3. Validação do certificado (cadeia ICP-Brasil, validade, CNPJ) feita no `worker-fiscal`, de forma assíncrona; status `PENDING_VALIDATION → ACTIVE | REJECTED`.
 4. Grants de coluna no PostgreSQL: `api` e `worker-general` não leem o ciphertext.

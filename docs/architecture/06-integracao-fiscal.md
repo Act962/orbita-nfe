@@ -55,7 +55,7 @@ O cliente HTTP registra a fase em que a falha aconteceu (`connect`, `tls`, `requ
 
 ## 4. NFS-e — estratégia
 1. **Padrão nacional primeiro** (Sefin Nacional para emissão via DPS e ADN para distribuição/consulta), com mTLS por certificado ICP-Brasil. Endpoints, formato (XML assinado transportado em API REST), versões de leiaute e regras de identificação da DPS serão extraídos da documentação oficial em `gov.br/nfse` no início da Fase 2.
-2. **Município-piloto**: escolher um município onde o tenant-piloto realmente emite e **confirmar oficialmente** se ele usa o emissor/API nacional diretamente ou mantém sistema próprio. A LC 214/2025 trata da adoção do padrão nacional pelos municípios — o grau de adesão e prazos devem ser verificados no ato (ver R-04).
+2. **Município-piloto**: escolher um município onde a empresa-piloto realmente emite e **confirmar oficialmente** se ele usa o emissor/API nacional diretamente ou mantém sistema próprio. A LC 214/2025 trata da adoção do padrão nacional pelos municípios — o grau de adesão e prazos devem ser verificados no ato (ver R-04).
 3. Provedores municipais (ABRASF etc.) só entram com demanda concreta, como adapters da mesma porta `NfseGateway`.
 4. Homologação: usar o ambiente de produção restrita/homologação oficial com o CNPJ do piloto.
 
@@ -67,9 +67,9 @@ O cliente HTTP registra a fase em que a falha aconteceu (`connect`, `tls`, `requ
 5. Respeitar regras de uso indevido/consumo excessivo publicadas pelas SEFAZ (limites de consulta repetida) — o reconciliador tem rate limit por UF/CNPJ.
 
 ## 6. Resiliência por autorizador
-- **Circuit breaker** por (autorizador, ambiente, serviço). Aberto → novos jobs ficam `PENDING` com atraso; para NF-e/NFC-e, política de contingência decide se entra em contingência (decisão explícita do tenant, nunca automática sem configuração).
+- **Circuit breaker** por (autorizador, ambiente, serviço). Aberto → novos jobs ficam `PENDING` com atraso; para NF-e/NFC-e, política de contingência decide se entra em contingência (decisão explícita da empresa, nunca automática sem configuração).
 - **Timeouts** explícitos por fase; valores iniciais configuráveis e ajustados por medição.
-- **Bulkhead**: concorrência máxima por autorizador e por tenant, para um tenant grande não derrubar os outros.
+- **Bulkhead**: concorrência máxima por autorizador e por empresa, para uma empresa grande não derrubar as outras.
 
 ## 7. Ambientes simulados
 - `tools/fake-authorities`: servidor HTTP que imita contratos **a partir de exemplos reais capturados em homologação**, com modos: autoriza, rejeita (código X), timeout antes/depois de processar, resposta lenta, 5xx, "processa mas derruba conexão" (o cenário que gera duplicidade).

@@ -3,11 +3,11 @@ import { inject } from 'vitest';
 import { computeCnpjCheckDigits } from '../../../src/shared/domain/cnpj.js';
 import { createDatabase, type DatabaseHandle } from '../../../src/shared/infrastructure/database/database.js';
 
-export type Role = 'api' | 'worker' | 'general' | 'owner' | 'superuser';
+export type Role = 'api' | 'worker' | 'general' | 'admin' | 'owner' | 'superuser';
 
 export function databaseUrl(role: Role): string {
   const urls = inject('database');
-  return { api: urls.apiUrl, worker: urls.workerUrl, general: urls.generalUrl, owner: urls.ownerUrl, superuser: urls.superuserUrl }[role];
+  return { api: urls.apiUrl, worker: urls.workerUrl, general: urls.generalUrl, admin: urls.adminUrl, owner: urls.ownerUrl, superuser: urls.superuserUrl }[role];
 }
 
 export function connect(role: Role, overrides: { poolMax?: number; statementTimeoutMs?: number } = {}): DatabaseHandle {

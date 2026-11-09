@@ -1,26 +1,28 @@
 import type pg from 'pg';
 
 /**
- * Auditoria do isolamento multi-tenant direto no catálogo do PostgreSQL
+ * Auditoria do isolamento multiempresa direto no catálogo do PostgreSQL
  * (docs/architecture/14 §B4, teste 1). Retorna a lista de problemas; vazia = ok.
  */
 
-/** Tabelas cujo próprio `id` é o tenant (política usa `id`, não `tenant_id`). */
-export const TENANT_ROOT_TABLES = ['tenants'] as const;
+/** Tabelas cujo próprio `id` é a empresa (política usa `id`, não `company_id`). */
+export const COMPANY_ROOT_TABLES = ['companies'] as const;
 
 /**
- * Tabelas sem dados de tenant, revisadas uma a uma. Incluir aqui exige justificativa no PR.
- * (Vazia hoje: toda tabela do schema public pertence a um tenant.)
+ * Tabelas sem dados de empresa, revisadas uma a uma. Incluir aqui exige justificativa no PR.
+ * - client_applications, credentials: a credencial é resolvida ANTES de existir empresa
+ *   (autenticação). A API só tem SELECT; escrita só pelo papel fiscal_admin (migration 0001).
+ * - __drizzle_migrations fica no schema `drizzle`, fora desta auditoria.
  */
-export const NON_TENANT_TABLES: readonly string[] = [];
+export const NON_COMPANY_TABLES: readonly string[] = ['client_applications', 'credentials'];
 
-export const APPLICATION_ROLES = ['fiscal_api', 'fiscal_worker', 'fiscal_general', 'fiscal_system'] as const;
+export const APPLICATION_ROLES = ['fiscal_api', 'fiscal_worker', 'fiscal_general', 'fiscal_system', 'fiscal_admin'] as const;
 
 interface TableRow {
   relname: string;
   relrowsecurity: boolean;
   relforcerowsecurity: boolean;
-  has_tenant_id: boolean;
+  has_company_id: boolean;
 }
 
 interface PolicyRow {
@@ -32,12 +34,12 @@ interface PolicyRow {
   with_check: string | null;
 }
 
-export async function auditTenantIsolation(client: pg.ClientBase): Promise<string[]> {
+export async function auditCompanyIsolation(client: pg.ClientBase): Promise<string[]> {
   const problems: string[] = [];
 
   const tables = await client.query<TableRow>(`
     SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity,
-           EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped) AS has_tenant_id
+           EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'company_id' AND NOT a.attisdropped) AS has_company_id
       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
      WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
      ORDER BY c.relname`);
@@ -45,12 +47,12 @@ export async function auditTenantIsolation(client: pg.ClientBase): Promise<strin
     SELECT tablename, policyname, cmd, permissive, qual, with_check FROM pg_policies WHERE schemaname = 'public'`);
 
   for (const table of tables.rows) {
-    const isRoot = (TENANT_ROOT_TABLES as readonly string[]).includes(table.relname);
-    const tenantScoped = isRoot || table.has_tenant_id;
+    const isRoot = (COMPANY_ROOT_TABLES as readonly string[]).includes(table.relname);
+    const companyScoped = isRoot || table.has_company_id;
 
-    if (!tenantScoped) {
-      if (!NON_TENANT_TABLES.includes(table.relname)) {
-        problems.push(`${table.relname}: tabela sem tenant_id e fora da allowlist NON_TENANT_TABLES`);
+    if (!companyScoped) {
+      if (!NON_COMPANY_TABLES.includes(table.relname)) {
+        problems.push(`${table.relname}: tabela sem company_id e fora da allowlist NON_COMPANY_TABLES`);
       }
       continue;
     }
@@ -58,16 +60,16 @@ export async function auditTenantIsolation(client: pg.ClientBase): Promise<strin
     if (!table.relforcerowsecurity) problems.push(`${table.relname}: RLS não forçado (FORCE ROW LEVEL SECURITY)`);
 
     const own = policies.rows.filter((p) => p.tablename === table.relname);
-    const column = isRoot ? 'id' : 'tenant_id';
+    const column = isRoot ? 'id' : 'company_id';
     const isolating = own.filter(
       (p) =>
         p.cmd === 'ALL' &&
         p.permissive === 'PERMISSIVE' &&
-        (p.qual ?? '').replace(/\s+/g, '').includes(`(${column}=app_current_tenant())`) &&
-        (p.with_check ?? '').replace(/\s+/g, '').includes(`(${column}=app_current_tenant())`),
+        (p.qual ?? '').replace(/\s+/g, '').includes(`(${column}=app_current_company())`) &&
+        (p.with_check ?? '').replace(/\s+/g, '').includes(`(${column}=app_current_company())`),
     );
     if (isolating.length === 0) {
-      problems.push(`${table.relname}: sem política ALL com USING e WITH CHECK por ${column} = app_current_tenant()`);
+      problems.push(`${table.relname}: sem política ALL com USING e WITH CHECK por ${column} = app_current_company()`);
     }
     // Uma política permissiva extra seria somada (OR) à de isolamento e poderia abri-la.
     for (const extra of own.filter((p) => p.permissive === 'PERMISSIVE' && !isolating.includes(p))) {

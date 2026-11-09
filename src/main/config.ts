@@ -19,6 +19,8 @@ const ConfigSchema = z.object({
   DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\//, 'deve ser uma URL postgres://'),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(10_000),
+  /** Caminho do arquivo com o pepper das API keys (≥ 32 bytes). O conteúdo nunca passa por variável de ambiente. */
+  API_KEY_PEPPER_FILE: z.string().min(1),
 });
 
 export type AppConfig = z.infer<typeof ConfigSchema>;

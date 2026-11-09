@@ -1,0 +1,179 @@
+import type { LightMyRequestResponse } from 'fastify';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { SCOPES } from '../../src/modules/iam/public.js';
+import type { RouteCatalogEntry } from '../../src/shared/presentation/http/route-catalog.js';
+import { bearer, cnpjOf, createClientApp, createEstablishment, createCompany, fakeRoot, problemCode, startTestApi, type TestApi } from './support/api.js';
+
+/**
+ * Matriz de isolamento da API (docs/architecture/14 §B4, testes 2, 7 e 8).
+ *
+ * Gerada do catálogo de rotas do Fastify: para TODA rota de empresa,
+ *   1. sem credencial → 401;
+ *   2. aplicação B pedindo a empresa A (sem concessão) → 403 COMPANY_ACCESS_DENIED;
+ *   3. aplicação B na própria empresa apontando para recursos/dados de A → 404 ou nada de A.
+ * Rota de empresa nova sem caso nesta matriz faz o teste falhar.
+ */
+interface Party {
+  readonly key: string;
+  readonly companyId: string;
+  readonly root: string;
+  readonly establishmentId: string;
+  readonly establishmentCnpj: string;
+  readonly seriesId: string;
+}
+
+interface Ctx {
+  readonly a: Party;
+  readonly b: Party;
+}
+
+interface MatrixCase {
+  /** Corpo da requisição (rotas com body). */
+  readonly payload?: (ctx: Ctx) => Record<string, unknown>;
+  /** Requisição de B, na empresa B, usando ids/dados de A: o que se espera. */
+  readonly expectCrossCompany: (res: LightMyRequestResponse, ctx: Ctx) => void;
+}
+
+const expectNotFound = (code: string) => (res: LightMyRequestResponse) => {
+  expect(res.statusCode).toBe(404);
+  expect(problemCode(res)).toBe(code);
+};
+
+const CASES: Record<string, MatrixCase> = {
+  'GET /v1/company': {
+    expectCrossCompany: (res, { a, b }) => {
+      expect(res.statusCode).toBe(200);
+      expect(res.json<{ id: string }>().id).toBe(b.companyId);
+      expect(res.body).not.toContain(a.companyId);
+    },
+  },
+  'POST /v1/establishments': {
+    // CNPJ spoofing (teste 7): B tenta cadastrar na própria empresa o CNPJ de A.
+    payload: ({ a }) => ({ cnpj: a.establishmentCnpj, tradeName: 'Spoof', municipalityCode: '2211001' }),
+    expectCrossCompany: (res) => {
+      expect(res.statusCode).toBe(422);
+      expect(problemCode(res)).toBe('ESTABLISHMENT_ROOT_MISMATCH');
+    },
+  },
+  'GET /v1/establishments': {
+    expectCrossCompany: (res, { a, b }) => {
+      expect(res.statusCode).toBe(200);
+      const ids = res.json<{ items: { id: string }[] }>().items.map((e) => e.id);
+      expect(ids).toContain(b.establishmentId);
+      expect(ids).not.toContain(a.establishmentId);
+    },
+  },
+  'GET /v1/establishments/:establishmentId': { expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND') },
+  'POST /v1/establishments/:establishmentId/document-series': {
+    payload: () => ({ kind: 'NFE', environment: 'HOMOLOGATION', series: '7' }),
+    expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),
+  },
+  'GET /v1/establishments/:establishmentId/document-series': { expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND') },
+};
+
+/** Rotas /v1 sem empresa, revisadas uma a uma. */
+const NON_COMPANY_ROUTES = ['POST /v1/companies'];
+
+const routeKey = (r: RouteCatalogEntry): string => `${r.method} ${r.url}`;
+const isCompanyRoute = (r: RouteCatalogEntry): boolean => 'company' in r.auth && r.auth.company;
+
+/** Rotas de empresa do catálogo sem caso na matriz. */
+function missingCases(catalog: readonly RouteCatalogEntry[]): string[] {
+  return catalog.filter((r) => r.method !== 'HEAD' && isCompanyRoute(r)).map(routeKey).filter((k) => !(k in CASES));
+}
+
+let t: TestApi;
+let ctx: Ctx;
+
+function fill(url: string, party: Party): string {
+  return url.replace(':establishmentId', party.establishmentId).replace(':seriesId', party.seriesId);
+}
+
+async function setupParty(prefix: string): Promise<Party> {
+  const app = await createClientApp(t.admin, prefix);
+  const key = await app.key([...SCOPES]);
+  const company = await createCompany(t.app, key, fakeRoot());
+  const establishmentCnpj = cnpjOf(company.root);
+  const establishmentId = await createEstablishment(t.app, key, company.id, establishmentCnpj);
+  const series = await t.app.inject({
+    method: 'POST',
+    url: `/v1/establishments/${establishmentId}/document-series`,
+    headers: bearer(key, company.id),
+    payload: { kind: 'NFCE', environment: 'HOMOLOGATION', series: '1' },
+  });
+  return { key, companyId: company.id, root: company.root, establishmentId, establishmentCnpj, seriesId: series.json<{ id: string }>().id };
+}
+
+beforeAll(async () => {
+  t = await startTestApi();
+  ctx = { a: await setupParty('orbita'), b: await setupParty('nerp') };
+});
+afterAll(async () => {
+  await t.close();
+});
+
+const companyRoutes = (): RouteCatalogEntry[] => t.app.routeCatalog.filter((r) => r.method !== 'HEAD' && isCompanyRoute(r));
+
+describe('Matriz de isolamento da API', () => {
+  it('toda rota de empresa tem caso na matriz e todo caso é uma rota real', () => {
+    expect(missingCases(t.app.routeCatalog)).toEqual([]);
+    const keys = companyRoutes().map(routeKey);
+    expect(Object.keys(CASES).filter((k) => !keys.includes(k))).toEqual([]);
+  });
+
+  it('teste do teste: uma rota de empresa nova sem caso é detectada', () => {
+    const fake: RouteCatalogEntry = { method: 'DELETE', url: '/v1/establishments/:establishmentId', auth: { scope: 'companies:manage', company: true } };
+    expect(missingCases([...t.app.routeCatalog, fake])).toEqual(['DELETE /v1/establishments/:establishmentId']);
+  });
+
+  it('rotas /v1 sem empresa são só as revisadas', () => {
+    const nonCompany = t.app.routeCatalog.filter((r) => r.method !== 'HEAD' && r.url.startsWith('/v1') && !isCompanyRoute(r)).map(routeKey);
+    expect(nonCompany.sort()).toEqual([...NON_COMPANY_ROUTES].sort());
+  });
+
+  it('toda rota /v1 exige credencial (401 sem Authorization)', async () => {
+    for (const route of t.app.routeCatalog.filter((r) => r.url.startsWith('/v1'))) {
+      const res = await t.app.inject({ method: route.method as 'GET', url: fill(route.url, ctx.a), headers: { 'x-company-id': ctx.a.companyId } });
+      expect(res.statusCode, routeKey(route)).toBe(401);
+    }
+  });
+
+  it('aplicação sem concessão para a empresa → 403 COMPANY_ACCESS_DENIED em toda rota de empresa', async () => {
+    for (const route of companyRoutes()) {
+      const c = CASES[routeKey(route)];
+      const res = await t.app.inject({
+        method: route.method as 'GET',
+        url: fill(route.url, ctx.a),
+        headers: bearer(ctx.b.key, ctx.a.companyId),
+        ...(c?.payload ? { payload: c.payload(ctx) } : {}),
+      });
+      expect(res.statusCode, routeKey(route)).toBe(403);
+      expect(problemCode(res), routeKey(route)).toBe('COMPANY_ACCESS_DENIED');
+    }
+  });
+
+  it('na própria empresa, recursos e dados de outra empresa são invisíveis (404 / sem dados de A)', async () => {
+    for (const route of companyRoutes()) {
+      const c = CASES[routeKey(route)];
+      if (c === undefined) throw new Error(`sem caso: ${routeKey(route)}`);
+      const res = await t.app.inject({
+        method: route.method as 'GET',
+        url: fill(route.url, ctx.a),
+        headers: bearer(ctx.b.key, ctx.b.companyId),
+        ...(c.payload ? { payload: c.payload(ctx) } : {}),
+      });
+      c.expectCrossCompany(res, ctx);
+    }
+  });
+
+  it('os dados de A continuam intactos depois das tentativas', async () => {
+    const list = await t.app.inject({ method: 'GET', url: '/v1/establishments', headers: bearer(ctx.a.key, ctx.a.companyId) });
+    expect(list.json<{ items: { id: string }[] }>().items.map((e) => e.id)).toEqual([ctx.a.establishmentId]);
+    const series = await t.app.inject({
+      method: 'GET',
+      url: `/v1/establishments/${ctx.a.establishmentId}/document-series`,
+      headers: bearer(ctx.a.key, ctx.a.companyId),
+    });
+    expect(series.json<{ items: { id: string }[] }>().items.map((s) => s.id)).toEqual([ctx.a.seriesId]);
+  });
+});

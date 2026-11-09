@@ -14,9 +14,9 @@ sequenceDiagram
   participant S as S3
 
   C->>A: POST /v1/service-invoices (Idempotency-Key)
-  A->>A: autentica app, resolve tenant, valida schema (Zod)
+  A->>A: autentica app, resolve empresa, valida schema (Zod)
   A->>DB: BEGIN
-  A->>DB: busca idempotency_key (tenant, app, key)
+  A->>DB: busca idempotency_key (empresa, app, key)
   alt chave já existe com mesmo hash de payload
     A-->>C: 200/202 com o mesmo documento (replay)
   else chave existe com payload diferente
@@ -76,7 +76,7 @@ flowchart TD
 
 ## F4. Cadastro e certificado
 
-1. App com escopo `tenants:manage` cria tenant/estabelecimento (CNPJ validado; opcionalmente conferência cadastral futura).
+1. App com escopo `companies:manage` cria empresa/estabelecimento (CNPJ validado; opcionalmente conferência cadastral futura).
 2. Upload do PFX + senha via endpoint dedicado (multipart, limite de tamanho, TLS).
 3. Validação: abre PKCS#12 em memória, verifica par chave/cert, cadeia ICP-Brasil, validade, CNPJ do titular vs estabelecimento (raiz do CNPJ para filiais — regra por modalidade a confirmar).
 4. Criptografa (envelope), grava blob no S3/banco, zera buffers, audita. Senha nunca retorna em nenhuma API.

@@ -40,19 +40,19 @@ export function createDatabase(options: DatabaseOptions): DatabaseHandle {
 }
 
 /**
- * Transação no contexto de um tenant (ADR-0011): `set_config('app.tenant_id', $1, true)` vale
- * só dentro da transação, então conexões devolvidas ao pool não carregam tenant.
+ * Transação no contexto de uma empresa (ADR-0011): `set_config('app.company_id', $1, true)` vale
+ * só dentro da transação, então conexões devolvidas ao pool não carregam empresa.
  * Toda falha sai traduzida (database-errors.ts): nada de erro do Drizzle/pg para cima.
  */
-export class TenantTransactions {
+export class CompanyTransactions {
   constructor(private readonly db: Database) {}
 
-  async run<T>(tenantId: string, work: (tx: Transaction) => Promise<T>, constraints: ConstraintErrorMap = {}): Promise<T> {
-    if (!UUID.test(tenantId)) throw new Error('tenantId inválido para contexto de transação');
+  async run<T>(companyId: string, work: (tx: Transaction) => Promise<T>, constraints: ConstraintErrorMap = {}): Promise<T> {
+    if (!UUID.test(companyId)) throw new Error('companyId inválido para contexto de transação');
     return withDatabaseErrors(
       () =>
         this.db.transaction(async (tx) => {
-          await tx.execute(sql`select set_config('app.tenant_id', ${tenantId}, true)`);
+          await tx.execute(sql`select set_config('app.company_id', ${companyId}, true)`);
           return work(tx);
         }),
       constraints,

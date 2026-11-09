@@ -3,14 +3,14 @@
 ## 1. Autenticação entre sistemas
 - **Fase 1**: API keys de alta entropia (≥ 256 bits) por aplicação cliente, formato `fk_live_<id>_<secret>`; armazenamos apenas HMAC-SHA256 do segredo com pepper em secret manager. Rotação com duas chaves ativas simultâneas. Ambiente (live/test) explícito no prefixo.
 - **Evolução**: OAuth2 Client Credentials com JWT de curta duração (e/ou mTLS entre sistemas) quando houver mais de um punhado de clientes.
-- **Autorização**: escopos por credencial + `tenant_grants` (app X pode operar tenants A, B). Toda requisição de tenant informa o tenant (`X-Tenant-Id` ou path) e o servidor **verifica a concessão**. O CNPJ do emitente no payload precisa pertencer a um estabelecimento daquele tenant.
+- **Autorização**: escopos por credencial + `company_grants` (app X pode operar empresas A, B). Toda requisição de empresa informa a empresa (`X-Company-Id` ou path) e o servidor **verifica a concessão**. O CNPJ do emitente no payload precisa pertencer a um estabelecimento daquela empresa.
 
 ## 2. Certificados A1
 > **Atualizado**: a versão aprovada usa KEK **assimétrica** e separação de privilégios por container. O desenho detalhado e vigente está em [13-seguranca-certificados.md](13-seguranca-certificados.md); o texto abaixo é o resumo original.
 
 **Envelope encryption**:
 1. Para cada certificado, gerar DEK aleatória (AES-256-GCM).
-2. Criptografar PFX e senha com a DEK (AAD = tenantId + certificateId, impede troca de blobs entre tenants).
+2. Criptografar PFX e senha com a DEK (AAD = companyId + certificateId, impede troca de blobs entre empresas).
 3. "Embrulhar" a DEK com a KEK via porta `KeyManagementService` (dev: KEK de arquivo/variável local; produção: AWS KMS / GCP KMS / Azure Key Vault / HashiCorp Vault Transit — a escolher conforme hospedagem).
 4. Banco guarda apenas ciphertext + DEK embrulhada + `kek_id`.
 
@@ -40,6 +40,6 @@ Configuração do sistema: variáveis de ambiente injetadas por secret manager; 
 - S3: bucket privado, criptografia server-side, URLs pré-assinadas de curta duração para download, Object Lock (modo compliance) para artefatos autorizados.
 
 ## 5. Auditoria
-`audit_log` append-only com hash encadeado: criação/alteração de tenant, credenciais,
+`audit_log` append-only com hash encadeado: criação/alteração de empresa, credenciais,
 certificados (upload, uso, substituição), emissão, cancelamento, ações manuais de operador
 (ex.: resolução forçada de `UNKNOWN`, que exige justificativa).

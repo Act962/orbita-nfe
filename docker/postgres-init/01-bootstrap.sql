@@ -14,7 +14,10 @@ CREATE ROLE fiscal_api NOLOGIN NOBYPASSRLS;
 CREATE ROLE fiscal_worker NOLOGIN NOBYPASSRLS;
 CREATE ROLE fiscal_general NOLOGIN NOBYPASSRLS;
 CREATE ROLE fiscal_system NOLOGIN NOBYPASSRLS;
+CREATE ROLE fiscal_admin NOLOGIN NOBYPASSRLS;
 
 CREATE ROLE app_api LOGIN NOSUPERUSER NOBYPASSRLS INHERIT PASSWORD 'dev-only-password' IN ROLE fiscal_api;
 CREATE ROLE app_worker LOGIN NOSUPERUSER NOBYPASSRLS INHERIT PASSWORD 'dev-only-password' IN ROLE fiscal_worker;
 CREATE ROLE app_general LOGIN NOSUPERUSER NOBYPASSRLS INHERIT PASSWORD 'dev-only-password' IN ROLE fiscal_general;
+-- Operador (CLI de IAM). Em produção, usado só por quem administra credenciais.
+CREATE ROLE app_admin LOGIN NOSUPERUSER NOBYPASSRLS INHERIT PASSWORD 'dev-only-password' IN ROLE fiscal_admin;

@@ -1,6 +1,8 @@
 import { createDatabase, databaseReadinessCheck } from '../shared/infrastructure/database/database.js';
+import { loadPepperFile } from '../modules/iam/public.js';
 import { createLogger } from '../shared/infrastructure/logging/logger.js';
 import { buildApp } from './app.js';
+import { composeApi } from './compose.js';
 import { loadConfig } from './config.js';
 
 const config = loadConfig();
@@ -13,11 +15,14 @@ const database = createDatabase({
   applicationName: 'orbita-nfe-api',
 });
 
+const modules = composeApi({ db: database.db, apiKeyPepper: loadPepperFile(config.API_KEY_PEPPER_FILE) });
+
 const app = await buildApp({
   logger,
   bodyLimit: config.HTTP_BODY_LIMIT,
   readinessChecks: [databaseReadinessCheck(database.pool)],
   apiDocs: { enabled: config.API_DOCS_ENABLED, version: config.APP_VERSION },
+  registerRoutes: modules.registerRoutes,
 });
 
 const shutdown = (signal: string): void => {

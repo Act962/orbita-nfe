@@ -25,5 +25,8 @@ hash do arquivo** quando houver download.
 | 2026-11-09 | Portaria SEMF Teresina nº 20/2026 (via fonte secundária) | — | — | nfse-teresina.md (T4) — **obter texto oficial** |
 | 2026-11-09 | Comunicado CGNFS-e 20/10/2026 (release 1 da NT 009), NT 009 v1.01 e pacote XSD de produção restrita `NFSe-ESQUEMAS_XSD-PRODREST-v1.01-20261020.zip` — **citados pelo repositório kursku/emissor-nfse (ADR 0007)** | NT 009 v1.01 | hashes publicados pelo terceiro; **recalcular a partir do download oficial** | R-24, Fase 2a — **confirmar data de 01/12/2026 no portal** |
 
+| 2026-11-09 | Leiaute NF-e (Ato COTEPE/ICMS 72/2005 via normasbrasil) e documentações de integração (Senior, NFE.io) — **secundárias** | — | — | SERIES-001 — **conferir no MOC/XSD oficial** |
+| 2026-11-09 | Tipos `TSSerieDPS`/`TSNumDPS` via buscadorncm (reprodução do XSD) — **secundária** | — | — | SERIES-002 (provisória) — **conferir no XSD oficial** |
+
 > Nesta Fase 0 nenhuma regra fiscal foi implementada. Afirmações fiscais nos documentos
 > de arquitetura estão marcadas como "a confirmar" quando dependem de verificação.

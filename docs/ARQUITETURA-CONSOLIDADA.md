@@ -8,7 +8,7 @@ Versão 2 · 2026-11-09 · Status: **aguardando aprovação final para iniciar a
 flowchart LR
   Orbita & NERP -->|HTTPS · API key + escopos · Idempotency-Key| API
   subgraph VPS Hostinger · Coolify
-    API[api<br/>autentica, resolve tenant, valida L1–L3,<br/>reserva número, grava + enfileira]
+    API[api<br/>autentica, resolve empresa, valida L1–L3,<br/>reserva número, grava + enfileira]
     WF[worker-fiscal<br/>KEK privada · XML · assinatura · mTLS ·<br/>write-ahead · reconciliação]
     WG[worker-general<br/>webhooks · outbox · alertas · stuck-scan · integridade]
     PG[(PostgreSQL<br/>dados + fila + outbox + auditoria · RLS)]
@@ -31,9 +31,9 @@ flowchart LR
 | Estilo | Monólito modular, Hexagonal + DDD, um contexto por modalidade fiscal | ADR-0001/0002, doc 02 |
 | Processos | `api`, `worker-fiscal`, `worker-general` (mesma imagem, privilégios diferentes) | ADR-0021 |
 | Persistência | PostgreSQL + **Drizzle ORM/Kit somente na infraestrutura**; mappers explícitos; SQL explícito onde dá controle | ADR-0004, doc 08 |
-| Fila | Persistente no PostgreSQL, enfileirada na mesma transação do estado; prioridade, cotas por tenant, DLQ, operação manual auditada | ADR-0005, doc 07 |
+| Fila | Persistente no PostgreSQL, enfileirada na mesma transação do estado; prioridade, cotas por empresa, DLQ, operação manual auditada | ADR-0005, doc 07 |
 | Duplicidade | Idempotency-Key + UNIQUE fiscais + numeração transacional + `UNKNOWN` + write-ahead de tentativas | ADR-0006/0007/0008/0022, doc 12 |
-| Multi-tenant | RLS `ENABLE`+`FORCE`, fail-closed, papéis sem BYPASSRLS, 12 classes de teste de isolamento como gate de CI | ADR-0011, doc 14 |
+| Multiempresa | RLS `ENABLE`+`FORCE`, fail-closed, papéis sem BYPASSRLS, 12 classes de teste de isolamento como gate de CI | ADR-0011, doc 14 |
 | Certificados | Envelope AES-256-GCM + KEK assimétrica (API só cifra), só worker-fiscal decifra, grants de coluna, teste canário de logs | ADR-0009, doc 13 |
 | Escopo fiscal | Não decide política tributária; valida dados, obrigatoriedade, consistência, matemática e leiaute (L1–L6) com regras de fonte oficial | ADR-0018, doc 14 |
 | Versionamento | XSDs, regras e tabelas oficiais versionados; documento congela versões na aceitação | ADR-0013 |

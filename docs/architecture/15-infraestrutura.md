@@ -51,7 +51,7 @@ LGPD: XMLs contêm dados pessoais (CPF, endereço). Armazenamento fora do Brasil
 - PostgreSQL: WAL-G ou pgBackRest com archive contínuo de WAL + base backup diário no bucket `backups` (cifrado). **RPO alvo: ≤ 5 min. RTO alvo: ≤ 4 h** (VPS única).
 - Teste de restauração **mensal** documentado em runbook.
 - Backup offline das KEKs (doc 13).
-- VPS única é ponto único de falha: aceitável na fase inicial com RPO/RTO acima; reavaliar antes de muitos tenants.
+- VPS única é ponto único de falha: aceitável na fase inicial com RPO/RTO acima; reavaliar antes de muitas empresas.
 
 ## 4. Rede e acesso
 - Firewall: somente 443 (e 22 restrito por IP/chave). PostgreSQL nunca exposto.

@@ -79,6 +79,7 @@ export function registerErrorHandling(app: HttpApp): void {
         request.log.error({ err: error, errorCode: error.code }, 'erro interno conhecido');
         return send(request, reply, { status, code: 'INTERNAL_ERROR', title: TITLE.INTERNAL });
       }
+      if (error.category === 'UNAUTHORIZED') void reply.header('www-authenticate', 'Bearer');
       if (error instanceof ServiceUnavailableError) {
         request.log.warn({ err: error, errorCode: error.code }, 'dependência indisponível');
         void reply.header('retry-after', String(error.retryAfterSeconds));

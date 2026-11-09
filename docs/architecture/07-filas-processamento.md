@@ -14,7 +14,7 @@ documentos fiscais, a fonte da verdade e a fila precisam estar no mesmo commit.
 ## 2. Filas
 | Fila | Job | Concorrência | Observações |
 |---|---|---|---|
-| `nfse.submit` | transmitir documento | por autorizador/tenant | singleton por documento |
+| `nfse.submit` | transmitir documento | por autorizador/empresa | singleton por documento |
 | `nfse.reconcile` | consultar `UNKNOWN` | baixa, rate-limited | backoff 30s → 1m → 5m → 15m → 1h… |
 | `nfse.event` | cancelamento/substituição | | singleton por documento |
 | `nfe.*`, `nfce.*` | análogos | | |
@@ -40,15 +40,15 @@ publicados. Como fila e outbox estão no mesmo banco, o "relay" é só mais um j
 ## 6. Separação por privilégio (ADR-0021)
 Filas fiscais são consumidas **somente** pelo `worker-fiscal`; webhooks, outbox, alertas e varreduras pelo `worker-general`.
 
-## 7. Prioridade e justiça entre tenants
+## 7. Prioridade e justiça entre empresas
 - Prioridades: `nfce.submit` (consumidor no caixa) > `nfse.submit`/`nfe.submit` > eventos > `*.reconcile` > manutenção.
-- Cota de concorrência por tenant e por autorizador (bulkhead): um tenant com milhares de notas não atrasa os demais.
-- Lote em massa de um tenant entra com prioridade menor que emissões unitárias.
+- Cota de concorrência por empresa e por autorizador (bulkhead): uma empresa com milhares de notas não atrasa as demais.
+- Lote em massa de uma empresa entra com prioridade menor que emissões unitárias.
 
 ## 8. Operação manual (escopo `ops:*`, tudo auditado)
 | Ação | Endpoint administrativo |
 |---|---|
-| Pausar/retomar fila (global, por autorizador ou por tenant) | `POST /ops/v1/queues/{queue}/pause` / `resume` |
+| Pausar/retomar fila (global, por autorizador ou por empresa) | `POST /ops/v1/queues/{queue}/pause` / `resume` |
 | Listar e inspecionar DLQ | `GET /ops/v1/dead-letters` |
 | Reprocessar item da DLQ | `POST /ops/v1/dead-letters/{id}/retry` |
 | Descartar job (nunca o documento) | `POST /ops/v1/jobs/{id}/discard` com justificativa |

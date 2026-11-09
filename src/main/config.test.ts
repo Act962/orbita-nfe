@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { InvalidConfigError, loadConfig } from './config.js';
 
-const REQUIRED = { DATABASE_URL: 'postgres://app_api:x@localhost:5432/orbita_nfe' };
+const REQUIRED = { DATABASE_URL: 'postgres://app_api:x@localhost:5432/orbita_nfe', API_KEY_PEPPER_FILE: '/run/secrets/api-key-pepper' };
 
 describe('loadConfig', () => {
   it('aplica padrões seguros', () => {
@@ -17,6 +17,10 @@ describe('loadConfig', () => {
   it('DATABASE_URL é obrigatória e deve ser postgres://', () => {
     expect(() => loadConfig({})).toThrow(/DATABASE_URL/);
     expect(() => loadConfig({ DATABASE_URL: 'mysql://x' })).toThrow(/DATABASE_URL/);
+  });
+
+  it('API_KEY_PEPPER_FILE é obrigatório', () => {
+    expect(() => loadConfig({ DATABASE_URL: REQUIRED.DATABASE_URL })).toThrow(/API_KEY_PEPPER_FILE/);
   });
 
   it('falha na carga com configuração inválida, sem expor o valor recebido', () => {

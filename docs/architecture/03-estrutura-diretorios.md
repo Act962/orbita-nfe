@@ -39,7 +39,7 @@ orbita-nfe/
 │   │   │   ├── infrastructure/
 │   │   │   ├── presentation/
 │   │   │   └── public.ts            # única superfície acessível por outros módulos
-│   │   ├── taxpayer/
+│   │   ├── company/
 │   │   ├── fiscal-settings/
 │   │   ├── certificates/
 │   │   ├── dfe-sefaz/               # shared kernel NF-e/NFC-e

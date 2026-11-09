@@ -7,7 +7,9 @@ Topologia de papéis (ADR-0011, docs/architecture/14 §B2):
 | superusuário do provedor | login | **só** este bootstrap. Nunca configurado na aplicação |
 | `fiscal_owner` | login, **sem** superuser, CREATEROLE | dono das tabelas; roda migrations. O `FORCE ROW LEVEL SECURITY` vale para ele |
 | `fiscal_api`, `fiscal_worker`, `fiscal_general`, `fiscal_system` | grupo (NOLOGIN), criados pela migration 0001 | privilégios e RLS |
+| `fiscal_admin` | grupo (NOLOGIN), criado pela migration 0001 | operador de IAM: aplicações, credenciais, concessões |
 | `app_api`, `app_worker`, `app_general` | login, membros dos grupos acima | conexões da aplicação (`DATABASE_URL` de cada container) |
+| `app_admin` | login, membro de `fiscal_admin` | só a CLI do operador (`ADMIN_DATABASE_URL`); ver [credenciais-api.md](credenciais-api.md) |
 
 Nenhum papel de aplicação tem `SUPERUSER` ou `BYPASSRLS`. O meta-teste (`test/integration/rls-meta.test.ts`) verifica isso.
 
@@ -30,6 +32,7 @@ Em desenvolvimento: `npm run db:migrate`. A falha imprime só o código SQLSTATE
 CREATE ROLE app_api     LOGIN NOSUPERUSER NOBYPASSRLS INHERIT PASSWORD '<gerada>' IN ROLE fiscal_api;
 CREATE ROLE app_worker  LOGIN NOSUPERUSER NOBYPASSRLS INHERIT PASSWORD '<gerada>' IN ROLE fiscal_worker;
 CREATE ROLE app_general LOGIN NOSUPERUSER NOBYPASSRLS INHERIT PASSWORD '<gerada>' IN ROLE fiscal_general;
+CREATE ROLE app_admin   LOGIN NOSUPERUSER NOBYPASSRLS INHERIT PASSWORD '<gerada>' IN ROLE fiscal_admin;
 ```
 
 ## 4. Verificação
@@ -38,3 +41,4 @@ CREATE ROLE app_general LOGIN NOSUPERUSER NOBYPASSRLS INHERIT PASSWORD '<gerada>
 
 ## Ambiente local
 `docker compose -f docker/docker-compose.yml up -d postgres` executa os passos 1 e 3 automaticamente (`docker/postgres-init/01-bootstrap.sql`); depois `npm run db:migrate`. Para recriar do zero: `docker compose -f docker/docker-compose.yml down -v`.
+Banco criado antes do ADR-0025 (migrations reescritas): recrie com `down -v`.

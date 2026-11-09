@@ -1,4 +1,4 @@
-# 14 — Integridade fiscal e isolamento multi-tenant (aprofundamento)
+# 14 — Integridade fiscal e isolamento multiempresa (aprofundamento)
 
 # Parte A — Integridade fiscal
 
@@ -11,7 +11,7 @@ O motor **não decide** a política tributária (qual CST/CSOSN, alíquota ou be
 | L2 — Invariantes | `domain` (Value Objects) | DV de CNPJ/CPF (numérico e alfanumérico), código IBGE existente, datas coerentes, escalas decimais | competência não pode ser futura (se a regra oficial disser) |
 | L3 — Regras fiscais | `domain` (rule set versionado) | obrigatoriedade condicional, **regras matemáticas** (totais = soma dos itens, base × alíquota = valor dentro da tolerância oficial), compatibilidade entre campos, códigos pertencentes às tabelas oficiais | total do serviço ≠ soma → rejeitado localmente |
 | L4 — Leiaute | `infrastructure` (XSD oficial) | XML gerado válido contra o schema oficial da versão gravada no documento | campo fora do padrão XSD |
-| L5 — Pré-transmissão | `application` | certificado ativo e válido, ambiente coerente, série ativa, roteamento definido, tenant habilitado para produção | certificado vencido → `FAILED` antes do envio |
+| L5 — Pré-transmissão | `application` | certificado ativo e válido, ambiente coerente, série ativa, roteamento definido, empresa habilitada para produção | certificado vencido → `FAILED` antes do envio |
 | L6 — Autorizador | autorizador oficial | **a única validação que dá validade fiscal** | autorização com protocolo |
 
 Regras:
@@ -32,33 +32,33 @@ Regras:
 - Job semanal de verificação: recalcula hashes de uma amostra (e mensalmente de todos) e compara com o banco; divergência = incidente.
 
 ## A4. Trilha de auditoria à prova de adulteração
-- `audit_log` append-only (sem UPDATE/DELETE por grant + trigger), com `hash = sha256(prev_hash ‖ registro)` por tenant.
-- Diariamente, o hash da cabeça da cadeia de cada tenant é exportado para o bucket com Object Lock (âncora externa): adulterar o banco passa a ser detectável.
+- `audit_log` append-only (sem UPDATE/DELETE por grant + trigger), com `hash = sha256(prev_hash ‖ registro)` por empresa.
+- Diariamente, o hash da cabeça da cadeia de cada empresa é exportado para o bucket com Object Lock (âncora externa): adulterar o banco passa a ser detectável.
 
 ## A5. Ambientes
 - `environment` é imutável por documento; séries e certificados de homologação e produção separados.
-- Um tenant só emite em produção depois de flag `production_enabled` habilitada por operador (auditado).
+- Uma empresa só emite em produção depois de flag `production_enabled` habilitada por operador (auditado).
 - O processo **não inicia** em produção se algum gateway estiver configurado como simulador (`fake`).
 
 ## A6. Valores e tempo
 - Valores com decimal de precisão arbitrária; arredondamento conforme regra oficial de cada campo, centralizado em um único módulo testado.
 - Servidor com NTP monitorado; data/hora de emissão com fuso do emitente.
 
-# Parte B — Isolamento multi-tenant
+# Parte B — Isolamento multiempresa
 
 ## B1. Camadas de isolamento
 
 ```mermaid
 flowchart TB
-  A[Credencial da aplicação] --> B[TenantGrant: app pode operar o tenant?]
-  B --> C[TenantContext no AsyncLocalStorage]
-  C --> D[Repository exige TenantContext explícito]
-  D --> E["Transação: set_config('app.tenant_id', $1, true)"]
-  E --> F[RLS ENABLE + FORCE em todas as tabelas de tenant]
-  F --> G[FKs compostas tenant_id + id]
-  C --> H[Object storage: prefixo tenant + checagem de posse no banco]
-  C --> I[Jobs carregam tenantId e reabrem o contexto]
-  C --> J[Cache e rate limit com chave prefixada por tenant]
+  A[Credencial da aplicação] --> B[CompanyGrant: app pode operar a empresa?]
+  B --> C[CompanyContext no AsyncLocalStorage]
+  C --> D[Repository exige CompanyContext explícito]
+  D --> E["Transação: set_config('app.company_id', $1, true)"]
+  E --> F[RLS ENABLE + FORCE em todas as tabelas de empresa]
+  F --> G[FKs compostas company_id + id]
+  C --> H[Object storage: prefixo empresa + checagem de posse no banco]
+  C --> I[Jobs carregam companyId e reabrem o contexto]
+  C --> J[Cache e rate limit com chave prefixada por empresa]
 ```
 
 ## B2. Banco de dados
@@ -66,29 +66,29 @@ flowchart TB
 - `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` **e** `FORCE ROW LEVEL SECURITY`.
 - Política padrão (fail-closed):
   ```sql
-  CREATE POLICY tenant_isolation ON service_invoices
-    USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
-    WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+  CREATE POLICY company_isolation ON service_invoices
+    USING (company_id = nullif(current_setting('app.company_id', true), '')::uuid)
+    WITH CHECK (company_id = nullif(current_setting('app.company_id', true), '')::uuid);
   ```
   Sem contexto definido → nenhuma linha visível, nenhuma escrita aceita.
-- `set_config(..., true)` = vale só para a transação; conexões do pool não "herdam" tenant.
-- `fiscal_system` (reconciliação/stuck-scan) só tem SELECT em uma **view** mínima (`id, tenant_id, status, next_check_at`) e, para processar cada item, abre uma transação **no contexto do tenant** do item.
+- `set_config(..., true)` = vale só para a transação; conexões do pool não "herdam" empresa.
+- `fiscal_system` (reconciliação/stuck-scan) só tem SELECT em uma **view** mínima (`id, company_id, status, next_check_at`) e, para processar cada item, abre uma transação **no contexto da empresa** do item.
 
 ## B3. Aplicação
-- Tenant vem da credencial + concessão, nunca do payload; CNPJ do emitente é conferido contra os estabelecimentos do tenant.
-- Recurso de outro tenant responde **404** (não 403), para não revelar existência.
-- URLs pré-assinadas do S3 só são geradas após confirmar no banco (com RLS) que o artefato pertence ao tenant; prefixo `tenant/{tenantId}/` conferido pelo adapter.
+- Empresa vem da credencial + concessão, nunca do payload; CNPJ do emitente é conferido contra os estabelecimentos da empresa.
+- Recurso de outra empresa responde **404** (não 403), para não revelar existência.
+- URLs pré-assinadas do S3 só são geradas após confirmar no banco (com RLS) que o artefato pertence à empresa; prefixo `company/{companyId}/` conferido pelo adapter.
 
 ## B4. Testes de isolamento (gate bloqueante no CI)
-1. **Meta-teste de schema**: varre `information_schema`/`pg_class`; toda tabela com `tenant_id` precisa ter RLS habilitado **e forçado** e políticas com `USING` e `WITH CHECK`. Tabela sem `tenant_id` precisa estar em uma allowlist revisada. Uma tabela nova sem RLS quebra o build.
-2. **Matriz de API gerada**: a partir do registro de rotas do Fastify, para **cada rota** de tenant: cria recursos como tenant A e tenta ler/alterar/cancelar/baixar com credencial do tenant B → 404 esperado. Rota nova entra automaticamente no teste.
+1. **Meta-teste de schema**: varre `information_schema`/`pg_class`; toda tabela com `company_id` precisa ter RLS habilitado **e forçado** e políticas com `USING` e `WITH CHECK`. Tabela sem `company_id` precisa estar em uma allowlist revisada. Uma tabela nova sem RLS quebra o build.
+2. **Matriz de API gerada**: a partir do registro de rotas do Fastify, para **cada rota** de company: cria recursos como empresa A e tenta ler/alterar/cancelar/baixar com credencial da empresa B → 404 esperado. Rota nova entra automaticamente no teste.
 3. **Repositories**: cada repository tem teste cruzado A/B gerado por helper comum.
-4. **Vazamento de pool**: transação no tenant A, em seguida consulta sem contexto na mesma conexão → zero linhas.
-5. **WITH CHECK**: INSERT/UPDATE com `tenant_id` diferente do contexto → erro.
-6. **Jobs**: job adulterado com `tenantId` de A apontando para documento de B → não encontra o documento.
-7. **CNPJ spoofing**: payload com CNPJ de estabelecimento de outro tenant → rejeitado.
+4. **Vazamento de pool**: transação na empresa A, em seguida consulta sem contexto na mesma conexão → zero linhas.
+5. **WITH CHECK**: INSERT/UPDATE com `company_id` diferente do contexto → erro.
+6. **Jobs**: job adulterado com `companyId` de A apontando para documento de B → não encontra o documento.
+7. **CNPJ spoofing**: payload com CNPJ de estabelecimento de outra empresa → rejeitado.
 8. **Concessão revogada**: revogar grant → próxima requisição negada (sem cache stale).
 9. **Storage**: tentativa de baixar artefato de B com credencial de A → 404; chave fora do prefixo → erro no adapter.
-10. **Teste baseado em propriedades**: operações aleatórias intercaladas entre 3 tenants; invariante "nenhum tenant vê/alterar dado de outro".
+10. **Teste baseado em propriedades**: operações aleatórias intercaladas entre 3 empresas; invariante "nenhuma empresa vê nem altera dado de outra".
 11. **Teste do teste**: em ambiente de teste, desativar uma política propositalmente e verificar que os testes 1 e 2 falham.
 12. Testes rodam com os **mesmos papéis de banco** de produção (nunca como superusuário).

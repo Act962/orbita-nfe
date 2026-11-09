@@ -1,127 +1,11 @@
 {
-  "id": "abc40e34-ffd3-4dcd-9663-828c6ea27d5d",
-  "prevId": "37e26227-ef52-4ae4-a2ef-62b47c5454d8",
+  "id": "33239ec4-9f2b-470f-b1a1-032989759b2c",
+  "prevId": "09e11da3-9fd6-4ef4-976b-6d982fbcbc44",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.establishments": {
-      "name": "establishments",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "cnpj": {
-          "name": "cnpj",
-          "type": "varchar(14)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "trade_name": {
-          "name": "trade_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "municipality_code": {
-          "name": "municipality_code",
-          "type": "char(7)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'ACTIVE'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "ix_establishments_tenant": {
-          "name": "ix_establishments_tenant",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        }
-      },
-      "foreignKeys": {
-        "fk_establishments_tenant": {
-          "name": "fk_establishments_tenant",
-          "tableFrom": "establishments",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "tableTo": "tenants",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "uq_establishments_cnpj": {
-          "name": "uq_establishments_cnpj",
-          "columns": [
-            "cnpj"
-          ],
-          "nullsNotDistinct": false
-        },
-        "uq_establishments_tenant_id": {
-          "name": "uq_establishments_tenant_id",
-          "columns": [
-            "tenant_id",
-            "id"
-          ],
-          "nullsNotDistinct": false
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "ck_establishments_status": {
-          "name": "ck_establishments_status",
-          "value": "\"establishments\".\"status\" in ('ACTIVE', 'INACTIVE')"
-        },
-        "ck_establishments_cnpj": {
-          "name": "ck_establishments_cnpj",
-          "value": "\"establishments\".\"cnpj\" ~ '^[0-9A-Z]{12}[0-9]{2}$'"
-        },
-        "ck_establishments_municipality": {
-          "name": "ck_establishments_municipality",
-          "value": "\"establishments\".\"municipality_code\" ~ '^[0-9]{7}$'"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.tenants": {
-      "name": "tenants",
+    "public.companies": {
+      "name": "companies",
       "schema": "",
       "columns": {
         "id": {
@@ -161,8 +45,8 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "uq_tenants_root_cnpj": {
-          "name": "uq_tenants_root_cnpj",
+        "uq_companies_root_cnpj": {
+          "name": "uq_companies_root_cnpj",
           "columns": [
             "root_cnpj"
           ],
@@ -171,13 +55,538 @@
       },
       "policies": {},
       "checkConstraints": {
-        "ck_tenants_status": {
-          "name": "ck_tenants_status",
-          "value": "\"tenants\".\"status\" in ('ACTIVE', 'SUSPENDED')"
+        "ck_companies_status": {
+          "name": "ck_companies_status",
+          "value": "\"companies\".\"status\" in ('ACTIVE', 'SUSPENDED')"
         },
-        "ck_tenants_root_cnpj": {
-          "name": "ck_tenants_root_cnpj",
-          "value": "\"tenants\".\"root_cnpj\" ~ '^[0-9A-Z]{8}$'"
+        "ck_companies_root_cnpj": {
+          "name": "ck_companies_root_cnpj",
+          "value": "\"companies\".\"root_cnpj\" ~ '^[0-9A-Z]{8}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.establishments": {
+      "name": "establishments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cnpj": {
+          "name": "cnpj",
+          "type": "varchar(14)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trade_name": {
+          "name": "trade_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "municipality_code": {
+          "name": "municipality_code",
+          "type": "char(7)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ix_establishments_company": {
+          "name": "ix_establishments_company",
+          "columns": [
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "fk_establishments_company": {
+          "name": "fk_establishments_company",
+          "tableFrom": "establishments",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "tableTo": "companies",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_establishments_cnpj": {
+          "name": "uq_establishments_cnpj",
+          "columns": [
+            "cnpj"
+          ],
+          "nullsNotDistinct": false
+        },
+        "uq_establishments_company_id": {
+          "name": "uq_establishments_company_id",
+          "columns": [
+            "company_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ck_establishments_status": {
+          "name": "ck_establishments_status",
+          "value": "\"establishments\".\"status\" in ('ACTIVE', 'INACTIVE')"
+        },
+        "ck_establishments_cnpj": {
+          "name": "ck_establishments_cnpj",
+          "value": "\"establishments\".\"cnpj\" ~ '^[0-9A-Z]{12}[0-9]{2}$'"
+        },
+        "ck_establishments_municipality": {
+          "name": "ck_establishments_municipality",
+          "value": "\"establishments\".\"municipality_code\" ~ '^[0-9]{7}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.client_applications": {
+      "name": "client_applications",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_client_applications_name": {
+          "name": "uq_client_applications_name",
+          "columns": [
+            "name"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ck_client_applications_status": {
+          "name": "ck_client_applications_status",
+          "value": "\"client_applications\".\"status\" in ('ACTIVE', 'DISABLED')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.company_grants": {
+      "name": "company_grants",
+      "schema": "",
+      "columns": {
+        "company_id": {
+          "name": "company_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "client_application_id": {
+          "name": "client_application_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ix_company_grants_client_application": {
+          "name": "ix_company_grants_client_application",
+          "columns": [
+            {
+              "expression": "client_application_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "fk_company_grants_client_application": {
+          "name": "fk_company_grants_client_application",
+          "tableFrom": "company_grants",
+          "columnsFrom": [
+            "client_application_id"
+          ],
+          "tableTo": "client_applications",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "pk_company_grants": {
+          "name": "pk_company_grants",
+          "columns": [
+            "company_id",
+            "client_application_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ck_company_grants_status": {
+          "name": "ck_company_grants_status",
+          "value": "\"company_grants\".\"status\" in ('ACTIVE', 'REVOKED')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.credentials": {
+      "name": "credentials",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "client_application_id": {
+          "name": "client_application_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key_id": {
+          "name": "key_id",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "secret_hash": {
+          "name": "secret_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "environment": {
+          "name": "environment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scopes": {
+          "name": "scopes",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "ix_credentials_client_application": {
+          "name": "ix_credentials_client_application",
+          "columns": [
+            {
+              "expression": "client_application_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "fk_credentials_client_application": {
+          "name": "fk_credentials_client_application",
+          "tableFrom": "credentials",
+          "columnsFrom": [
+            "client_application_id"
+          ],
+          "tableTo": "client_applications",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_credentials_key_id": {
+          "name": "uq_credentials_key_id",
+          "columns": [
+            "key_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ck_credentials_key_id": {
+          "name": "ck_credentials_key_id",
+          "value": "\"credentials\".\"key_id\" ~ '^[0-9a-f]{16}$'"
+        },
+        "ck_credentials_secret_hash": {
+          "name": "ck_credentials_secret_hash",
+          "value": "octet_length(\"credentials\".\"secret_hash\") = 32"
+        },
+        "ck_credentials_environment": {
+          "name": "ck_credentials_environment",
+          "value": "\"credentials\".\"environment\" in ('live', 'test')"
+        },
+        "ck_credentials_scopes": {
+          "name": "ck_credentials_scopes",
+          "value": "cardinality(\"credentials\".\"scopes\") > 0"
+        },
+        "ck_credentials_status": {
+          "name": "ck_credentials_status",
+          "value": "\"credentials\".\"status\" in ('ACTIVE', 'REVOKED')"
+        },
+        "ck_credentials_revoked_at": {
+          "name": "ck_credentials_revoked_at",
+          "value": "(\"credentials\".\"status\" = 'REVOKED') = (\"credentials\".\"revoked_at\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.document_series": {
+      "name": "document_series",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "company_id": {
+          "name": "company_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "establishment_id": {
+          "name": "establishment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "environment": {
+          "name": "environment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "series": {
+          "name": "series",
+          "type": "varchar(5)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "next_number": {
+          "name": "next_number",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_number": {
+          "name": "max_number",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ix_document_series_company": {
+          "name": "ix_document_series_company",
+          "columns": [
+            {
+              "expression": "company_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_document_series_key": {
+          "name": "uq_document_series_key",
+          "columns": [
+            "establishment_id",
+            "kind",
+            "environment",
+            "series"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ck_document_series_kind": {
+          "name": "ck_document_series_kind",
+          "value": "\"document_series\".\"kind\" in ('NFSE_DPS', 'NFE', 'NFCE')"
+        },
+        "ck_document_series_environment": {
+          "name": "ck_document_series_environment",
+          "value": "\"document_series\".\"environment\" in ('PRODUCTION', 'HOMOLOGATION')"
+        },
+        "ck_document_series_series": {
+          "name": "ck_document_series_series",
+          "value": "\"document_series\".\"series\" ~ '^(0|[1-9][0-9]{0,4})$'"
+        },
+        "ck_document_series_status": {
+          "name": "ck_document_series_status",
+          "value": "\"document_series\".\"status\" in ('ACTIVE', 'INACTIVE')"
+        },
+        "ck_document_series_numbers": {
+          "name": "ck_document_series_numbers",
+          "value": "\"document_series\".\"max_number\" between 1 and 999999999999999 and \"document_series\".\"next_number\" between 1 and \"document_series\".\"max_number\" + 1"
         }
       },
       "isRLSEnabled": false

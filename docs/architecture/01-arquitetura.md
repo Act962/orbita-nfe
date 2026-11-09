@@ -12,7 +12,7 @@ O Motor Fiscal será um **monólito modular** em TypeScript/Node.js, organizado 
 
 | Processo | Responsabilidade |
 |---|---|
-| `api` | Recebe requisições HTTP (Fastify), autentica a aplicação cliente, resolve o tenant, valida entrada, persiste a intenção de emissão e **enfileira** o trabalho na mesma transação. Nunca fala com SEFAZ/prefeitura no caminho síncrono da requisição de emissão. |
+| `api` | Recebe requisições HTTP (Fastify), autentica a aplicação cliente, resolve a empresa, valida entrada, persiste a intenção de emissão e **enfileira** o trabalho na mesma transação. Nunca fala com SEFAZ/prefeitura no caminho síncrono da requisição de emissão. |
 | `worker` | Consome jobs persistentes, monta/assina XML, transmite aos autorizadores, classifica o resultado, consulta situação em caso de dúvida, armazena artefatos, dispara webhooks e executa reconciliações periódicas. |
 
 Motivos para monólito modular (e não microsserviços) estão no
@@ -97,7 +97,7 @@ Regras de dependência (verificadas no CI por `dependency-cruiser` ou ESLint
 | Linguagem/Runtime | TypeScript (strict) em Node.js LTS (22.x ou 24.x — confirmar LTS ativo na Fase 1) | ESM |
 | HTTP | Fastify + `fastify-type-provider-zod` + `@fastify/swagger` | OpenAPI gerado a partir dos schemas Zod |
 | Validação | Zod (apenas em `presentation` e config). O domínio valida por si mesmo em VOs. | |
-| Banco | PostgreSQL 16+ | RLS por tenant como defesa em profundidade |
+| Banco | PostgreSQL 16+ | RLS por empresa como defesa em profundidade |
 | ORM / Migrations | Drizzle ORM + Drizzle Kit (migrations SQL versionadas e revisadas) | só em `infrastructure` |
 | Fila | **PostgreSQL** (pg-boss ou implementação própria com `FOR UPDATE SKIP LOCKED`) | ver [ADR-0005](../adr/0005-fila-em-postgresql.md) |
 | Redis | **Adiado** (ADR-0020): entra quando houver mais de uma instância de API ou necessidade comprovada | **nunca** guarda estado fiscal |
@@ -115,7 +115,7 @@ Regras de dependência (verificadas no CI por `dependency-cruiser` ou ESLint
 
 1. **A requisição de emissão é assíncrona por padrão**: `POST` retorna `202 Accepted` com o id do documento e status `PENDING`. O cliente acompanha por webhook ou `GET`.
    - Um modo "aguardar até N segundos" (`Prefer: wait=10`) pode ser oferecido para PDV (NFC-e), mas ele só *espera* o worker — não transmite no thread HTTP.
-2. **Idempotência em duas camadas**: (a) `Idempotency-Key` por aplicação cliente + tenant; (b) chave natural fiscal (série/número, chave de acesso, id da DPS) com constraints `UNIQUE` no banco.
+2. **Idempotência em duas camadas**: (a) `Idempotency-Key` por aplicação cliente + empresa; (b) chave natural fiscal (série/número, chave de acesso, id da DPS) com constraints `UNIQUE` no banco.
 3. **Numeração reservada transacionalmente** no momento da aceitação, nunca no momento da transmissão.
 4. **Estado `UNKNOWN` explícito**: qualquer falha após possível entrega ao autorizador leva a `UNKNOWN`, e a única saída de `UNKNOWN` é uma **consulta** ao autorizador. Retransmissão só depois de a consulta provar que o documento não existe lá.
 5. **Fila e mudança de estado na mesma transação** (outbox implícito por usar PostgreSQL como fila).

@@ -15,6 +15,7 @@ import type { ReadinessCheck } from '../shared/presentation/http/health.js';
 import type { HttpApp } from '../shared/presentation/http/http-app.js';
 import { ProblemSchema } from '../shared/presentation/http/problem.js';
 import { CANARIES, captureStream, expectNoCanary } from '../../test/support/canary.js';
+import { AccessControl, registerAuthentication } from '../modules/iam/public.js';
 import { buildApp } from './app.js';
 
 let app: HttpApp | undefined;
@@ -157,7 +158,7 @@ describe('Erros de aplicação → problem+json com código estável', () => {
   it.each([
     [new ValidationFailedError([{ code: 'CNPJ_INVALID_CHECK_DIGITS', message: 'DV inválido', field: 'cnpj', ruleId: 'CNPJ-001' }]), 400, 'VALIDATION_FAILED'],
     [new UnauthorizedError(), 401, 'UNAUTHORIZED'],
-    [new ForbiddenError('TENANT_ACCESS_DENIED'), 403, 'TENANT_ACCESS_DENIED'],
+    [new ForbiddenError('COMPANY_ACCESS_DENIED'), 403, 'COMPANY_ACCESS_DENIED'],
     [new NotFoundError('DOCUMENT_NOT_FOUND', 'Documento não encontrado.'), 404, 'DOCUMENT_NOT_FOUND'],
     [new ConflictError('IDEMPOTENCY_KEY_REUSED', 'Chave reutilizada com outro conteúdo.'), 409, 'IDEMPOTENCY_KEY_REUSED'],
     [new BusinessRuleError('CERTIFICATE_EXPIRED', 'Certificado vencido.'), 422, 'CERTIFICATE_EXPIRED'],
@@ -257,5 +258,50 @@ describe('Documentação da API (OpenAPI + Scalar)', () => {
     const { app } = await setup({ docs: false });
     const res = await app.inject({ method: 'GET', url: '/docs/' });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('API — rotas protegidas (padrão fechado)', () => {
+  const noAccess = new AccessControl(
+    { findActiveByKeyId: () => Promise.resolve(undefined) },
+    { hash: () => new Uint8Array(32), matches: () => false },
+    { accessOf: () => Promise.resolve('NO_GRANT') },
+  );
+
+  it('rota sob /v1 sem config.auth impede a subida', async () => {
+    await expect(setup({ routes: (a) => { a.get('/v1/aberta', () => ({})); } })).rejects.toThrow(/sem config.auth/);
+  });
+
+  it('rota sob /v1 marcada como pública impede a subida', async () => {
+    await expect(setup({ routes: (a) => { a.get('/v1/aberta', { config: { auth: { public: true } } }, () => ({})); } })).rejects.toThrow(/sem config.auth/);
+  });
+
+  it('rota protegida sem a autenticação registrada impede a subida', async () => {
+    await expect(
+      setup({ routes: (a) => { a.get('/v1/x', { config: { auth: { scope: 'companies:read', company: true } } }, () => ({})); } }),
+    ).rejects.toThrow(/autenticação não foi registrada/);
+  });
+
+  it('escopo fora do catálogo impede a subida', async () => {
+    await expect(
+      setup({
+        routes: (a) => {
+          registerAuthentication(a, noAccess);
+          a.get('/v1/x', { config: { auth: { scope: 'tudo:liberado', company: false } } }, () => ({}));
+        },
+      }),
+    ).rejects.toThrow(/fora do catálogo/);
+  });
+
+  it('com autenticação registrada, a rota responde 401 sem credencial', async () => {
+    const { app } = await setup({
+      routes: (a) => {
+        registerAuthentication(a, noAccess);
+        a.get('/v1/x', { config: { auth: { scope: 'companies:read', company: false } } }, () => ({ ok: true }));
+      },
+    });
+    const res = await app.inject({ method: 'GET', url: '/v1/x', headers: { authorization: `Bearer fk_live_${'a'.repeat(16)}_${'b'.repeat(43)}` } });
+    expect(res.statusCode).toBe(401);
+    expect(app.routeCatalog.filter((r) => r.url === '/v1/x').map((r) => r.method)).toEqual(['GET', 'HEAD']);
   });
 });

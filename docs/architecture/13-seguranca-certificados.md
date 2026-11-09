@@ -6,7 +6,7 @@
 | Vazamento por log/erro | stack trace com buffer do PFX, log de request de upload | redaction + serializers + teste "canário" |
 | Processo com acesso indevido | API ou worker de webhooks lendo o certificado | separação de privilégios por container + chave assimétrica |
 | Dump do banco/backup | backup vazado | material só cifrado; KEK fora do banco |
-| Troca de blobs entre empresas | ciphertext da empresa A usado para B | AAD com tenant + certificado |
+| Troca de blobs entre empresas | ciphertext da empresa A usado para B | AAD com empresa + certificado |
 | Uso indevido do certificado | emissão não autorizada | uso só via fluxo de documento, auditoria de cada uso |
 | Perda da KEK | todos os certificados ficam ilegíveis | backup offline da KEK, re-upload pelos clientes |
 | Acesso root à VPS | leitura de memória/variáveis | **risco residual**: mitigado por hardening e acesso restrito; documentado |
@@ -25,12 +25,12 @@ Grants no PostgreSQL:
 ```sql
 -- api: pode inserir certificado e ler apenas metadados
 GRANT INSERT ON certificates TO fiscal_api;
-GRANT SELECT (id, tenant_id, establishment_id, subject_cnpj, serial_number, issuer,
+GRANT SELECT (id, company_id, establishment_id, subject_cnpj, serial_number, issuer,
               not_before, not_after, thumbprint_sha256, status, created_at) ON certificates TO fiscal_api;
 -- worker-fiscal: lê tudo
 GRANT SELECT, UPDATE ON certificates TO fiscal_worker;
 -- worker-general: só metadados para alertas de vencimento
-GRANT SELECT (id, tenant_id, establishment_id, not_after, status) ON certificates TO fiscal_general;
+GRANT SELECT (id, company_id, establishment_id, not_after, status) ON certificates TO fiscal_general;
 ```
 
 ## 3. Criptografia por envelope com KEK assimétrica
@@ -39,7 +39,7 @@ GRANT SELECT (id, tenant_id, establishment_id, not_after, status) ON certificate
 flowchart LR
   subgraph api
     U[PFX + senha recebidos via TLS] --> DEK[gera DEK aleatória 256 bits]
-    DEK --> ENC[AES-256-GCM<br/>PFX e senha cifrados separadamente<br/>AAD = tenantId‖certificateId‖purpose]
+    DEK --> ENC[AES-256-GCM<br/>PFX e senha cifrados separadamente<br/>AAD = companyId‖certificateId‖purpose]
     DEK --> WRAP[DEK cifrada com KEK pública<br/>RSA-OAEP-SHA256 4096]
     ENC --> Z[zera buffers]
   end
@@ -98,7 +98,7 @@ Usuário não-root, filesystem read-only, `core dumps` desabilitados (`ulimit -c
 ## 9. Testes específicos
 - API sem acesso à KEK privada não consegue decifrar (teste de configuração: o container `api` falha ao iniciar se encontrar a KEK privada montada).
 - Grants de coluna: `fiscal_api` recebe erro ao fazer `SELECT ciphertext`.
-- AAD: ciphertext do tenant A com AAD do tenant B falha na decifragem.
+- AAD: ciphertext da empresa A com AAD da empresa B falha na decifragem.
 - Rotação de KEK sem perda: todos os certificados abrem após re-wrap.
 - Certificado vencido, de outro CNPJ, cadeia não ICP-Brasil, senha errada → rejeitado com motivo correto.
 - Teste canário de logs (item 7).

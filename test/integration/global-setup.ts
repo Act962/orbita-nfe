@@ -19,6 +19,7 @@ declare module 'vitest' {
       apiUrl: string;
       workerUrl: string;
       generalUrl: string;
+      adminUrl: string;
     };
   }
 }
@@ -56,6 +57,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
     apiUrl: urlFor('app_api'),
     workerUrl: urlFor('app_worker'),
     generalUrl: urlFor('app_general'),
+    adminUrl: urlFor('app_admin'),
   });
 
   return async () => {

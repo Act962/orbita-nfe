@@ -1,0 +1,84 @@
+import { BusinessRuleError, InternalError, NotFoundError, ValidationFailedError } from '../../../shared/application/errors.js';
+import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-of-work.js';
+import { newEstablishment, newCompany, type Establishment, type NewEstablishment, type NewCompany, type Company } from '../domain/company.js';
+
+export interface CompanyRepository {
+  /** Insere na empresa do contexto da transação. Conflito de raiz → COMPANY_ALREADY_REGISTERED. */
+  insert(company: NewCompany): Promise<Company>;
+  /** A empresa do contexto (RLS): só existe uma visível por transação. */
+  current(): Promise<Company | undefined>;
+}
+
+export interface EstablishmentRepository {
+  /** Conflito de CNPJ → ESTABLISHMENT_ALREADY_REGISTERED. */
+  insert(establishment: NewEstablishment): Promise<Establishment>;
+  findById(id: string): Promise<Establishment | undefined>;
+  list(): Promise<Establishment[]>;
+}
+
+/** Porta para o IAM: concede ao criador acesso à empresa nova, na mesma transação. */
+export interface AccessGrants {
+  grant(companyId: string, clientApplicationId: string): Promise<void>;
+}
+
+export interface CompanyRepositories {
+  readonly companies: CompanyRepository;
+  readonly establishments: EstablishmentRepository;
+  readonly accessGrants: AccessGrants;
+}
+
+export const establishmentNotFound = (): NotFoundError => new NotFoundError('ESTABLISHMENT_NOT_FOUND', 'Estabelecimento não encontrado.');
+
+/** Casos de uso do cadastro de contribuintes. Toda operação ocorre no contexto de uma empresa (RLS). */
+export class CompanyService {
+  constructor(
+    private readonly uow: UnitOfWork<CompanyRepositories>,
+    private readonly newId: IdGenerator,
+  ) {}
+
+  /**
+   * Cria a empresa e concede a quem a criou o acesso a ela, atomicamente. O id é gerado aqui:
+   * o cliente nunca escolhe o identificador da empresa.
+   */
+  async registerCompany(input: { legalName: string; rootCnpj: string }, createdBy: string): Promise<Company> {
+    const draft = newCompany({ id: this.newId(), ...input });
+    if (!draft.ok) throw new ValidationFailedError(draft.error);
+    return this.uow.inCompany(draft.value.id, async (r) => {
+      const company = await r.companies.insert(draft.value);
+      await r.accessGrants.grant(company.id, createdBy);
+      return company;
+    });
+  }
+
+  async currentCompany(companyId: string): Promise<Company> {
+    return this.uow.inCompany(companyId, async (r) => {
+      const company = await r.companies.current();
+      // A concessão já foi conferida com a empresa ativa: ausência aqui é inconsistência.
+      if (company === undefined) throw new InternalError('COMPANY_CONTEXT_WITHOUT_COMPANY');
+      return company;
+    });
+  }
+
+  async registerEstablishment(companyId: string, input: { cnpj: string; tradeName: string; municipalityCode: string }): Promise<Establishment> {
+    return this.uow.inCompany(companyId, async (r) => {
+      const company = await r.companies.current();
+      if (company === undefined) throw new InternalError('COMPANY_CONTEXT_WITHOUT_COMPANY');
+      const draft = newEstablishment(company, { id: this.newId(), ...input });
+      if (!draft.ok) {
+        if (draft.error.kind === 'INVALID') throw new ValidationFailedError(draft.error.issues);
+        throw new BusinessRuleError(draft.error.issue.code, draft.error.issue.message, [draft.error.issue]);
+      }
+      return r.establishments.insert(draft.value);
+    });
+  }
+
+  async establishment(companyId: string, id: string): Promise<Establishment> {
+    const found = await this.uow.inCompany(companyId, (r) => r.establishments.findById(id));
+    if (found === undefined) throw establishmentNotFound();
+    return found;
+  }
+
+  async establishments(companyId: string): Promise<Establishment[]> {
+    return this.uow.inCompany(companyId, (r) => r.establishments.list());
+  }
+}

@@ -19,6 +19,7 @@ export async function createLoginUsers(admin: pg.Client): Promise<void> {
     ['app_api', 'fiscal_api'],
     ['app_worker', 'fiscal_worker'],
     ['app_general', 'fiscal_general'],
+    ['app_admin', 'fiscal_admin'],
   ];
   for (const [user, group] of users) {
     await admin.query(`CREATE ROLE ${user} LOGIN NOSUPERUSER NOBYPASSRLS INHERIT PASSWORD '${TEST_LOGIN_PASSWORD}' IN ROLE ${group}`);

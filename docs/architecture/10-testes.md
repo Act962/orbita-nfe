@@ -7,7 +7,7 @@
 | Casos de uso | Vitest + fakes em memória das portas | orquestração, idempotência, classificação de resultados, transições | sim |
 | Integração de persistência | Testcontainers PostgreSQL | repositories, RLS, constraints, migrations do zero, concorrência real | sim |
 | Contrato de adapters | mesma suíte contra fake e homologação | `NfseGateway`, `Sefaz*Gateway`, `XmlSigner`, `SchemaValidator`, `CertificateVault`, `ObjectStorage` (MinIO) | fake: sim; homologação: job manual/noturno com segredo |
-| API | `fastify.inject` | autenticação, escopos, isolamento de tenant, validação, códigos HTTP, OpenAPI | sim |
+| API | `fastify.inject` | autenticação, escopos, isolamento de empresa, validação, códigos HTTP, OpenAPI | sim |
 | Idempotência | integração | mesma `Idempotency-Key` em paralelo (N requisições simultâneas → 1 documento); mesmo key + payload diferente → 422 | sim |
 | Concorrência | integração | N workers no mesmo documento → 1 transmissão; alocação de números sem duplicata e sem lacuna sob carga | sim |
 | Falhas de comunicação | fake-authorities com modos de falha | timeout pós-envio → `UNKNOWN` → consulta → `AUTHORIZED` sem retransmissão | sim |

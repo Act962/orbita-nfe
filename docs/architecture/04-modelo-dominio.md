@@ -12,16 +12,16 @@
 | `Cpf` | 11 dígitos, DV válido | |
 | `Decimal` / `Money` | precisão arbitrária; escala explícita por campo | valores unitários e quantidades têm escalas diferentes dos totais — definidas pelo XSD |
 | `Uf`, `MunicipalityCode` (IBGE 7 dígitos) | pertence à tabela oficial versionada | |
-| `Environment` | `PRODUCTION` \| `HOMOLOGATION` | documento herda do tenant/config e **nunca muda** |
+| `Environment` | `PRODUCTION` \| `HOMOLOGATION` | documento herda da empresa/config e **nunca muda** |
 | `CorrelationId`, `IdempotencyKey` | | |
 | `DocumentNumber`, `SeriesNumber` | limites conforme leiaute de cada modalidade | |
 | `IssueDateTime` | data/hora com offset (fuso do emitente) | rejeições por horário são comuns: relógio sincronizado (NTP) é requisito de infra |
 
 ## 2. Agregados por contexto
 
-### Taxpayer
+### Company
 ```
-Taxpayer (aggregate root, = tenant)
+Company (aggregate root, = empresa)
  ├─ id, legalName, rootCnpj (8 primeiras posições), status
  └─ Establishment[] (aggregate root próprio, referenciado por id)
       ├─ cnpj, tradeName, address
@@ -43,7 +43,7 @@ NfceCsc: establishmentId, uf, cscId, cscSecret (segredo), validFrom
 ### Certificates
 ```
 DigitalCertificate (aggregate root)
- ├─ establishmentId (ou taxpayerId para certificado da matriz usado pelas filiais — regra a confirmar por modalidade)
+ ├─ establishmentId (ou companyId para certificado da matriz usado pelas filiais — regra a confirmar por modalidade)
  ├─ type: A1
  ├─ subjectCnpj, serialNumber, issuer, notBefore, notAfter, thumbprintSha256
  ├─ encryptedPfx (bytea) + wrappedDek + kekId   ← nunca o PFX em claro (ADR-0009)
@@ -54,7 +54,7 @@ DigitalCertificate (aggregate root)
 ### NFS-e
 ```
 ServiceInvoice (aggregate root)
- ├─ id (UUID v7), tenantId, establishmentId, clientApplicationId
+ ├─ id (UUID v7), companyId, establishmentId, clientApplicationId
  ├─ idempotencyKey
  ├─ environment, integrationStandard
  ├─ dps: Dps (VO grande, imutável após aceitação)
@@ -74,7 +74,7 @@ ServiceInvoice (aggregate root)
 ### NF-e / NFC-e
 ```
 ProductInvoice (NF-e) / ConsumerInvoice (NFC-e)  — agregados distintos
- ├─ id, tenantId, establishmentId, idempotencyKey, environment
+ ├─ id, companyId, establishmentId, idempotencyKey, environment
  ├─ series, number, accessKey (gerada pelo emissor: inclui cNF aleatório e DV)
  ├─ emissionType (normal, SVC-AN, SVC-RS, EPEC, offline NFC-e … — conforme MOC)
  ├─ payload: NfeData (ide, emit snapshot, dest, det[], total, transp, pag, infAdic, IBS/CBS…)

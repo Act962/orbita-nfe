@@ -38,7 +38,7 @@ Data: 2026-11-09 · Método: metadados via GitHub API + clone raso e leitura de 
 - `NOTICE.md` com aviso de responsabilidade fiscal — bom modelo para o nosso.
 
 **Limites**
-- Ferramenta de **usuário único** (SQLite local, CLI, painel), sem multi-tenant, sem fila persistente de servidor, sem separação de privilégios.
+- Ferramenta de **usuário único** (SQLite local, CLI, painel), sem multiempresa, sem fila persistente de servidor, sem separação de privilégios.
 - Depende de `@nfewizard/nfse` e `@nfewizard/shared`, ambos **GPL-3.0**, aplicando *patches* manuais neles. Para nós, dependência GPL é inaceitável: o agente local NERP/Tauri (Fase 3b) seria distribuído e obrigaria abrir todo o código. A `@nfewizard/shared` ainda puxa dependências como `soap`, `axios`, `pem` (OpenSSL por linha de comando) e `sha1`.
 - Código MIT do próprio repositório pode ser adaptado com atribuição, mas a parte que importa (montagem/assinatura da DPS) está na lib GPL.
 

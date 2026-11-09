@@ -4,6 +4,7 @@ import { registerApiDocs } from '../shared/presentation/http/api-docs.js';
 import { CORRELATION_HEADER, correlationIdFrom } from '../shared/presentation/http/correlation-id.js';
 import { registerErrorHandling } from '../shared/presentation/http/error-handler.js';
 import { registerHealthRoutes, type ReadinessCheck } from '../shared/presentation/http/health.js';
+import { assertAuthenticationRegistered, registerRouteCatalog } from '../shared/presentation/http/route-catalog.js';
 import type { HttpApp } from '../shared/presentation/http/http-app.js';
 import { configureZodLocale } from '../shared/presentation/http/zod-locale.js';
 
@@ -12,7 +13,10 @@ export interface AppDependencies {
   readonly bodyLimit: number;
   readonly readinessChecks: readonly ReadinessCheck[];
   readonly apiDocs: { readonly enabled: boolean; readonly version: string };
-  /** Registro de rotas dos módulos (composition root). */
+  /**
+   * Registro dos módulos (composition root): autenticação primeiro, depois as rotas.
+   * Rotas sob /v1 sem `config.auth`, ou sem autenticação registrada, impedem a subida.
+   */
   readonly registerRoutes?: (app: HttpApp) => void;
 }
 
@@ -38,9 +42,11 @@ export async function buildApp(deps: AppDependencies): Promise<HttpApp> {
 
   registerErrorHandling(app);
   await registerApiDocs(app, deps.apiDocs);
+  registerRouteCatalog(app);
   registerHealthRoutes(app, deps.readinessChecks);
   deps.registerRoutes?.(app);
 
   await app.ready();
+  assertAuthenticationRegistered(app);
   return app;
 }

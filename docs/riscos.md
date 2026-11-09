@@ -17,7 +17,7 @@ Escala: Impacto (A/M/B) × Probabilidade (A/M/B).
 | R-11 | Obrigação de guarda (prazo decadencial/prescricional) e perda de XMLs | A | B | S3 versionado + Object Lock + replicação/backup, hash no banco, testes de restauração |
 | R-12 | Mocks divergindo do comportamento real | M | M | suíte de contrato contra homologação, fake ajustado a partir de capturas reais |
 | R-13 | Consumo indevido/bloqueio pela SEFAZ por consultas repetidas | M | M | rate limit no reconciliador, backoff, circuit breaker |
-| R-14 | Responsabilidade legal: erros de emissão afetam clientes reais | A | M | homologação extensa, piloto com um tenant, checklist de go-live com contador, feature flags por tenant |
+| R-14 | Responsabilidade legal: erros de emissão afetam clientes reais | A | M | homologação extensa, piloto com uma empresa, checklist de go-live com contador, feature flags por empresa |
 | R-15 | Escopo grande para equipe pequena | A | A | roadmap faseado, uma modalidade/UF/município por vez, critérios de saída claros |
 | R-16 | Relógio do servidor fora de sincronia → rejeições | B | M | NTP monitorado, alerta de drift |
 | R-17 | **VPS única** (ponto único de falha) | A | M | backup WAL contínuo externo, RPO ≤ 5 min / RTO ≤ 4 h, teste mensal de restauração, artefatos fora da VPS |
@@ -29,6 +29,8 @@ Escala: Impacto (A/M/B) × Probabilidade (A/M/B).
 | R-23 | Desenvolvedor único (conhecimento concentrado, disponibilidade) | A | M | ADRs, runbooks, testes como documentação, gates com especialista |
 | R-24 | **Novo leiaute da DPS (NT 009)**: segundo comunicado CGNFS-e de 20/10/2026 citado por terceiro, entra em produção em 01/12/2026 (anterior válido até 30/11/2026) | A | A | **confirmar no portal oficial**; implementar a Fase 2a já no leiaute novo; XSDs com hash; versionamento de leiaute por documento (ADR-0013) |
 | R-25 | Dependência de bibliotecas fiscais de terceiros com licença GPL ou práticas inseguras | A | M | ADR-0023: núcleo fiscal próprio, allowlist de licenças no CI |
+| R-26 | Limites de série/número confirmados só em fontes secundárias (SERIES-001: faixas reservadas 890–999 conflitantes; SERIES-002 provisória) | M | A | conferir XSD/MOC oficiais antes das Fases 2a e 3; regras marcadas como provisórias |
+| R-27 | Pepper das API keys perdido ou vazado (perda invalida todas as chaves; vazamento + dump do banco permite ataque offline) | B | A | arquivo só nos containers que precisam; backup no cofre do Coolify; runbook credenciais-api.md |
 
 ## Dúvidas fiscais/técnicas abertas (precisam de documentação oficial)
 1. ~~Município-piloto~~ → Teresina/PI definido. Pendente: confirmações oficiais listadas em [fiscal/nfse-teresina.md](fiscal/nfse-teresina.md) §6.

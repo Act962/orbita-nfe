@@ -34,13 +34,18 @@ export async function registerApiDocs(app: HttpApp, options: ApiDocsOptions): Pr
           '**Rastreio**: envie `X-Correlation-Id` para correlacionar logs; ele é sempre devolvido na resposta.',
         ].join('\n'),
       },
-      tags: [{ name: 'Operação', description: 'Saúde e prontidão do serviço.' }],
+      tags: [
+        { name: 'Empresas', description: 'Empresas (raiz do CNPJ) e estabelecimentos (matriz e filiais).' },
+        { name: 'Configurações fiscais', description: 'Séries e numeração por estabelecimento, modalidade e ambiente.' },
+        { name: 'Operação', description: 'Saúde e prontidão do serviço.' },
+      ],
       components: {
         securitySchemes: {
           apiKey: {
             type: 'http',
             scheme: 'bearer',
-            description: 'API key da aplicação cliente (ADR-0012). Disponível a partir do módulo IAM.',
+            description:
+              'API key da aplicação cliente (ADR-0012), no formato `fk_<live|test>_<keyId>_<segredo>`, emitida pelo operador. Rotas de empresa exigem também o header `X-Company-Id` de uma empresa com concessão para a aplicação.',
           },
         },
       },

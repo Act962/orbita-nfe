@@ -18,14 +18,16 @@ Fase atual: **Fase 1 — Fundação** (arquitetura aprovada em 2026-11-09; spike
 | 11 | [API pública interna](architecture/11-api.md) |
 | 12 | [Recuperação de UNKNOWN](architecture/12-recuperacao-unknown.md) |
 | 13 | [Segurança dos certificados A1](architecture/13-seguranca-certificados.md) |
-| 14 | [Integridade fiscal e isolamento multi-tenant](architecture/14-integridade-isolamento.md) |
+| 14 | [Integridade fiscal e isolamento multiempresa](architecture/14-integridade-isolamento.md) |
 | 15 | [Infraestrutura (VPS + Coolify + S3)](architecture/15-infraestrutura.md) |
 | — | [NFS-e Teresina — investigação](fiscal/nfse-teresina.md) |
 | — | [Fontes oficiais](fiscal/fontes-oficiais.md) |
 | — | [Avaliação de repositórios de terceiros](fiscal/avaliacao-repositorios.md) |
 | — | [Resultados dos spikes da Fase 1](spikes/resultados-fase1.md) |
 | — | [Runbook: bootstrap e migrations do banco](runbooks/bootstrap-banco.md) |
+| — | [Runbook: aplicações, API keys e concessões](runbooks/credenciais-api.md) |
+| — | Regras implementadas: [CNPJ-001](fiscal/regras/CNPJ-001.md), [COMPANY-001](fiscal/regras/COMPANY-001.md), [SERIES-001](fiscal/regras/SERIES-001.md), [SERIES-002](fiscal/regras/SERIES-002.md) (provisória) |
 | — | [Riscos e dúvidas abertas](riscos.md) |
 | — | [Roadmap](roadmap.md) |
-| — | [ADRs](adr/) (0001–0024) |
+| — | [ADRs](adr/) (0001–0025) |
 | — | [Acompanhamento do projeto](ACOMPANHAMENTO.md) |

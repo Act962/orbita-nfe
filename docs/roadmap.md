@@ -26,7 +26,7 @@ Comparado à versão anterior, aumentou por: equipe de uma pessoa, NFS-e em dois
 | 1 | Repositório, TS strict, lint, regras de dependência, Vitest, Docker Compose (Postgres + S3 local), CI. **Spikes**: XMLDSig verificado por `xmlsec1`; PKCS#12 + mTLS com undici e classificação de fase de falha; validação XSD; pg-boss transacional |
 | 2 | Config, logger com redaction + teste canário, correlation id, erros RFC 9457, health/readiness |
 | 3 | Drizzle + migrations + papéis de banco + RLS + meta-teste de schema + UnitOfWork + Testcontainers |
-| 4 | IAM (API keys, escopos, grants) + Taxpayer + Fiscal Settings (alocação concorrente de numeração) + matriz de isolamento da API |
+| 4 | IAM (API keys, escopos, grants) + Company + Fiscal Settings (alocação concorrente de numeração) + matriz de isolamento da API |
 | 5 | Certificate Vault (KEK assimétrica, validação no worker-fiscal, grants de coluna) + Audit log encadeado |
 | 6 | Fila, outbox, write-ahead de tentativas, stuck-scan, reconciliador genérico, webhooks HMAC, endpoints `ops` |
 | 7 | Folga + deploy no Coolify (api, worker-fiscal, worker-general, postgres), backup WAL, runbooks iniciais |
@@ -37,7 +37,7 @@ Comparado à versão anterior, aumentou por: equipe de uma pessoa, NFS-e em dois
 3. Geração XML, assinatura, XSD, adapter Sefin Nacional, simulador alimentado por capturas reais.
 4. Emissão, consulta (API DPS), cancelamento, substituição (se aplicável), DANFSe conforme padrão.
 5. Produção restrita com CNPJ/certificado reais e dados fictícios → **gate fiscal 2**.
-6. Piloto em produção com um tenant, volume limitado, monitoramento diário.
+6. Piloto em produção com uma empresa, volume limitado, monitoramento diário.
 
 ## Dependências externas que podem atrasar
 - Acesso à produção restrita da NFS-e (CNPJ + certificado reais).
