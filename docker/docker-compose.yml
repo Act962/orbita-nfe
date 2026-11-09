@@ -6,21 +6,23 @@ services:
     image: postgres:17-alpine
     environment:
       POSTGRES_DB: orbita_nfe
-      POSTGRES_USER: fiscal_owner
+      # Superusuário apenas para o bootstrap local; a aplicação nunca usa este usuário.
+      POSTGRES_USER: postgres
       # Senha apenas de desenvolvimento local; nunca reutilizar fora daqui.
       POSTGRES_PASSWORD: dev-only-password
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-54329}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fiscal_owner -d orbita_nfe"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d orbita_nfe"]
       interval: 5s
       timeout: 3s
       retries: 10
 
   # S3 local para dev/teste (ADR-0010). Em produção: provedor S3 externo.
-  # Escolha entre SeaweedFS e Garage será confirmada no spike da Fase 1.
+  # Escolha entre SeaweedFS e Garage será confirmada junto com o adapter do Fiscal Archive.
   object-storage:
     image: chrislusf/seaweedfs:4.50
     command: ["server", "-s3", "-dir=/data", "-ip.bind=0.0.0.0"]

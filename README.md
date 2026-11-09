@@ -13,11 +13,12 @@ Requisitos: Node.js 24, Docker.
 
 ```bash
 npm ci
-npm run check          # typecheck + lint + regras de camadas + testes
+npm run check          # typecheck + lint + regras de camadas + testes (unitários + integração; requer Docker)
 npm run spikes         # spikes da Fase 1 (requer Docker e PostgreSQL local na porta 54329)
 npm run test:coverage
-docker compose -f docker/docker-compose.yml up -d   # PostgreSQL + S3 local
-npm run dev:api
+docker compose -f docker/docker-compose.yml up -d   # PostgreSQL (com bootstrap de papéis) + S3 local
+cp .env.example .env && npm run db:migrate          # migrations com o dono das tabelas
+npm run dev:api                                     # documentação em http://localhost:3000/docs/
 ```
 
 Regras do projeto (resumo):
@@ -25,3 +26,4 @@ Regras do projeto (resumo):
 - Nenhuma regra fiscal sem fonte oficial registrada em `docs/fiscal/` e sem teste.
 - Nenhum segredo em log: o teste canário (`test/support/canary.ts`) falha o CI se algum vazar.
 - Sem dependências GPL/AGPL (ADR-0023).
+- Erros da API sempre em problem+json com `code` estável; nunca erro genérico nem do Drizzle (ADR-0024).

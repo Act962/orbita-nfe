@@ -1,0 +1,197 @@
+{
+  "id": "abc40e34-ffd3-4dcd-9663-828c6ea27d5d",
+  "prevId": "37e26227-ef52-4ae4-a2ef-62b47c5454d8",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.establishments": {
+      "name": "establishments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cnpj": {
+          "name": "cnpj",
+          "type": "varchar(14)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trade_name": {
+          "name": "trade_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "municipality_code": {
+          "name": "municipality_code",
+          "type": "char(7)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ix_establishments_tenant": {
+          "name": "ix_establishments_tenant",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "fk_establishments_tenant": {
+          "name": "fk_establishments_tenant",
+          "tableFrom": "establishments",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_establishments_cnpj": {
+          "name": "uq_establishments_cnpj",
+          "columns": [
+            "cnpj"
+          ],
+          "nullsNotDistinct": false
+        },
+        "uq_establishments_tenant_id": {
+          "name": "uq_establishments_tenant_id",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ck_establishments_status": {
+          "name": "ck_establishments_status",
+          "value": "\"establishments\".\"status\" in ('ACTIVE', 'INACTIVE')"
+        },
+        "ck_establishments_cnpj": {
+          "name": "ck_establishments_cnpj",
+          "value": "\"establishments\".\"cnpj\" ~ '^[0-9A-Z]{12}[0-9]{2}$'"
+        },
+        "ck_establishments_municipality": {
+          "name": "ck_establishments_municipality",
+          "value": "\"establishments\".\"municipality_code\" ~ '^[0-9]{7}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.tenants": {
+      "name": "tenants",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "legal_name": {
+          "name": "legal_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root_cnpj": {
+          "name": "root_cnpj",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "uq_tenants_root_cnpj": {
+          "name": "uq_tenants_root_cnpj",
+          "columns": [
+            "root_cnpj"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ck_tenants_status": {
+          "name": "ck_tenants_status",
+          "value": "\"tenants\".\"status\" in ('ACTIVE', 'SUSPENDED')"
+        },
+        "ck_tenants_root_cnpj": {
+          "name": "ck_tenants_root_cnpj",
+          "value": "\"tenants\".\"root_cnpj\" ~ '^[0-9A-Z]{8}$'"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "views": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

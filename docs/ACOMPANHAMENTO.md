@@ -29,9 +29,29 @@ Os quatro foram aprovados, com 41 testes ([resultados](spikes/resultados-fase1.m
 
 ADRs atualizados: 0005 (pg-boss confirmado), 0009, 0014 (aceito), 0022.
 
+### Persistência, isolamento e padrão de erros da API — concluído (2026-11-09)
+- [x] Drizzle ORM + Drizzle Kit somente na infraestrutura; migrations versionadas (`0000_taxpayer_tables` gerada e revisada; `0001_security_roles_rls` em SQL explícito).
+- [x] Papéis `fiscal_owner` (sem superuser), `fiscal_api/worker/general/system` (sem BYPASSRLS), RLS `ENABLE` + `FORCE`, política *fail-closed* via `app_current_tenant()`, sem `DELETE` para a aplicação.
+- [x] `TenantTransactions`: contexto de tenant por transação (`set_config(..., true)`), sem vazamento no pool.
+- [x] Testcontainers (PostgreSQL 17) com a topologia de produção; **meta-teste de RLS** + "teste do teste" (4 cenários de falha detectados).
+- [x] Testes de isolamento com o papel real da aplicação: leitura, INSERT/UPDATE cruzados, DELETE negado, pool, concorrência, FORCE sobre o dono.
+- [x] **Erros da API sem genéricos nem erros do Drizzle** (ADR-0024): validação Fastify + Zod (body, params, query, headers e **resposta**), mensagens em pt-BR, hierarquia de erros de aplicação com códigos estáveis, tradução de SQLSTATE, constraint não mapeada = bug.
+- [x] **Teste canário encontrou o 2º vazamento real**: erro bruto do Drizzle gravava query e parâmetros no log. Corrigido na sanitização dos logs.
+- [x] **Documentação da API com Scalar** em `/docs/` + OpenAPI 3.1 em `/docs/openapi.json`, gerada dos schemas Zod, sem CDN, sem recursos de nuvem da Scalar. Conferida no navegador.
+- [x] Runbook [bootstrap-banco.md](runbooks/bootstrap-banco.md); imagem Docker leva as migrations; ambiente local com a mesma topologia.
+
+Resultado: 108+ testes (unitários + integração com PostgreSQL real), cobertura geral ≈ 96% de linhas.
+
+### Atividades permanentes (valem para todo endpoint novo)
+- [ ] Toda rota declara schemas Zod para body/params/querystring/headers **e** para cada status de resposta, inclusive erros (`ProblemSchema`).
+- [ ] Todo erro esperado é um `ApplicationError` com `code` estável registrado no [catálogo](architecture/11-api.md#catálogo-de-códigos-de-erro) e coberto por teste.
+- [ ] Todo repository declara o mapa `constraint → erro de negócio` das constraints que podem ocorrer; operações de banco passam por `TenantTransactions`/`withDatabaseErrors`.
+- [ ] Toda tabela nova com `tenant_id` ganha RLS na migration de segurança (o meta-teste bloqueia o build se faltar).
+- [ ] A rota aparece corretamente no Scalar (`/docs/`) com resumo, descrição e tag.
+
 ### Próximos passos (ordem)
 1. ~~Spikes obrigatórios~~ ✔
-2. Drizzle + migrations + papéis de banco + RLS + meta-teste de schema + Testcontainers.
+2. ~~Drizzle + migrations + papéis de banco + RLS + meta-teste de schema + Testcontainers~~ ✔
 3. IAM, Taxpayer, Fiscal Settings, matriz de isolamento da API.
 4. Certificate Vault, Audit log, fila/outbox/write-ahead, webhooks, endpoints `ops`.
 5. Deploy no Coolify, backup WAL, runbooks.

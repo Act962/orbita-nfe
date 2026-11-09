@@ -21,6 +21,26 @@ describe('sanitize', () => {
     });
   });
 
+  it('erros do Drizzle e do PostgreSQL perdem mensagem, detalhe, query e parâmetros', () => {
+    const pgError = Object.assign(new Error(`invalid input syntax: "${CANARIES.password}"`), {
+      severity: 'ERROR',
+      code: '22P02',
+      detail: `Key (cnpj)=(${CANARIES.password}) already exists.`,
+      where: `valor ${CANARIES.password}`,
+      table: 'tenants',
+    });
+    const drizzleError = Object.assign(new Error(`Failed query: insert ...\nparams: ${CANARIES.password}`), {
+      query: 'insert into "tenants" values ($1)',
+      params: [CANARIES.password],
+      cause: pgError,
+    });
+    const out = JSON.stringify(sanitize({ err: drizzleError }));
+    expectNoCanary(out);
+    expect(out).not.toContain('Failed query');
+    expect(out).toContain('"code":"22P02"');
+    expect(out).toContain('"table":"tenants"');
+  });
+
   it('lida com referências circulares e profundidade excessiva', () => {
     const a: Record<string, unknown> = {};
     a['self'] = a;

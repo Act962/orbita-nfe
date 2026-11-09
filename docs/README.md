@@ -24,7 +24,8 @@ Fase atual: **Fase 1 — Fundação** (arquitetura aprovada em 2026-11-09; spike
 | — | [Fontes oficiais](fiscal/fontes-oficiais.md) |
 | — | [Avaliação de repositórios de terceiros](fiscal/avaliacao-repositorios.md) |
 | — | [Resultados dos spikes da Fase 1](spikes/resultados-fase1.md) |
+| — | [Runbook: bootstrap e migrations do banco](runbooks/bootstrap-banco.md) |
 | — | [Riscos e dúvidas abertas](riscos.md) |
 | — | [Roadmap](roadmap.md) |
-| — | [ADRs](adr/) (0001–0022) |
+| — | [ADRs](adr/) (0001–0024) |
 | — | [Acompanhamento do projeto](ACOMPANHAMENTO.md) |

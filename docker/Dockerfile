@@ -15,6 +15,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
+# Migrations SQL (não são compiladas pelo tsc); usadas pelo job de deploy: node dist/db/migrate.js
+COPY --from=build /app/src/db/migrations ./dist/db/migrations
 # Usuário sem privilégios; o filesystem pode ser montado read-only pelo Coolify.
 USER node
 EXPOSE 3000

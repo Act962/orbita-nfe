@@ -1,9 +1,19 @@
-import type { HttpApp } from '../shared/presentation/http/http-app.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import {
+  BusinessRuleError,
+  ConflictError,
+  ForbiddenError,
+  InternalError,
+  NotFoundError,
+  ServiceUnavailableError,
+  UnauthorizedError,
+  ValidationFailedError,
+} from '../shared/application/errors.js';
 import { createLogger } from '../shared/infrastructure/logging/logger.js';
 import type { ReadinessCheck } from '../shared/presentation/http/health.js';
-import { HttpProblemError } from '../shared/presentation/http/problem.js';
+import type { HttpApp } from '../shared/presentation/http/http-app.js';
+import { ProblemSchema } from '../shared/presentation/http/problem.js';
 import { CANARIES, captureStream, expectNoCanary } from '../../test/support/canary.js';
 import { buildApp } from './app.js';
 
@@ -13,13 +23,14 @@ afterEach(async () => {
   app = undefined;
 });
 
-async function setup(options: { checks?: ReadinessCheck[]; routes?: (app: HttpApp) => void } = {}) {
+async function setup(options: { checks?: ReadinessCheck[]; routes?: (app: HttpApp) => void; docs?: boolean; bodyLimit?: number } = {}) {
   const capture = captureStream();
   const logger = createLogger({ level: 'trace', service: 'test', destination: capture.stream });
   app = await buildApp({
     logger,
-    bodyLimit: 1024 * 1024,
+    bodyLimit: options.bodyLimit ?? 1024 * 1024,
     readinessChecks: options.checks ?? [],
+    apiDocs: { enabled: options.docs ?? false, version: '9.9.9-test' },
     ...(options.routes === undefined ? {} : { registerRoutes: options.routes }),
   });
   return { app, capture };
@@ -30,6 +41,7 @@ describe('API — fundação', () => {
     const { app } = await setup();
     const res = await app.inject({ method: 'GET', url: '/health/live' });
     expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ status: 'ok' });
     expect(res.headers['x-correlation-id']).toMatch(/^[0-9a-f-]{36}$/);
   });
 
@@ -50,49 +62,138 @@ describe('API — fundação', () => {
     });
     const res = await app.inject({ method: 'GET', url: '/health/ready' });
     expect(res.statusCode).toBe(503);
-    expect(res.json()).toEqual({
-      status: 'not_ready',
-      checks: [
-        { name: 'postgres', ok: true },
-        { name: 'object-storage', ok: false },
-      ],
-    });
+    expect(res.json()).toEqual({ status: 'not_ready', checks: [{ name: 'postgres', ok: true }, { name: 'object-storage', ok: false }] });
     expectNoCanary(res.body);
   });
+});
 
-  it('rota inexistente → 404 em problem+json, sem query string em instance', async () => {
+describe('Validação de entrada (Fastify + Zod)', () => {
+  const routes = (a: HttpApp): void => {
+    a.post(
+      '/echo/:id',
+      {
+        schema: {
+          params: z.object({ id: z.uuid() }),
+          querystring: z.object({ page: z.coerce.number().int().min(1) }),
+          headers: z.object({ 'idempotency-key': z.string().min(8) }),
+          body: z.object({ amount: z.string().regex(/^\d+\.\d{2}$/), taker: z.object({ name: z.string().min(2) }) }),
+          response: { 200: z.object({ ok: z.boolean() }) },
+        },
+      },
+      () => ({ ok: true }),
+    );
+  };
+
+  it('corpo inválido → 400 VALIDATION_FAILED com cada campo, código estável e mensagem em pt-BR', async () => {
+    const { app } = await setup({ routes });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/echo/0b9c44de-0000-4000-8000-000000000000?page=1',
+      headers: { 'idempotency-key': 'chave-123456' },
+      payload: { amount: 10, taker: { name: 'A' } },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.headers['content-type']).toContain('application/problem+json');
+    const body = ProblemSchema.parse(res.json());
+    expect(body.code).toBe('VALIDATION_FAILED');
+    expect(body.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: 'body.amount', code: 'INVALID_TYPE', message: expect.stringContaining('esperava') as string }),
+        expect.objectContaining({ field: 'body.taker.name', code: 'TOO_SMALL' }),
+      ]),
+    );
+  });
+
+  it.each([
+    ['params', '/echo/nao-e-uuid?page=1', { 'idempotency-key': 'chave-123456' }, 'params.id'],
+    ['querystring', '/echo/0b9c44de-0000-4000-8000-000000000000?page=0', { 'idempotency-key': 'chave-123456' }, 'querystring.page'],
+    ['headers', '/echo/0b9c44de-0000-4000-8000-000000000000?page=1', { 'idempotency-key': 'x' }, 'headers.idempotency-key'],
+  ])('%s inválido → campo %s', async (_ctx, url, headers, field) => {
+    const { app } = await setup({ routes });
+    const res = await app.inject({ method: 'POST', url, headers, payload: { amount: '1.00', taker: { name: 'Ana' } } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'VALIDATION_FAILED', issues: [expect.objectContaining({ field })] });
+  });
+
+  it('resposta que não bate com o schema declarado → 500 genérico (nunca dados fora do contrato)', async () => {
+    const { app, capture } = await setup({
+      routes: (a) => {
+        a.get('/leak', { schema: { response: { 200: z.object({ ok: z.boolean() }) } } }, () => ({ ok: 'sim', secret: CANARIES.password }) as unknown as { ok: boolean });
+      },
+    });
+    const res = await app.inject({ method: 'GET', url: '/leak' });
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expectNoCanary(res.body);
+    expect(capture.text()).toContain('resposta não corresponde ao schema declarado');
+  });
+
+  it.each([
+    ['JSON malformado', { 'content-type': 'application/json' }, '{"a":', 400, 'MALFORMED_BODY'],
+    ['Content-Type não suportado', { 'content-type': 'application/x-desconhecido' }, 'abc', 415, 'UNSUPPORTED_MEDIA_TYPE'],
+  ])('%s → %i %s', async (_name, headers, payload, status, code) => {
+    const { app } = await setup({ routes: (a) => a.post('/raw', () => ({ ok: true })) });
+    const res = await app.inject({ method: 'POST', url: '/raw', headers, payload });
+    expect(res.statusCode).toBe(status);
+    expect(res.json()).toMatchObject({ code });
+  });
+
+  it('corpo acima do limite → 413 PAYLOAD_TOO_LARGE', async () => {
+    const { app } = await setup({ bodyLimit: 1024, routes: (a) => a.post('/raw', () => ({ ok: true })) });
+    const res = await app.inject({ method: 'POST', url: '/raw', payload: { data: 'x'.repeat(5000) } });
+    expect(res.statusCode).toBe(413);
+    expect(res.json()).toMatchObject({ code: 'PAYLOAD_TOO_LARGE' });
+  });
+
+  it('rota inexistente → 404 ROUTE_NOT_FOUND, sem query string em instance', async () => {
     const { app } = await setup();
     const res = await app.inject({ method: 'GET', url: '/nao-existe?x=1' });
     expect(res.statusCode).toBe(404);
-    expect(res.headers['content-type']).toContain('application/problem+json');
-    expect(res.json()).toMatchObject({ code: 'NOT_FOUND', status: 404, instance: '/nao-existe' });
+    expect(res.json()).toMatchObject({ code: 'ROUTE_NOT_FOUND', status: 404, instance: '/nao-existe' });
   });
+});
 
-  it('erro de validação → 400 VALIDATION_FAILED com o campo', async () => {
+describe('Erros de aplicação → problem+json com código estável', () => {
+  it.each([
+    [new ValidationFailedError([{ code: 'CNPJ_INVALID_CHECK_DIGITS', message: 'DV inválido', field: 'cnpj', ruleId: 'CNPJ-001' }]), 400, 'VALIDATION_FAILED'],
+    [new UnauthorizedError(), 401, 'UNAUTHORIZED'],
+    [new ForbiddenError('TENANT_ACCESS_DENIED'), 403, 'TENANT_ACCESS_DENIED'],
+    [new NotFoundError('DOCUMENT_NOT_FOUND', 'Documento não encontrado.'), 404, 'DOCUMENT_NOT_FOUND'],
+    [new ConflictError('IDEMPOTENCY_KEY_REUSED', 'Chave reutilizada com outro conteúdo.'), 409, 'IDEMPOTENCY_KEY_REUSED'],
+    [new BusinessRuleError('CERTIFICATE_EXPIRED', 'Certificado vencido.'), 422, 'CERTIFICATE_EXPIRED'],
+    [new ServiceUnavailableError('DATABASE_UNAVAILABLE', 'Banco indisponível.', 7), 503, 'DATABASE_UNAVAILABLE'],
+  ])('%s → %i', async (error, status, code) => {
     const { app } = await setup({
       routes: (a) => {
-        a.post('/echo', { schema: { body: z.object({ amount: z.string() }) } }, () => ({ ok: true }));
-      },
-    });
-    const res = await app.inject({ method: 'POST', url: '/echo', payload: { amount: 10 } });
-    expect(res.statusCode).toBe(400);
-    expect(res.json()).toMatchObject({ code: 'VALIDATION_FAILED', issues: [{ field: 'body.amount' }] });
-  });
-
-  it('HttpProblemError vira problem+json com o código estável', async () => {
-    const { app } = await setup({
-      routes: (a) => {
-        a.get('/conflict', () => {
-          throw new HttpProblemError(422, 'IDEMPOTENCY_KEY_REUSED', 'Chave de idempotência reutilizada');
+        a.get('/fail', () => {
+          throw error;
         });
       },
     });
-    const res = await app.inject({ method: 'GET', url: '/conflict' });
-    expect(res.statusCode).toBe(422);
-    expect(res.json()).toMatchObject({ code: 'IDEMPOTENCY_KEY_REUSED', type: 'urn:orbita-nfe:problem:idempotency-key-reused' });
+    const res = await app.inject({ method: 'GET', url: '/fail' });
+    expect(res.statusCode).toBe(status);
+    const body = ProblemSchema.parse(res.json());
+    expect(body).toMatchObject({ code, status, type: `urn:orbita-nfe:problem:${code.toLowerCase().replaceAll('_', '-')}` });
+    if (error instanceof ValidationFailedError) expect(body.issues).toEqual([{ code: 'CNPJ_INVALID_CHECK_DIGITS', message: 'DV inválido', field: 'cnpj', ruleId: 'CNPJ-001' }]);
+    if (error instanceof ServiceUnavailableError) expect(res.headers['retry-after']).toBe('7');
   });
 
-  it('erro inesperado → 500 genérico; detalhe só no log; nada de segredo em log ou resposta', async () => {
+  it('InternalError → 500 INTERNAL_ERROR; o código interno fica só no log', async () => {
+    const { app, capture } = await setup({
+      routes: (a) => {
+        a.get('/fail', () => {
+          throw new InternalError('DATABASE_UNMAPPED_UNIQUE_VIOLATION');
+        });
+      },
+    });
+    const res = await app.inject({ method: 'GET', url: '/fail' });
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toMatchObject({ code: 'INTERNAL_ERROR', title: 'Erro interno' });
+    expect(res.body).not.toContain('DATABASE_UNMAPPED');
+    expect(capture.text()).toContain('DATABASE_UNMAPPED_UNIQUE_VIOLATION');
+  });
+
+  it('erro inesperado → 500 genérico; nada de segredo no log ou na resposta', async () => {
     const { app, capture } = await setup({
       routes: (a) => {
         a.post('/boom', () => {
@@ -107,21 +208,54 @@ describe('API — fundação', () => {
       payload: { certificatePassword: CANARIES.password, pfx: CANARIES.pfx, csc: CANARIES.csc },
     });
     expect(res.statusCode).toBe(500);
-    expect(res.json()).toMatchObject({ code: 'INTERNAL_ERROR', title: 'Erro interno' });
+    expect(res.json()).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(res.body).not.toContain('falha no banco');
     expect(capture.text()).toContain('falha no banco');
     expectNoCanary(capture.text());
     expectNoCanary(res.body);
   });
+});
 
-  it('JSON malformado → 400 em problem+json', async () => {
-    const { app } = await setup({
-      routes: (a) => {
-        a.post('/echo', () => ({ ok: true }));
-      },
-    });
-    const res = await app.inject({ method: 'POST', url: '/echo', headers: { 'content-type': 'application/json' }, payload: '{"a":' });
-    expect(res.statusCode).toBe(400);
-    expect(res.headers['content-type']).toContain('application/problem+json');
+describe('Documentação da API (OpenAPI + Scalar)', () => {
+  it('serve o OpenAPI 3.1 gerado dos schemas Zod, com o schema Problem reutilizado', async () => {
+    const { app } = await setup({ docs: true });
+    const res = await app.inject({ method: 'GET', url: '/docs/openapi.json' });
+    expect(res.statusCode).toBe(200);
+    const spec = res.json<{
+      openapi: string;
+      info: { version: string };
+      paths: Record<string, unknown>;
+      components: { schemas: Record<string, unknown> };
+    }>();
+    expect(spec.openapi).toBe('3.1.0');
+    expect(spec.info.version).toBe('9.9.9-test');
+    expect(Object.keys(spec.paths)).toEqual(expect.arrayContaining(['/health/live', '/health/ready']));
+    expect(Object.keys(spec.paths).some((p) => p.startsWith('/docs'))).toBe(false);
+    expect(Object.keys(spec.components.schemas)).toEqual(expect.arrayContaining(['Problem', 'ProblemIssue', 'LiveStatus', 'ReadyStatus']));
+  });
+
+  it('serve a interface Scalar em /docs/ com assets locais (sem CDN)', async () => {
+    const { app } = await setup({ docs: true });
+    const redirect = await app.inject({ method: 'GET', url: '/docs' });
+    expect(redirect.statusCode).toBe(301);
+    expect(redirect.headers.location).toBe('/docs/');
+    const page = await app.inject({ method: 'GET', url: '/docs/' });
+    expect(page.statusCode).toBe(200);
+    expect(page.headers['content-type']).toContain('text/html');
+    expect(page.body).toContain('<title>Motor Fiscal — API</title>');
+    expect(page.body).toContain('src="js/scalar.js"');
+    expect(page.body).not.toMatch(/https?:\/\/(cdn|unpkg|fonts)/);
+    // Recursos que enviariam o documento para a nuvem da Scalar ficam desligados.
+    expect(page.body).toContain('"showDeveloperTools": "never"');
+    expect(page.body).toMatch(/"agent":\s*\{\s*"disabled": true/);
+    expect(page.body).toContain('"telemetry": false');
+    const script = await app.inject({ method: 'GET', url: '/docs/js/scalar.js' });
+    expect(script.statusCode).toBe(200);
+  });
+
+  it('com a documentação desligada, /docs não existe', async () => {
+    const { app } = await setup({ docs: false });
+    const res = await app.inject({ method: 'GET', url: '/docs/' });
+    expect(res.statusCode).toBe(404);
   });
 });
