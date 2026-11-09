@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+
+# Segredos nunca entram no repositório (docs/architecture/13)
+*.pfx
+*.p12
+*.pem
+*.key
+secrets/
