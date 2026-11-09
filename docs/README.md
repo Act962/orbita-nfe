@@ -1,6 +1,6 @@
 # Motor Fiscal — Documentação
 
-Fase atual: **Fase 0 (revisão 2)** — [Arquitetura consolidada](ARQUITETURA-CONSOLIDADA.md) aguardando aprovação final.
+Fase atual: **Fase 1 — Fundação** (arquitetura aprovada em 2026-11-09; spikes técnicos concluídos).
 
 | # | Documento |
 |---|---|
@@ -23,6 +23,7 @@ Fase atual: **Fase 0 (revisão 2)** — [Arquitetura consolidada](ARQUITETURA-CO
 | — | [NFS-e Teresina — investigação](fiscal/nfse-teresina.md) |
 | — | [Fontes oficiais](fiscal/fontes-oficiais.md) |
 | — | [Avaliação de repositórios de terceiros](fiscal/avaliacao-repositorios.md) |
+| — | [Resultados dos spikes da Fase 1](spikes/resultados-fase1.md) |
 | — | [Riscos e dúvidas abertas](riscos.md) |
 | — | [Roadmap](roadmap.md) |
 | — | [ADRs](adr/) (0001–0022) |

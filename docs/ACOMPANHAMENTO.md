@@ -20,8 +20,17 @@
 
 Resultado atual: 48 testes passando; cobertura geral 94,7% de linhas.
 
+### Spikes obrigatórios — concluídos (2026-11-09)
+Os quatro foram aprovados, com 41 testes ([resultados](spikes/resultados-fase1.md)):
+- [x] **01** PKCS#12 em memória (inclusive legado RC2) + XMLDSig **verificado pelo xmlsec1**.
+- [x] **02** mTLS com classificação da fase de falha; nenhum envio duplicado; achado do TLS 1.3 registrado no ADR-0022.
+- [x] **03** XSD com include/import via libxml2/wasm (cerca de 88 ms/doc) + parser seguro contra XXE.
+- [x] **04** pg-boss com enqueue na transação (COMMIT/ROLLBACK), `exclusive` + `singletonKey` e DLQ.
+
+ADRs atualizados: 0005 (pg-boss confirmado), 0009, 0014 (aceito), 0022.
+
 ### Próximos passos (ordem)
-1. **Spikes obrigatórios**: XMLDSig verificado por `xmlsec1`; PKCS#12 + mTLS com undici e classificação da fase de falha; validação XSD; pg-boss com enqueue transacional.
+1. ~~Spikes obrigatórios~~ ✔
 2. Drizzle + migrations + papéis de banco + RLS + meta-teste de schema + Testcontainers.
 3. IAM, Taxpayer, Fiscal Settings, matriz de isolamento da API.
 4. Certificate Vault, Audit log, fila/outbox/write-ahead, webhooks, endpoints `ops`.
@@ -61,7 +70,11 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente. Ver [riscos.md](riscos.md).
 
 ## Código temporário / dívidas registradas
-Nenhum.
+| Item | Finalidade | Remoção |
+|---|---|---|
+| `spikes/` (+ job `spikes` no CI, `vitest.spikes.config.ts`) | Provas técnicas da Fase 1 | Promover a adapters em `src/` com testes definitivos e apagar até o fim da Fase 1 |
+| Vulnerabilidade moderada `minimatch` (cadeia do ESLint, só em desenvolvimento) | — | Atualizar quando o ESLint publicar a correção; o CI audita só dependências de produção |
+| Porta do PostgreSQL local alterada para 54329 | Evitar conflito com outro PostgreSQL na máquina de desenvolvimento | Configurável por `POSTGRES_PORT` |
 
 ## Evidências de homologação
 Nenhuma ainda.

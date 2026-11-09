@@ -11,3 +11,6 @@
 6. Escalonamento por idade (15 min / 2 h / 24 h) e resolução manual auditada com evidência.
 
 Detalhes: [12-recuperacao-unknown.md](../architecture/12-recuperacao-unknown.md).
+
+## Resultado do spike 02 (2026-11-09)
+Classificação por fase implementada com undici + `diagnostics_channel` (`NOT_SENT` só se `sendHeaders` não disparou; sem correlação → `UNKNOWN`). Nenhum cenário gerou envio duplicado e o undici não retenta POST automaticamente. **Achado**: com TLS 1.3, certificado do cliente recusado pelo servidor resulta em `UNKNOWN` (a requisição já saiu antes do alerta), o que torna **obrigatória a validação local do certificado antes de cada envio**. Detalhes: [resultados dos spikes](../spikes/resultados-fase1.md).

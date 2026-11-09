@@ -15,6 +15,9 @@ Requisito: certificados e senhas nunca expostos em logs e **não acessíveis ind
 7. Backup offline da KEK; rotação por re-wrap das DEKs.
 8. O PFX cifrado fica em coluna `bytea` (poucos KB), fora do S3, para reduzir dependências no caminho de assinatura.
 
+## Resultado do spike 01 (2026-11-09)
+PKCS#12 aberto em memória com node-forge, inclusive no formato legado (RC2/3DES) que o OpenSSL 3 do Node recusa. Uso no TLS sempre como `key` + `cert`. A chave passa brevemente por string PEM antes de virar `KeyObject`; limitação aceita porque só ocorre no `worker-fiscal`.
+
 ## Alternativas
 - KEK simétrica compartilhada por API e worker: a API passaria a conseguir decifrar — rejeitado.
 - Chave única em variável de ambiente: rotação difícil, raio de impacto total.

@@ -30,6 +30,34 @@ jobs:
       - name: Auditoria de dependências
         run: npm audit --omit=dev --audit-level=high
 
+  # Spikes da Fase 1 (código temporário, spikes/README.md). Removido quando os spikes forem
+  # promovidos a adapters definitivos.
+  spikes:
+    runs-on: ubuntu-latest
+    needs: check
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: orbita_nfe
+          POSTGRES_USER: fiscal_owner
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U fiscal_owner -d orbita_nfe"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      SPIKE_DATABASE_URL: postgres://fiscal_owner:ci-only-password@127.0.0.1:5432/orbita_nfe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run spikes
+
   docker:
     runs-on: ubuntu-latest
     needs: check
