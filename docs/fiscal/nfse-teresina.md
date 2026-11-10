@@ -1,5 +1,9 @@
 # Investigação — NFS-e em Teresina/PI
 
+> **Atualização em 2026-11-10:** a investigação detalhada, com fontes oficiais, está em
+> [nfse-teresina-api-municipal-x-nacional.md](nfse-teresina-api-municipal-x-nacional.md).
+> Ela confirma T1 e T4, esclarece T3 e T5 (o sistema é da DSF, no leiaute nacional) e T6.
+
 > Consulta realizada em 2026-11-09. Fontes secundárias estão marcadas como tal e
 > **precisam de confirmação oficial** (SEMF Teresina / gov.br/nfse) antes de virarem regra no código.
 

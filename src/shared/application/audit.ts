@@ -20,11 +20,23 @@ export const COMPANY_AUDIT_ACTIONS = [
   'certificate.rejected',
   'certificate.replaced',
   'certificate.revoked',
+  'webhook_subscription.created',
+  'webhook_subscription.updated',
+  'webhook_subscription.secret_rotated',
+  'webhook_delivery.redelivered',
 ] as const;
 export type CompanyAuditAction = (typeof COMPANY_AUDIT_ACTIONS)[number];
 
 /** Ações do operador que não pertencem a uma empresa (cadeia da plataforma). */
-export const PLATFORM_AUDIT_ACTIONS = ['client_application.created', 'credential.issued', 'credential.revoked'] as const;
+export const PLATFORM_AUDIT_ACTIONS = [
+  'client_application.created',
+  'credential.issued',
+  'credential.revoked',
+  'queue.paused',
+  'queue.resumed',
+  'job.retried',
+  'job.discarded',
+] as const;
 export type PlatformAuditAction = (typeof PLATFORM_AUDIT_ACTIONS)[number];
 
 /** Quem fez e em qual requisição (correlation id), quando houver. */

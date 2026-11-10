@@ -29,3 +29,19 @@ if (existsSync(kekPublic) || existsSync(kekPrivate)) {
   writeFileSync(kekPublic, publicKey, { mode: 0o644 });
   process.stdout.write(`${kekPublic} e ${kekPrivate} criados (somente desenvolvimento)\n`);
 }
+
+// Chave dos segredos de webhook (ADR-0021): pública na API, privada só no worker-general.
+const whPublic = 'secrets/webhook-secret-key-public.pem';
+const whPrivate = 'secrets/webhook-secret-key-private.pem';
+if (existsSync(whPublic) || existsSync(whPrivate)) {
+  process.stdout.write('chave de segredos de webhook já existe (não sobrescrita: trocar torna ilegíveis os segredos já cadastrados)\n');
+} else {
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', {
+    modulusLength: 4096,
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  });
+  writeFileSync(whPrivate, privateKey, { mode: 0o600 });
+  writeFileSync(whPublic, publicKey, { mode: 0o644 });
+  process.stdout.write(`${whPublic} e ${whPrivate} criados (somente desenvolvimento)\n`);
+}

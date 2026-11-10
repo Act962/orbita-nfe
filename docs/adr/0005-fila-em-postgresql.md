@@ -11,6 +11,9 @@ Jobs no PostgreSQL: pg-boss, se o spike confirmar que o enqueue participa da tra
 ## Resultado do spike 04 (2026-11-09)
 **pg-boss 12 confirmado**: `send(..., { db })` com o client da transação da aplicação respeita COMMIT/ROLLBACK. Política `exclusive` + `singletonKey = documentId` garante no máximo um job por documento (fila ou ativo); SKIP LOCKED sem entrega duplicada com 8 workers; DLQ funcionando. A implementação própria com SKIP LOCKED não será necessária. Detalhes: [resultados dos spikes](../spikes/resultados-fase1.md).
 
+## Revisão (2026-11-10)
+Na implementação da semana 6, o pg-boss foi trocado por uma **tabela própria**, a alternativa já prevista acima, por causa da compatibilidade com privilégio mínimo, RLS por lane e migrations próprias. Ver [ADR-0030](0030-fila-propria-postgresql.md).
+
 ## Alternativas
 - BullMQ/Redis: ótimo throughput, mas não transacional com o estado fiscal e durabilidade dependente de AOF.
 - RabbitMQ/SQS + relay de outbox: mais componentes sem necessidade atual.

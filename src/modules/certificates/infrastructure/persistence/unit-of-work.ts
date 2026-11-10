@@ -1,4 +1,6 @@
 import type { AuditTrail } from '../../../../shared/application/audit.js';
+import type { JobScheduler } from '../../../../shared/application/job-queue.js';
+import type { EventOutbox } from '../../../../shared/application/outbox.js';
 import type { UnitOfWork } from '../../../../shared/application/unit-of-work.js';
 import type { CompanyTransactions, Transaction } from '../../../../shared/infrastructure/database/database.js';
 import { companyScopedUnitOfWork } from '../../../../shared/infrastructure/database/unit-of-work.js';
@@ -7,22 +9,33 @@ import { CERTIFICATE_CONSTRAINTS, certificateRepository, sealedCertificateReposi
 
 export function certificateApiUnitOfWork(
   transactions: CompanyTransactions,
-  deps: { establishmentsFor: (tx: Transaction) => EstablishmentLookup; auditFor: (tx: Transaction) => AuditTrail },
+  deps: {
+    establishmentsFor: (tx: Transaction) => EstablishmentLookup;
+    auditFor: (tx: Transaction) => AuditTrail;
+    jobsFor: (tx: Transaction) => JobScheduler;
+    outboxFor: (tx: Transaction) => EventOutbox;
+  },
 ): UnitOfWork<CertificateApiRepositories> {
   return companyScopedUnitOfWork(
     transactions,
-    (tx) => ({ certificates: certificateRepository(tx), establishments: deps.establishmentsFor(tx), audit: deps.auditFor(tx) }),
+    (tx) => ({
+      certificates: certificateRepository(tx),
+      establishments: deps.establishmentsFor(tx),
+      audit: deps.auditFor(tx),
+      jobs: deps.jobsFor(tx),
+      events: deps.outboxFor(tx),
+    }),
     CERTIFICATE_CONSTRAINTS,
   );
 }
 
 export function certificateWorkerUnitOfWork(
   transactions: CompanyTransactions,
-  deps: { companyFor: (tx: Transaction) => CompanyLookup; auditFor: (tx: Transaction) => AuditTrail },
+  deps: { companyFor: (tx: Transaction) => CompanyLookup; auditFor: (tx: Transaction) => AuditTrail; outboxFor: (tx: Transaction) => EventOutbox },
 ): UnitOfWork<CertificateWorkerRepositories> {
   return companyScopedUnitOfWork(
     transactions,
-    (tx) => ({ certificates: sealedCertificateRepository(tx), company: deps.companyFor(tx), audit: deps.auditFor(tx) }),
+    (tx) => ({ certificates: sealedCertificateRepository(tx), company: deps.companyFor(tx), audit: deps.auditFor(tx), events: deps.outboxFor(tx) }),
     CERTIFICATE_CONSTRAINTS,
   );
 }

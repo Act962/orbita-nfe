@@ -1,7 +1,11 @@
 # 07 — Estratégia de filas e processamento
 
 ## 1. Decisão
-Fila **persistente em PostgreSQL** (ver [ADR-0005](../adr/0005-fila-em-postgresql.md)).
+Fila **persistente em PostgreSQL**, em **tabela própria** ([ADR-0005](../adr/0005-fila-em-postgresql.md), [ADR-0030](../adr/0030-fila-propria-postgresql.md)). Implementada na semana 6:
+- `src/shared/infrastructure/queue/`: store, runner e operação;
+- catálogo de filas em `src/shared/application/job-queue.ts`.
+
+O texto histórico abaixo, sobre o pg-boss, fica como contexto.
 Candidato principal: **pg-boss** (suporta enfileirar usando a conexão/transação da
 aplicação, retries, backoff, DLQ, agendamento). Validar em *spike* da Fase 1 que o
 enqueue participa da transação Drizzle; se não atender, implementar tabela `jobs`
@@ -12,6 +16,16 @@ documento (dual write), e a durabilidade do Redis depende de configuração de A
 documentos fiscais, a fonte da verdade e a fila precisam estar no mesmo commit.
 
 ## 2. Filas
+Filas implementadas (catálogo fechado em `job-queue.ts`):
+
+| Fila | Lane (papel) | Tentativas | Backoff | Timeout |
+|---|---|---|---|---|
+| `certificates.validate` | fiscal (`fiscal_worker`) | 5 | 30 s → 30 min | 60 s |
+| `webhooks.fanout` | general (`fiscal_general`) | 8 | 15 s → 15 min | 30 s |
+| `webhooks.deliver` | general (`fiscal_general`) | 5 (falha do processo; o calendário de reentrega é o do webhook) | 30 s → 15 min | 30 s |
+
+Filas previstas:
+
 | Fila | Job | Concorrência | Observações |
 |---|---|---|---|
 | `nfse.submit` | transmitir documento | por autorizador/empresa | singleton por documento |
@@ -45,7 +59,12 @@ Filas fiscais são consumidas **somente** pelo `worker-fiscal`; webhooks, outbox
 - Cota de concorrência por empresa e por autorizador (bulkhead): uma empresa com milhares de notas não atrasa as demais.
 - Lote em massa de uma empresa entra com prioridade menor que emissões unitárias.
 
-## 8. Operação manual (escopo `ops:*`, tudo auditado)
+## 8. Operação manual (tudo auditado)
+Implementado como CLI do operador, `npm run ops` (papel `fiscal_admin`, cadeia de auditoria da plataforma), e não como endpoints HTTP: ver ADR-0030 §7 e o [runbook](../runbooks/filas-e-webhooks.md).
+
+Comandos disponíveis: `queues`, `pause`, `resume`, `dead`, `retry` e `discard`. O painel de pendências de documentos e a resolução de `UNKNOWN` chegam com o primeiro documento fiscal (Fase 2a).
+
+Proposta original:
 | Ação | Endpoint administrativo |
 |---|---|
 | Pausar/retomar fila (global, por autorizador ou por empresa) | `POST /ops/v1/queues/{queue}/pause` / `resume` |

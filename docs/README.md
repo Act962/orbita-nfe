@@ -23,14 +23,16 @@ Fase atual: **Fase 1 — Fundação** (arquitetura aprovada em 2026-11-09; spike
 | 16 | [Focus NFe como referência de mercado](architecture/16-referencia-focus-nfe.md) |
 | 17 | [NFE.io como referência de mercado](architecture/17-referencia-nfe-io.md) |
 | — | [NFS-e Teresina — investigação](fiscal/nfse-teresina.md) |
+| — | [NFS-e — diagnóstico das APIs Teresina × SEFIN Nacional](fiscal/nfse-teresina-api-municipal-x-nacional.md) |
 | — | [Fontes oficiais](fiscal/fontes-oficiais.md) |
 | — | [Avaliação de repositórios de terceiros](fiscal/avaliacao-repositorios.md) |
 | — | [Resultados dos spikes da Fase 1](spikes/resultados-fase1.md) |
 | — | [Runbook: bootstrap e migrations do banco](runbooks/bootstrap-banco.md) |
 | — | [Runbook: aplicações, API keys e concessões](runbooks/credenciais-api.md) |
 | — | [Runbook: KEK dos certificados, ACs confiáveis e auditoria](runbooks/kek-certificados.md) |
-| — | Regras implementadas: [CNPJ-001](fiscal/regras/CNPJ-001.md), [COMPANY-001](fiscal/regras/COMPANY-001.md), [SERIES-001](fiscal/regras/SERIES-001.md), [SERIES-002](fiscal/regras/SERIES-002.md) (provisória), [CERT-001](fiscal/regras/CERT-001.md) |
+| — | [Runbook: filas, workers e webhooks](runbooks/filas-e-webhooks.md) |
+| — | Regras implementadas: [CNPJ-001](fiscal/regras/CNPJ-001.md), [COMPANY-001](fiscal/regras/COMPANY-001.md), [SERIES-001](fiscal/regras/SERIES-001.md), [SERIES-002](fiscal/regras/SERIES-002.md) (conferida no XSD oficial), [CERT-001](fiscal/regras/CERT-001.md) |
 | — | [Riscos e dúvidas abertas](riscos.md) |
 | — | [Roadmap](roadmap.md) |
-| — | [ADRs](adr/) (0001–0027) |
+| — | [ADRs](adr/) (0001–0030) |
 | — | [Acompanhamento do projeto](ACOMPANHAMENTO.md) |

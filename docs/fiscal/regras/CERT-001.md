@@ -25,7 +25,19 @@ Só são aceitos e-CNPJ A1, enviados como arquivo PKCS#12. Certificados de pesso
 - **`digitalSignature`:** é requisito técnico da assinatura XML (ADR-0014), não uma regra fiscal. A presença desse bit nos certificados A1 da ICP-Brasil está prevista no DOC-ICP-04, mas a conferência do texto vigente está pendente.
 - **Só e-CNPJ A1:** decisão do ADR-0027. Ainda falta confirmar quais tipos de certificado cada autorizador aceita (doc 17, §6).
 
+## Exigências dos autorizadores de NFS-e (consulta de 2026-11-10)
+Fonte: Anexo I da NFS-e Nacional, v1.01, nas versões de produção e de produção restrita (hashes em [fontes-oficiais](../fontes-oficiais.md)).
+
+| Regra | Certificado | Exigência | Situação no CERT-001 |
+|---|---|---|---|
+| E1200 | da **transmissão** (TLS) | X.509 v3, não pode ser de AC, KeyUsage com "Autenticação Cliente" | Hoje não é conferido. "Autenticação Cliente" corresponde ao uso estendido `clientAuth`. Fase 2a: conferir num e-CNPJ A1 real e então adicionar a verificação |
+| E0716 | da **assinatura** | v3, não pode ser de AC, KeyUsage com "Assinatura Digital" **e "Não Recusa"**, OtherName 2.16.76.1.3.3 ou .1, raiz ICP-Brasil | Hoje só `digitalSignature` é conferido. Fase 2a: avaliar a exigência de `nonRepudiation` com um certificado real antes de endurecer a regra, para não rejeitar certificados válidos |
+| E1205–E1208 / E0715 | ambos | cadeia, validade, LCR, raiz ICP-Brasil | cadeia e validade já conferidas; LCR pendente (abaixo) |
+
+A API de Teresina (Guia THE V7) exige um certificado com o mesmo CNPJ raiz do contribuinte. Isso é compatível com o passo 5.
+
 ## Pendências
+- Verificações de E1200 e E0716 da tabela acima (Fase 2a).
 - Carregar o bundle oficial de ACs raiz da ICP-Brasil publicado pelo ITI, com versão e hash registrados (runbook [kek-certificados](../../runbooks/kek-certificados.md)). Até lá, só os testes usam ACs fictícias.
 - Fazer a consulta de revogação (LCR/OCSP). Por enquanto é dívida registrada no ACOMPANHAMENTO.
 - Verificar a mudança de OIDs no SubjectAltName prevista para 31/12/2028 (risco R-28). A informação vem de fonte secundária e não foi confirmada.

@@ -56,6 +56,12 @@ export class CertificateVault {
       if (!decision.ok) {
         await r.certificates.reject(certificateId, decision.reason);
         await r.audit.record(context, { action: 'certificate.rejected', subject, details: { establishmentId: certificate.establishmentId, reason: decision.reason } });
+        await r.events.publish({
+          type: 'certificate.rejected',
+          subject,
+          data: { certificateId, establishmentId: certificate.establishmentId, status: 'REJECTED', reason: decision.reason },
+          correlationId: context.correlationId,
+        });
         return { kind: 'REJECTED', reason: decision.reason };
       }
 
@@ -76,11 +82,23 @@ export class CertificateVault {
       for (const id of replaced) {
         await r.audit.record(context, { action: 'certificate.replaced', subject: { type: 'certificate', id }, details: { establishmentId: certificate.establishmentId, replacedBy: certificateId } });
       }
+      await r.events.publish({
+        type: 'certificate.activated',
+        subject,
+        data: {
+          certificateId,
+          establishmentId: certificate.establishmentId,
+          status: 'ACTIVE',
+          notAfter: metadata.notAfter.toISOString(),
+          replacedCertificateId: replaced[0] ?? null,
+        },
+        correlationId: context.correlationId,
+      });
       return { kind: 'ACTIVATED', replaced };
     });
   }
 
-  /** Valida todos os pendentes da empresa (até a fila da semana 6 assumir esse papel). */
+  /** Valida todos os pendentes da empresa (CLI do operador; o caminho normal é o job `certificates.validate`). */
   async validatePending(companyId: string, context: AuditContext): Promise<ValidationOutcome[]> {
     const ids = await this.uow.inCompany(companyId, (r) => r.certificates.listPendingIds());
     const outcomes: ValidationOutcome[] = [];

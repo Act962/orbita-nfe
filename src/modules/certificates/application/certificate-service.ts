@@ -46,6 +46,13 @@ export class CertificateService {
           subject: { type: 'certificate', id },
           details: { establishmentId, envelopeKeyRef: sealed.kekId, envelopeVersion: sealed.envelopeVersion },
         });
+        // Validação assíncrona no worker-fiscal (o único com a KEK privada), no mesmo commit.
+        await r.jobs.enqueue({
+          queue: 'certificates.validate',
+          payload: { companyId, certificateId: id },
+          singletonKey: id,
+          correlationId: context.correlationId,
+        });
         return certificate;
       });
     } finally {
@@ -81,6 +88,12 @@ export class CertificateService {
         action: 'certificate.revoked',
         subject: { type: 'certificate', id: certificateId },
         details: { establishmentId, previousStatus: current.status },
+      });
+      await r.events.publish({
+        type: 'certificate.revoked',
+        subject: { type: 'certificate', id: certificateId },
+        data: { certificateId, establishmentId, status: 'REVOKED' },
+        correlationId: context.correlationId,
       });
       return revoked;
     });

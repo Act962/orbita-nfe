@@ -10,7 +10,7 @@ real dos autorizadores), por isso cada fase tem folga explícita.
 | 0 | Arquitetura (esta entrega) | concluída | aprovação do responsável |
 | 1 | Fundação | **5–7 semanas** | fluxo completo com documento fake + testes de isolamento, idempotência, concorrência e falhas passando no CI; spikes aprovados |
 | 2a | NFS-e Nacional — ME/EPP Simples, Teresina | **8–12 semanas** | suíte de contrato aprovada em produção restrita; revisão do especialista fiscal; piloto controlado |
-| 2b | NFS-e emissor municipal Teresina (demais regimes) | **4–8 semanas** (depende de obter o manual oficial da SEMF) | idem 2a no ambiente municipal |
+| 2b | NFS-e emissor municipal Teresina (DSF; Lucro Presumido/Real e competências < 11/2026) | **2–4 semanas** (contrato oficial já publicado no Guia API THE V7; reaproveita o cliente do padrão nacional, ADR-0029). Prioridade conforme o perfil de regime dos clientes | idem 2a na homologação municipal |
 | 3 | NFC-e Piauí — motor central | **10–14 semanas** | homologação SEFAZ-PI; integração NERP online; contingência central conforme MOC |
 | 3b | Contingência local NERP/Tauri | **6–10 semanas** (somente após 3 validada em produção) | ADR de segurança do desktop aprovado; testes offline → sincronização |
 | 4 | NF-e modelo 55 | **12–16 semanas** | homologação; eventos, inutilização, contingência SVC/EPEC conforme MOC |
@@ -32,7 +32,10 @@ Comparado à versão anterior, aumentou por: equipe de uma pessoa, NFS-e em dois
 | 7 | Folga + deploy no Coolify (api, worker-fiscal, worker-general, postgres), backup WAL, runbooks iniciais, **changelog e política de descontinuação da API**, `dryRun` nos cadastros, habilitação de produção por estabelecimento e modalidade, OpenAPI em URL estável + `llms.txt` (ADR-0027) |
 
 ## Fase 2a — detalhamento (8–12 semanas)
-1. Leitura integral do manual API v1.2, leiautes, NTs 004/007 e resoluções CGSN; registro em `fontes-oficiais.md`; catálogo de regras → **gate fiscal 1** (especialista).
+Diagnóstico de base: [nfse-teresina-api-municipal-x-nacional.md](fiscal/nfse-teresina-api-municipal-x-nacional.md). Decisões: ADR-0017 (revisado), ADR-0028 (roteamento por competência) e ADR-0029 (transmissão e reconciliação). XSD de produção e de produção restrita já versionados em `resources/fiscal/schemas/nfse-nacional/`.
+
+0. Pré-requisitos do responsável: CNPJ e A1 reais (leitura do Swagger da SEFIN); enquadramento da empresa-piloto confirmado pelo contador (`opSimpNac`, `regApTribSN`, `cTribNac`/NBS, alíquota); perguntas à SEMF (§10 do diagnóstico).
+1. ~~Leitura do manual API v1.2, leiautes e resoluções CGSN~~ (feita em 2026-11-10). Falta: Swagger, aba de regras do Anexo II (prazo de cancelamento), catálogo de regras → **gate fiscal 1** (especialista).
 2. Domínio `ServiceInvoice`/DPS, regras L2/L3 com testes, roteamento Teresina. Contrato da API com as convenções do [ADR-0026](adr/0026-convencoes-api-referencia-mercado.md): `externalReference` permanente + consulta por referência, 201 × 202 com `Prefer: wait`, ambiente derivado da credencial, `authorizerStatus`, `hint` nas rejeições, endpoint de validação sem efeitos, `include=`, tabela oficial de municípios do IBGE. Inscrição municipal como recurso do estabelecimento e download do XML de rejeição (ADR-0027).
 3. Geração XML, assinatura, XSD, adapter Sefin Nacional, simulador alimentado por capturas reais.
 4. Emissão, consulta (API DPS), cancelamento, substituição (se aplicável), DANFSe conforme padrão.
@@ -52,7 +55,7 @@ Comparado à versão anterior, aumentou por: equipe de uma pessoa, NFS-e em dois
 
 ## Dependências externas que podem atrasar
 - Acesso à produção restrita da NFS-e (CNPJ + certificado reais).
-- Manual oficial do webservice de Teresina (SEMF).
+- ~~Manual oficial do webservice de Teresina (SEMF)~~: publicado (Guia API THE V7). Ainda faltam as respostas da SEMF às perguntas do diagnóstico.
 - Disponibilidade do especialista fiscal nos gates.
 - NTs novas da Reforma Tributária durante o desenvolvimento.
 
@@ -64,7 +67,7 @@ gantt
   Fase 1            :f1, 2026-11-16, 7w
   section NFS-e
   Fase 2a Nacional  :f2a, after f1, 12w
-  Fase 2b Teresina  :f2b, after f2a, 8w
+  Fase 2b Teresina  :f2b, after f2a, 4w
   section NFC-e
   Fase 3 central    :f3, after f2b, 14w
   Fase 3b local     :f3b, after f3, 10w

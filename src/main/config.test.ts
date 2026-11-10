@@ -5,6 +5,7 @@ const REQUIRED = {
   DATABASE_URL: 'postgres://app_api:x@localhost:5432/orbita_nfe',
   API_KEY_PEPPER_FILE: '/run/secrets/api-key-pepper',
   CERTIFICATE_KEK_PUBLIC_FILE: '/run/secrets/certificate-kek-public.pem',
+  WEBHOOK_SECRET_KEY_PUBLIC_FILE: '/run/secrets/webhook-secret-key-public.pem',
 };
 
 describe('loadConfig', () => {

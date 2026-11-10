@@ -21,6 +21,8 @@ interface Party {
   readonly establishmentCnpj: string;
   readonly seriesId: string;
   readonly certificateId: string;
+  readonly subscriptionId: string;
+  readonly deliveryId: string;
 }
 
 interface Ctx {
@@ -80,10 +82,42 @@ const CASES: Record<string, MatrixCase> = {
   'GET /v1/establishments/:establishmentId/certificates': { expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND') },
   'GET /v1/establishments/:establishmentId/certificates/:certificateId': { expectCrossCompany: expectNotFound('CERTIFICATE_NOT_FOUND') },
   'POST /v1/establishments/:establishmentId/certificates/:certificateId/revocation': { expectCrossCompany: expectNotFound('CERTIFICATE_NOT_FOUND') },
+  'POST /v1/webhook-subscriptions': {
+    payload: () => ({ url: 'http://127.0.0.1:9/matriz', eventTypes: ['certificate.activated'] }),
+    expectCrossCompany: (res, { a }) => {
+      expect(res.statusCode).toBe(201);
+      expect(res.body).not.toContain(a.companyId);
+    },
+  },
+  'GET /v1/webhook-subscriptions': {
+    expectCrossCompany: (res, { a, b }) => {
+      expect(res.statusCode).toBe(200);
+      const ids = res.json<{ items: { id: string }[] }>().items.map((s) => s.id);
+      expect(ids).toContain(b.subscriptionId);
+      expect(ids).not.toContain(a.subscriptionId);
+    },
+  },
+  'GET /v1/webhook-subscriptions/:subscriptionId': { expectCrossCompany: expectNotFound('WEBHOOK_SUBSCRIPTION_NOT_FOUND') },
+  'PATCH /v1/webhook-subscriptions/:subscriptionId': {
+    payload: () => ({ description: 'tentativa de outra empresa' }),
+    expectCrossCompany: expectNotFound('WEBHOOK_SUBSCRIPTION_NOT_FOUND'),
+  },
+  'POST /v1/webhook-subscriptions/:subscriptionId/secret-rotation': { expectCrossCompany: expectNotFound('WEBHOOK_SUBSCRIPTION_NOT_FOUND') },
+  'POST /v1/webhook-subscriptions/:subscriptionId/test': { expectCrossCompany: expectNotFound('WEBHOOK_SUBSCRIPTION_NOT_FOUND') },
+  'GET /v1/webhook-deliveries': {
+    expectCrossCompany: (res, { a, b }) => {
+      expect(res.statusCode).toBe(200);
+      const ids = res.json<{ items: { id: string }[] }>().items.map((d) => d.id);
+      expect(ids).toContain(b.deliveryId);
+      expect(ids).not.toContain(a.deliveryId);
+    },
+  },
+  'GET /v1/webhook-deliveries/:deliveryId': { expectCrossCompany: expectNotFound('WEBHOOK_DELIVERY_NOT_FOUND') },
+  'POST /v1/webhook-deliveries/:deliveryId/redeliver': { expectCrossCompany: expectNotFound('WEBHOOK_DELIVERY_NOT_FOUND') },
 };
 
 /** Rotas /v1 sem empresa, revisadas uma a uma. */
-const NON_COMPANY_ROUTES = ['POST /v1/companies'];
+const NON_COMPANY_ROUTES = ['POST /v1/companies', 'GET /v1/webhook-event-types'];
 
 const routeKey = (r: RouteCatalogEntry): string => `${r.method} ${r.url}`;
 const isCompanyRoute = (r: RouteCatalogEntry): boolean => 'company' in r.auth && r.auth.company;
@@ -97,7 +131,12 @@ let t: TestApi;
 let ctx: Ctx;
 
 function fill(url: string, party: Party): string {
-  return url.replace(':establishmentId', party.establishmentId).replace(':seriesId', party.seriesId).replace(':certificateId', party.certificateId);
+  return url
+    .replace(':establishmentId', party.establishmentId)
+    .replace(':seriesId', party.seriesId)
+    .replace(':certificateId', party.certificateId)
+    .replace(':subscriptionId', party.subscriptionId)
+    .replace(':deliveryId', party.deliveryId);
 }
 
 async function setupParty(prefix: string): Promise<Party> {
@@ -118,6 +157,14 @@ async function setupParty(prefix: string): Promise<Party> {
     headers: bearer(key, company.id),
     payload: { pfx: DUMMY_PFX, password: 'senha-de-teste' },
   });
+  const subscription = await t.app.inject({
+    method: 'POST',
+    url: '/v1/webhook-subscriptions',
+    headers: bearer(key, company.id),
+    payload: { url: 'http://127.0.0.1:9/hook', eventTypes: ['certificate.activated', 'certificate.rejected'] },
+  });
+  const subscriptionId = subscription.json<{ id: string }>().id;
+  const delivery = await t.app.inject({ method: 'POST', url: `/v1/webhook-subscriptions/${subscriptionId}/test`, headers: bearer(key, company.id) });
   return {
     key,
     companyId: company.id,
@@ -126,6 +173,8 @@ async function setupParty(prefix: string): Promise<Party> {
     establishmentCnpj,
     seriesId: series.json<{ id: string }>().id,
     certificateId: certificate.json<{ id: string }>().id,
+    subscriptionId,
+    deliveryId: delivery.json<{ id: string }>().id,
   };
 }
 

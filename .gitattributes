@@ -4,3 +4,7 @@
 *.xlsx binary
 *.pdf binary
 *.zip binary
+
+# Arquivos fiscais oficiais: bytes preservados para conferir o SHA-256 (ADR-0013)
+resources/fiscal/schemas/** -text
+resources/fiscal/schemas/**/MANIFEST.json text eol=lf

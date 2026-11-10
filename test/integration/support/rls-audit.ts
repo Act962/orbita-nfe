@@ -15,9 +15,19 @@ export const COMPANY_ROOT_TABLES = ['companies'] as const;
  * - platform_audit_log, platform_audit_head: cadeia de auditoria do operador (aplicações e
  *   credenciais, que não pertencem a empresa). Só o papel fiscal_admin insere e lê; append-only
  *   por trigger (migration 0003).
+ * - jobs, queue_controls: fila da plataforma (ADR-0030). O job só carrega identificadores e é
+ *   consumido por workers que atendem todas as empresas; o isolamento é por lane (RLS por papel,
+ *   migration 0005) e o handler abre a transação da empresa, onde vale o RLS dos dados.
  * - __drizzle_migrations fica no schema `drizzle`, fora desta auditoria.
  */
-export const NON_COMPANY_TABLES: readonly string[] = ['client_applications', 'credentials', 'platform_audit_log', 'platform_audit_head'];
+export const NON_COMPANY_TABLES: readonly string[] = [
+  'client_applications',
+  'credentials',
+  'platform_audit_log',
+  'platform_audit_head',
+  'jobs',
+  'queue_controls',
+];
 
 export const APPLICATION_ROLES = ['fiscal_api', 'fiscal_worker', 'fiscal_general', 'fiscal_system', 'fiscal_admin'] as const;
 

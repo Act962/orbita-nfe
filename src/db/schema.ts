@@ -7,3 +7,6 @@ export * from '../modules/iam/infrastructure/persistence/schema.js';
 export * from '../modules/fiscal-settings/infrastructure/persistence/schema.js';
 export * from '../modules/audit/infrastructure/persistence/schema.js';
 export * from '../modules/certificates/infrastructure/persistence/schema.js';
+export * from '../modules/webhooks/infrastructure/persistence/schema.js';
+export * from '../shared/infrastructure/queue/schema.js';
+export * from '../shared/infrastructure/outbox/schema.js';

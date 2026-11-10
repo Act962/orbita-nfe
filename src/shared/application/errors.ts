@@ -14,6 +14,7 @@ export type ErrorCategory =
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'UNPROCESSABLE'
+  | 'RATE_LIMITED'
   | 'UNAVAILABLE'
   | 'INTERNAL';
 
@@ -103,6 +104,14 @@ export class ServiceUnavailableError extends ApplicationError {
     readonly retryAfterSeconds = 5,
   ) {
     super(code, message);
+  }
+}
+
+/** Limite de requisições da credencial (ou do endereço, antes da autenticação) excedido. */
+export class RateLimitedError extends ApplicationError {
+  readonly category = 'RATE_LIMITED';
+  constructor(readonly retryAfterSeconds: number) {
+    super('RATE_LIMITED', 'Limite de requisições excedido. Aguarde o tempo indicado em Retry-After.');
   }
 }
 

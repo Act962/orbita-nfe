@@ -34,7 +34,10 @@ Em desenvolvimento, `npm run dev:secrets` gera os dois arquivos em `secrets/`, q
 - Em produção, o bundle é o das ACs raiz da ICP-Brasil publicadas pelo ITI. Ao carregar, registre em [fontes-oficiais](../fiscal/fontes-oficiais.md) a URL, a versão, a data e o SHA-256 de cada certificado. **Ainda pendente.**
 - Em desenvolvimento, `node --import tsx scripts/dev-test-certificate.ts <cnpj> <senha>` gera um e-CNPJ **fictício** e um `secrets/trust-bundle.pem` com a AC de teste. Isso nunca vai para produção.
 
-## 5. Validação de certificados pendentes (até a fila da semana 6)
+## 5. Validação de certificados
+O caminho normal é automático: o upload enfileira `certificates.validate` no mesmo commit, e o worker-fiscal valida ([runbook de filas](filas-e-webhooks.md)).
+
+A CLI continua disponível para revalidar manualmente:
 `npm run certificates -- validate --company <uuid> [--certificate <uuid>]`
 
 O comando usa `WORKER_DATABASE_URL`, que precisa ser um login membro de `fiscal_worker`, além da KEK privada e do bundle. A saída mostra só ids, status e motivos.

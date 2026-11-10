@@ -13,6 +13,7 @@ export const SCOPES = [
   'fiscal-settings:manage',
   'certificates:read',
   'certificates:manage',
+  'webhooks:read',
   'webhooks:manage',
   'nfse:issue',
   'nfse:read',

@@ -68,6 +68,44 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Fila, outbox, webhooks e rate limit — concluído (2026-11-10, semana 6)
+- [x] **Fila própria** (ADR-0030; migrations 0004 e 0005):
+  - tabela `jobs` com `SKIP LOCKED`, concessão (lease), backoff com jitter, mortos, singleton e retenção;
+  - lanes `fiscal` e `general` isoladas por RLS por papel; a API só insere;
+  - imutabilidade por grant de coluna e trigger;
+  - o pg-boss saiu da produção e fica só no spike 04.
+- [x] **Outbox transacional:** `outbox_events` (RLS, append-only) e job `webhooks.fanout` gravados no mesmo commit da mudança.
+- [x] **Certificado pela fila:**
+  - o upload enfileira `certificates.validate`, e o worker-fiscal valida e publica `certificate.activated` ou `certificate.rejected`;
+  - a revogação publica `certificate.revoked`.
+- [x] **Webhooks** (`src/modules/webhooks`):
+  - catálogo de eventos, assinaturas por aplicação com filtro por tipo e limite de 10;
+  - segredo `whsec_` exibido uma vez e cifrado com RSA-OAEP (só o worker-general decifra), com rotação;
+  - assinatura Standard Webhooks (confere com o vetor oficial);
+  - calendário publicado de 8 tentativas em cerca de 22 h, reenvio, evento de teste e consulta de entregas;
+  - proteção contra SSRF no cadastro e na resolução de DNS.
+- [x] **Rate limit** por credencial e por endereço (429, `Retry-After`, `RateLimit-*`).
+- [x] **Processos novos** `worker-fiscal` e `worker-general` (`npm run dev:worker-*`). Cada um recusa, em produção, o segredo do outro.
+- [x] **CLI de operação** `npm run ops` (queues, pause, resume, dead, retry, discard), auditada na cadeia da plataforma.
+- [x] Escopo `webhooks:read`. Novas ações de auditoria de webhooks e de filas.
+- [x] Testes:
+  - unitários: backoff, token bucket, política SSRF IPv4/IPv6, calendário, cripto dos segredos, assinatura e config;
+  - integração: atomicidade, SKIP LOCKED, mortos, concessão vencida, lanes, pausa e auditoria, fluxo certificado → webhook assinado, filtros, reentrega, esgotamento, rotação, outra aplicação, concessão revogada, append-only e rate limit;
+  - matriz de isolamento com as 9 rotas novas.
+  - Total: **369 testes**. O projeto de integração passou a rodar os arquivos em sequência.
+- [x] Teste de fumaça local com os 3 processos reais: upload → `ACTIVE` → webhook entregue com assinatura válida; segredo e senha ausentes dos logs; `ops` e cadeia da plataforma íntegra.
+- [x] Docs: ADR-0030, revisões dos ADR-0005 e 0015, docs 07, 09 e 11, runbook [filas-e-webhooks](runbooks/filas-e-webhooks.md).
+- **Reescopo:** o write-ahead de tentativas (ADR-0022) e o reconciliador de `UNKNOWN` passam para a Fase 2a, junto com o primeiro transmissor (adapter SEFIN). Sem consumidor, seriam abstração sem uso. A fila já tem o que eles precisam: concessão, reaproveitamento de job e jobs agendados.
+
+### Diagnóstico NFS-e Teresina × Nacional — concluído e aprovado (2026-11-10)
+- [x] Diagnóstico: [nfse-teresina-api-municipal-x-nacional.md](fiscal/nfse-teresina-api-municipal-x-nacional.md). Lidos o portal e a Carta de Serviços da SEMF, o Guia API THE V7 (DSF), as Portarias SEMF 20/25, a documentação técnica nacional, os Anexos I/II, a Res. CGSN 191/2026 e a notícia de 29/10/2026.
+- [x] Conclusão aprovada:
+  - a ME/EPP do Simples em Teresina emite pela **SEFIN Nacional** quando a competência é a partir de 11/2026;
+  - a API municipal (DSF) segue o mesmo padrão nacional e fica para a Fase 2b, conforme o regime dos clientes.
+- [x] ADR-0017 revisado; novos ADR-0028 (roteamento por competência) e ADR-0029 (transmissão e reconciliação); complementos nos ADR-0013 (schemas por ambiente) e ADR-0014 (perfil de assinatura).
+- [x] XSD oficiais de produção (1.01-20260209) e de produção restrita (1.01-20261020) em `resources/fiscal/schemas/nfse-nacional/`, com `MANIFEST.json` e teste de integridade de hash. No git, marcados `-text`, porque têm CRLF.
+- [x] SERIES-002 conferida contra o XSD oficial. Fontes oficiais e riscos R-24 e R-30 a R-33 atualizados.
+
 ### Certificate Vault e Audit log encadeado — concluído (2026-11-10, semana 5)
 - [x] **Audit** (`src/modules/audit`, migration 0003):
   - uma cadeia por empresa e uma da plataforma, com `hash = SHA-256(prev ‖ JSON canônico)`, gravadas na mesma transação da mudança;
@@ -101,7 +139,7 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 2. ~~Drizzle + migrations + papéis de banco + RLS + meta-teste de schema + Testcontainers~~ ✔
 3. ~~IAM, Company, Fiscal Settings, matriz de isolamento da API~~ ✔
 4. ~~Certificate Vault, Audit log~~ ✔
-5. Semana 6: fila/outbox/write-ahead, disparo da validação de certificado pela fila, webhooks (catálogo de eventos, filtros, calendário de retentativas), rate limit por credencial, endpoints `ops`.
+5. ~~Semana 6: fila, outbox, validação de certificado pela fila, webhooks, rate limit, operação das filas~~ ✔ (o write-ahead e o reconciliador foram para a Fase 2a)
 6. Semana 7: deploy no Coolify, backup WAL, âncora externa diária da cadeia de auditoria, habilitação de produção por estabelecimento, OpenAPI estável + `llms.txt`, changelog, `dryRun`.
 
 ### Versões adotadas
@@ -130,24 +168,31 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-09 | Vocabulário único "empresa" (company) no lugar de "tenant" | 0025 |
 | 2026-11-09 | Convenções de API inspiradas na Focus NFe (referência externa, 201×202, dryRun, rate limit, hint) | 0026 |
 | 2026-11-10 | Cadastro fiscal, certificados e documentação inspirados na NFE.io (habilitação de produção, inscrições, contingência configurável) | 0027 |
+| 2026-11-10 | Piloto em Teresina pela SEFIN Nacional (Res. CGSN 191/2026); adapter municipal DSF na Fase 2b conforme demanda | 0017 (revisado) |
+| 2026-11-10 | Canal de NFS-e decidido pela data de competência, por tabela versionada com fonte | 0028 |
+| 2026-11-10 | Cliente único do padrão nacional com perfil de endpoint; reconciliação por Id da DPS antes de reenviar | 0029 |
 
 ## Pendente de decisão do responsável
 1. ~~Aprovação final da arquitetura consolidada~~ — aprovada em 2026-11-09.
 2. Provedor S3 (recomendado Backblaze B2; alternativa AWS S3 sa-east-1) e parecer LGPD se fora do Brasil.
 3. CNPJ real + certificado A1 para a produção restrita da NFS-e (dados de nota fictícios).
-4. Contato com a SEMF Teresina para o manual do webservice municipal.
+4. ~~Contato com a SEMF para o manual do webservice~~: o manual foi publicado (Guia API THE V7). Falta enviar à SEMF as perguntas do §10 do diagnóstico (conflito da Portaria 20/2026, eventos de notas antigas, endpoint ADN/DPS).
+7. Levantar o regime dos clientes de Teresina (Simples/MEI × Lucro Presumido/Real), que define a prioridade da Fase 2b.
+8. Com o contador: enquadramento da empresa-piloto (`opSimpNac`, `regApTribSN`, `cTribNac`/NBS, alíquota, retenções). R-30 depende disso.
 5. ~~Aprovar o [ADR-0026](adr/0026-convencoes-api-referencia-mercado.md)~~ — aprovado em 2026-11-09.
 6. ~~Aprovar o [ADR-0027](adr/0027-convencoes-cadastro-fiscal-referencia-nfe-io.md) (cadastro fiscal, certificados e documentação inspirados na NFE.io)~~ — aprovado em 2026-11-10.
 
 ## Riscos ativos principais
-R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente. Ver [riscos.md](riscos.md).
+R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente · R-30 enquadramento `regApTribSN` da empresa-piloto · R-33 Swagger da SEFIN só com certificado. Ver [riscos.md](riscos.md).
 
 ## Código temporário / dívidas registradas
 | Item | Finalidade | Remoção |
 |---|---|---|
 | `spikes/` (+ job `spikes` no CI, `vitest.spikes.config.ts`) | Provas técnicas da Fase 1 | Promover a adapters em `src/` com testes definitivos e apagar até o fim da Fase 1 |
 | Vulnerabilidade moderada `minimatch` (cadeia do ESLint, só em desenvolvimento) | — | Atualizar quando o ESLint publicar a correção; o CI audita só dependências de produção |
-| Faixas reservadas de série NF-e/NFC-e não validadas; SERIES-002 provisória | Fontes secundárias conflitantes (R-26) | Conferir MOC/XSD oficiais antes das Fases 2a e 3 |
+| Faixas reservadas de série NF-e/NFC-e não validadas (SERIES-001) | Fontes secundárias conflitantes (R-26) | Conferir MOC/XSD oficiais antes da Fase 3 |
+| Séries do motor ainda aceitam 80000–89999 (faixa de transcrição manual do Emissor Web) | SERIES-002, conferida em 2026-11-10 | Bloquear na Fase 2a, junto com a DPS |
+| Perfil de endpoint e de assinatura da SEFIN provisórios (prefixo, envelope, RSA-SHA1) | Swagger só com certificado (R-31, R-33) | Ler o Swagger com o A1 real e testar a primeira DPS em produção restrita |
 | Teste baseado em propriedades entre 3 empresas (docs/14 §B4, teste 10) | Ainda não escrito | Junto com o primeiro documento fiscal (Fase 2a) |
 | Bundle de ACs raiz ICP-Brasil (ITI) não carregado | Só a PKI fictícia de teste existe (R-29) | Antes da produção restrita (Fase 2a), com versão e hash em fontes-oficiais |
 | Sem consulta de revogação (LCR/OCSP) na validação de certificado | Fora do escopo da semana 5 (R-29) | Fase 2a |
@@ -156,6 +201,12 @@ R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS �
 | Validação de certificado disparada por CLI (`npm run certificates -- validate`) | A fila ainda não existe | Semana 6 (outbox) |
 | Âncora externa da cabeça da cadeia de auditoria | Depende do bucket S3 com Object Lock | Semana 7 |
 | Escrita da trilha serializada por empresa (trava da cabeça) | Simplicidade e ordem total; volume atual baixo | Reavaliar com carga real de emissão |
+| Write-ahead de tentativas e reconciliador de `UNKNOWN` (ADR-0022, doc 12) | Sem transmissor ainda (reescopo da semana 6) | Fase 2a, com o adapter SEFIN |
+| Rate limit em memória por réplica da API | Uma réplica hoje (ADR-0020) | Redis ou tabela quando houver mais de uma réplica |
+| Fila por polling (sem LISTEN/NOTIFY) | Simplicidade; 1 s de latência basta | Reavaliar no teste de carga (Fase 5) |
+| Endpoints HTTP de operação (`/ops/v1`) substituídos pela CLI `npm run ops` | Menor superfície; o papel da API não lê a fila (ADR-0030) | Reavaliar se surgir painel de operação |
+| `pg-boss` em devDependencies (só o spike 04) | Spike mantido até o fim da Fase 1 | Junto com a remoção de `spikes/` |
+| Evento `certificate.expiring` (aviso de vencimento) | Precisa de agendamento diário | Semana 7 |
 | `scripts/dev-test-certificate.ts` usa a PKI de teste | Teste de fumaça local | Permanente (somente desenvolvimento) |
 | Porta do PostgreSQL local alterada para 15432 | Evitar conflito com outro PostgreSQL (5432) e com as faixas que o Windows/Hyper-V reserva na faixa dinâmica (a 54329 foi reservada após reinício) | Configurável por `POSTGRES_PORT` |
 

@@ -53,6 +53,7 @@ Implementado em 2026-11-10 (módulo `audit`, migration 0003):
 - A aplicação só tem INSERT. Ler e verificar a cadeia é tarefa do operador (`npm run audit -- verify`, runbook [kek-certificados](../runbooks/kek-certificados.md)).
 - Catálogo fechado de ações:
   - empresa: `company.registered`, `establishment.registered`, `document_series.created`, `company_grant.granted`, `company_grant.revoked`, `certificate.uploaded`, `certificate.activated`, `certificate.rejected`, `certificate.replaced`, `certificate.revoked`;
-  - plataforma: `client_application.created`, `credential.issued`, `credential.revoked`.
+  - empresa (webhooks): `webhook_subscription.created`, `webhook_subscription.updated`, `webhook_subscription.secret_rotated`, `webhook_delivery.redelivered` (só o host da URL, nunca a URL inteira nem o segredo);
+  - plataforma: `client_application.created`, `credential.issued`, `credential.revoked`, `queue.paused`, `queue.resumed`, `job.retried`, `job.discarded`.
 - Os detalhes aceitam só valores escalares. Chave com nome sensível é recusada.
 - Pendências: âncora externa diária da cabeça (semana 7) e uso do certificado por documento (Fase 2a).

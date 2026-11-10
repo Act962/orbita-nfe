@@ -1,6 +1,6 @@
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 import { hasZodFastifySchemaValidationErrors, isResponseSerializationError } from 'fastify-type-provider-zod';
-import { ApplicationError, ServiceUnavailableError, type ErrorCategory } from '../../application/errors.js';
+import { ApplicationError, RateLimitedError, ServiceUnavailableError, type ErrorCategory } from '../../application/errors.js';
 import type { HttpApp } from './http-app.js';
 import { PROBLEM_CONTENT_TYPE, problemType, type Problem, type ProblemIssue } from './problem.js';
 
@@ -11,6 +11,7 @@ const STATUS: Record<ErrorCategory, number> = {
   NOT_FOUND: 404,
   CONFLICT: 409,
   UNPROCESSABLE: 422,
+  RATE_LIMITED: 429,
   UNAVAILABLE: 503,
   INTERNAL: 500,
 };
@@ -22,6 +23,7 @@ const TITLE: Record<ErrorCategory, string> = {
   NOT_FOUND: 'Recurso não encontrado',
   CONFLICT: 'Conflito',
   UNPROCESSABLE: 'Regra de negócio violada',
+  RATE_LIMITED: 'Limite de requisições excedido',
   UNAVAILABLE: 'Serviço indisponível',
   INTERNAL: 'Erro interno',
 };
@@ -80,6 +82,7 @@ export function registerErrorHandling(app: HttpApp): void {
         return send(request, reply, { status, code: 'INTERNAL_ERROR', title: TITLE.INTERNAL });
       }
       if (error.category === 'UNAUTHORIZED') void reply.header('www-authenticate', 'Bearer');
+      if (error instanceof RateLimitedError) void reply.header('retry-after', String(error.retryAfterSeconds));
       if (error instanceof ServiceUnavailableError) {
         request.log.warn({ err: error, errorCode: error.code }, 'dependência indisponível');
         void reply.header('retry-after', String(error.retryAfterSeconds));

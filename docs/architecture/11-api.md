@@ -22,7 +22,10 @@ Recursos separados por modalidade (contratos diferentes), com consulta unificada
 | POST / GET | `/v1/establishments/{establishmentId}/document-series` | `fiscal-settings:manage` / `fiscal-settings:read` — **implementado** |
 | POST / GET | `/v1/establishments/{establishmentId}/certificates`, `.../certificates/{certificateId}` | `certificates:manage` / `certificates:read` — **implementado** (upload responde 202 `PENDING_VALIDATION`) |
 | POST | `/v1/establishments/{establishmentId}/certificates/{certificateId}/revocation` | `certificates:manage` — **implementado** |
-| CRUD | `/v1/webhook-subscriptions`, `POST /v1/webhook-deliveries/{id}/redeliver` | `webhooks:manage` |
+| GET | `/v1/webhook-event-types` (catálogo e calendário de reentrega; sem empresa) | `webhooks:read` — **implementado** |
+| POST / GET / PATCH | `/v1/webhook-subscriptions`, `/v1/webhook-subscriptions/{id}` | `webhooks:manage` / `webhooks:read` — **implementado** |
+| POST | `/v1/webhook-subscriptions/{id}/secret-rotation`, `/v1/webhook-subscriptions/{id}/test` | `webhooks:manage` — **implementado** |
+| GET / POST | `/v1/webhook-deliveries`, `/v1/webhook-deliveries/{id}`, `/v1/webhook-deliveries/{id}/redeliver` | `webhooks:read` / `webhooks:manage` — **implementado** |
 | GET | `/health/live`, `/health/ready`, `/metrics` | interno |
 
 ## Convenções
@@ -78,6 +81,10 @@ Todas as respostas de erro: `application/problem+json` com `type`, `title`, `sta
 | 413 | `PAYLOAD_TOO_LARGE` | Corpo acima de `HTTP_BODY_LIMIT` |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | Content-Type não suportado |
 | 422 | `<REGRA>` (ex.: `CERTIFICATE_EXPIRED`) | Regra de negócio/fiscal violada; `ruleId` aponta a origem documentada |
+| 404 | `WEBHOOK_SUBSCRIPTION_NOT_FOUND`, `WEBHOOK_DELIVERY_NOT_FOUND` | Inexistente, de outra empresa **ou de outra aplicação** |
+| 400 | `VALIDATION_FAILED` com issues `URL_NOT_HTTPS`, `URL_PRIVATE_ADDRESS`, `URL_HAS_CREDENTIALS`, `URL_HAS_FRAGMENT`, `URL_INVALID`, `URL_TOO_LONG`, `UNKNOWN_EVENT_TYPE`, `DUPLICATED` | Assinatura de webhook inválida (proteção contra SSRF) |
+| 422 | `WEBHOOK_SUBSCRIPTION_LIMIT`, `WEBHOOK_SUBSCRIPTION_DISABLED` | Limite de 10 assinaturas por aplicação e empresa; assinatura desativada |
+| 429 | `RATE_LIMITED` | Limite por credencial (padrão 600/min, rajada 120) ou por endereço antes da autenticação (1200/min, rajada 300); headers `Retry-After`, `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset` (estes também nas respostas de sucesso) |
 | 503 | `DATABASE_UNAVAILABLE`, `DATABASE_TIMEOUT`, `SERVICE_UNAVAILABLE` | Dependência indisponível; header `Retry-After` |
 | 500 | `INTERNAL_ERROR` | Qualquer falha não prevista (inclusive constraint não mapeada e resposta fora do schema). Sem detalhes; use o `correlationId` para suporte |
 
@@ -85,6 +92,20 @@ Códigos internos que **só aparecem no log** (nunca na resposta): `ROUTE_WITHOU
 
 Motivos de rejeição de certificado (campo `rejectionReason`, não é erro HTTP): ver [CERT-001](../fiscal/regras/CERT-001.md).
 
-## Webhooks
-Eventos: `fiscal_document.authorized`, `.rejected`, `.cancelled`, `.failed`, `.status_changed`, `certificate.expiring`.
-Headers `Webhook-Id`, `Webhook-Timestamp`, `Webhook-Signature: v1=<hmac>`; tolerância de timestamp para replay; retries exponenciais; consumidor deduplica por `Webhook-Id`.
+## Webhooks (implementado na semana 6; ADR-0015, ADR-0027 B6)
+- **Eventos disponíveis:**
+  - `certificate.activated`, `certificate.rejected` (com `data.reason`) e `certificate.revoked`;
+  - `webhook.test`, que só sai pelo endpoint de teste.
+  - Previstos: `service_invoice.*` (Fase 2a) e `certificate.expiring`.
+- **Corpo:** `{ id, type, occurredAt, companyId, subject: { type, id }, data }`. Só identificadores e status, nunca XML ou dados pessoais.
+- **Headers (Standard Webhooks):**
+  - `webhook-id` = `id` do evento, igual em todas as tentativas e reenvios: o consumidor deduplica por ele;
+  - `webhook-timestamp` em segundos Unix;
+  - `webhook-signature: v1,<base64(HMAC-SHA256(segredo, "<id>.<timestamp>.<corpo>"))>`, com chave = bytes do base64 depois de `whsec_`.
+  - O cliente deve recusar timestamp com mais de 5 minutos de diferença.
+- **Calendário publicado** (também em `GET /v1/webhook-event-types`):
+  - imediata, depois 1 min, 5 min, 15 min, 1 h, 3 h, 6 h e 12 h, ou seja, 8 tentativas em cerca de 22 h;
+  - esgotadas, a entrega fica `FAILED` e pode ser reenviada (`/redeliver`).
+- **Sucesso** = resposta 2xx em até 10 s. Redirecionamentos não são seguidos.
+- **Segredo** exibido uma única vez (criação e rotação). A rotação invalida o anterior na hora.
+- **Destino:** só https público (proteção contra SSRF no cadastro e de novo na resolução de DNS da entrega).

@@ -37,6 +37,19 @@ export function withOperator(admin: IamAdmin): TestAdmin {
 }
 
 let testKek: { publicKey: KeyObject; privateKey: KeyObject } | undefined;
+let testWebhookKeyPair: { publicKey: KeyObject; privateKey: KeyObject } | undefined;
+
+/** Chave RSA 4096 de teste dos segredos de webhook (gerada uma vez por arquivo de teste). */
+export function testWebhookKey(): { publicKey: KeyObject; privateKey: KeyObject } {
+  testWebhookKeyPair ??= generateKeyPairSync('rsa', { modulusLength: 4096 });
+  return testWebhookKeyPair;
+}
+
+/** Limites altos: os testes que não tratam de rate limit não podem esbarrar nele. */
+export const GENEROUS_RATE_LIMIT = {
+  perCredential: { capacity: 100_000, refillPerSecond: 100_000 },
+  perAddress: { capacity: 100_000, refillPerSecond: 100_000 },
+} as const;
 /** KEK RSA 4096 de teste (gerada uma vez por arquivo de teste). */
 export function testCertificateKek(): { publicKey: KeyObject; privateKey: KeyObject } {
   testKek ??= generateKeyPairSync('rsa', { modulusLength: 4096 });
@@ -54,11 +67,23 @@ export interface TestApi {
 }
 
 /** API completa, com a mesma composição de produção, sobre o PostgreSQL de teste. */
-export async function startTestApi(): Promise<TestApi> {
+export interface TestApiOptions {
+  readonly rateLimit?: { perCredential: { capacity: number; refillPerSecond: number }; perAddress: { capacity: number; refillPerSecond: number } };
+}
+
+export async function startTestApi(options: TestApiOptions = {}): Promise<TestApi> {
   const api = connect('api', { poolMax: 10 });
   const adminDb = connect('admin', { poolMax: 2 });
   const logs = captureStream();
-  const modules = composeApi({ db: api.db, apiKeyPepper: TEST_PEPPER, certificateKek: testCertificateKek().publicKey });
+  const modules = composeApi({
+    db: api.db,
+    apiKeyPepper: TEST_PEPPER,
+    certificateKek: testCertificateKek().publicKey,
+    webhookSecretKey: testWebhookKey().publicKey,
+    rateLimit: options.rateLimit ?? GENEROUS_RATE_LIMIT,
+    // Os testes entregam webhooks num servidor HTTP local.
+    allowPrivateWebhookTargets: true,
+  });
   const app = await buildApp({
     logger: createLogger({ level: 'trace', service: 'test', destination: logs.stream }),
     bodyLimit: 1024 * 1024,

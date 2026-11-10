@@ -16,10 +16,18 @@ const database = createDatabase({
   applicationName: 'orbita-nfe-api',
 });
 
+const perMinute = (limit: number, burst: number) => ({ capacity: burst, refillPerSecond: limit / 60 });
+
 const modules = composeApi({
   db: database.db,
   apiKeyPepper: loadPepperFile(config.API_KEY_PEPPER_FILE),
   certificateKek: loadPublicKek(config.CERTIFICATE_KEK_PUBLIC_FILE),
+  webhookSecretKey: loadPublicKek(config.WEBHOOK_SECRET_KEY_PUBLIC_FILE),
+  allowPrivateWebhookTargets: config.WEBHOOK_ALLOW_PRIVATE_TARGETS,
+  rateLimit: {
+    perCredential: perMinute(config.RATE_LIMIT_PER_MINUTE, config.RATE_LIMIT_BURST),
+    perAddress: perMinute(config.RATE_LIMIT_ADDRESS_PER_MINUTE, config.RATE_LIMIT_ADDRESS_BURST),
+  },
 });
 
 const app = await buildApp({

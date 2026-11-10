@@ -28,7 +28,30 @@ const ConfigSchema = z.object({
    * estiver configurada aqui, o processo não sobe.
    */
   CERTIFICATE_KEK_PRIVATE_FILE: z.undefined({ error: 'a KEK privada não pode ser configurada na API (só no worker-fiscal)' }).optional(),
-});
+  /** Chave PÚBLICA dos segredos de webhook (RSA 4096, PEM): a API cifra o segredo e nunca o lê de volta. */
+  WEBHOOK_SECRET_KEY_PUBLIC_FILE: z.string().min(1),
+  /** Proibida na API: a chave privada dos segredos de webhook existe só no worker-general (ADR-0021). */
+  WEBHOOK_SECRET_KEY_PRIVATE_FILE: z.undefined({ error: 'a chave privada de webhooks não pode ser configurada na API (só no worker-general)' }).optional(),
+  /** Só desenvolvimento/testes: aceita destinos http e privados nas assinaturas. Recusado em produção. */
+  WEBHOOK_ALLOW_PRIVATE_TARGETS: booleanFromEnv.default(false),
+  /** Limite por credencial (ADR-0026): requisições por minuto e rajada. */
+  RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(600),
+  RATE_LIMIT_BURST: z.coerce.number().int().min(1).max(10_000).default(120),
+  /** Limite por endereço de origem, antes da autenticação (força bruta de credenciais). */
+  RATE_LIMIT_ADDRESS_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(1200),
+  RATE_LIMIT_ADDRESS_BURST: z.coerce.number().int().min(1).max(10_000).default(300),
+  /** Segredos dos workers: tolerados no .env local, proibidos no container da API em produção. */
+  WORKER_CERTIFICATE_KEK_PRIVATE_FILE: z.string().optional(),
+  GENERAL_WEBHOOK_SECRET_KEY_PRIVATE_FILE: z.string().optional(),
+})
+  .refine((c) => !(c.NODE_ENV === 'production' && c.WEBHOOK_ALLOW_PRIVATE_TARGETS), {
+    path: ['WEBHOOK_ALLOW_PRIVATE_TARGETS'],
+    message: 'não pode ser true em produção (proteção contra SSRF)',
+  })
+  .refine((c) => !(c.NODE_ENV === 'production' && (c.WORKER_CERTIFICATE_KEK_PRIVATE_FILE !== undefined || c.GENERAL_WEBHOOK_SECRET_KEY_PRIVATE_FILE !== undefined)), {
+    path: ['NODE_ENV'],
+    message: 'em produção o container da API não pode ter a KEK privada nem a chave privada de webhooks',
+  });
 
 export type AppConfig = z.infer<typeof ConfigSchema>;
 

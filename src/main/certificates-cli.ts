@@ -9,9 +9,9 @@ import { composeFiscalWorker } from './compose.js';
 /**
  * Validação de certificados pendentes, no papel do worker-fiscal (ADR-0009, ADR-0021).
  *
- * Provisório: a partir da semana 6 da Fase 1 a validação é disparada pela fila (outbox) logo
- * após o upload. Esta CLI roda com as MESMAS credenciais do worker-fiscal (WORKER_DATABASE_URL +
- * KEK privada) e nunca deve ser instalada no container da API.
+ * O caminho normal é a fila: o upload enfileira `certificates.validate` e o worker-fiscal valida.
+ * Esta CLI serve para revalidação manual; roda com as MESMAS credenciais do worker-fiscal
+ * (WORKER_DATABASE_URL + KEK privada) e nunca deve ser instalada no container da API.
  *
  *   npm run certificates -- validate --company <uuid> [--certificate <uuid>]
  *

@@ -16,6 +16,8 @@ export default defineConfig({
           name: 'integration',
           include: ['test/integration/**/*.test.ts'],
           environment: 'node',
+          // Em sequência: os testes da fila rodam workers que consomem a fila inteira (ADR-0030).
+          fileParallelism: false,
           globalSetup: ['test/integration/global-setup.ts'],
           testTimeout: 30_000,
           hookTimeout: 180_000,

@@ -1,5 +1,7 @@
 import type { KeyObject } from 'node:crypto';
 import type { AuditTrail } from '../../../shared/application/audit.js';
+import type { JobScheduler } from '../../../shared/application/job-queue.js';
+import type { EventOutbox } from '../../../shared/application/outbox.js';
 import type { Certificate, CertificateFacts, CertificateMetadata, RejectionReason } from '../domain/certificate.js';
 
 /** Material sensível em trânsito. Nunca logado, nunca serializado, zerado após o uso. */
@@ -94,10 +96,14 @@ export interface CertificateApiRepositories {
   readonly certificates: CertificateRepository;
   readonly establishments: EstablishmentLookup;
   readonly audit: AuditTrail;
+  /** Agenda a validação no worker-fiscal na mesma transação do upload. */
+  readonly jobs: JobScheduler;
+  readonly events: EventOutbox;
 }
 
 export interface CertificateWorkerRepositories {
   readonly certificates: SealedCertificateRepository;
   readonly company: CompanyLookup;
   readonly audit: AuditTrail;
+  readonly events: EventOutbox;
 }
