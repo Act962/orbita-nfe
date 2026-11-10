@@ -12,9 +12,12 @@ export const COMPANY_ROOT_TABLES = ['companies'] as const;
  * Tabelas sem dados de empresa, revisadas uma a uma. Incluir aqui exige justificativa no PR.
  * - client_applications, credentials: a credencial é resolvida ANTES de existir empresa
  *   (autenticação). A API só tem SELECT; escrita só pelo papel fiscal_admin (migration 0001).
+ * - platform_audit_log, platform_audit_head: cadeia de auditoria do operador (aplicações e
+ *   credenciais, que não pertencem a empresa). Só o papel fiscal_admin insere e lê; append-only
+ *   por trigger (migration 0003).
  * - __drizzle_migrations fica no schema `drizzle`, fora desta auditoria.
  */
-export const NON_COMPANY_TABLES: readonly string[] = ['client_applications', 'credentials'];
+export const NON_COMPANY_TABLES: readonly string[] = ['client_applications', 'credentials', 'platform_audit_log', 'platform_audit_head'];
 
 export const APPLICATION_ROLES = ['fiscal_api', 'fiscal_worker', 'fiscal_general', 'fiscal_system', 'fiscal_admin'] as const;
 

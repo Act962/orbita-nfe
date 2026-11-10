@@ -3,5 +3,5 @@
  */
 export { CompanyService, establishmentNotFound, type AccessGrants } from './application/company-service.js';
 export type { Establishment, Company } from './domain/company.js';
-export { establishmentRepository, companyUnitOfWork, COMPANY_CONSTRAINTS } from './infrastructure/persistence/repositories.js';
+export { companyRepository, establishmentRepository, companyUnitOfWork, COMPANY_CONSTRAINTS } from './infrastructure/persistence/repositories.js';
 export { registerCompanyRoutes } from './presentation/http/routes.js';

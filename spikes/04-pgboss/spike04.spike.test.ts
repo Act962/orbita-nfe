@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
  * Spike 04 — pg-boss: o enqueue participa da transação da aplicação? (ADR-0005)
  * Requer: docker compose -f docker/docker-compose.yml up -d postgres
  */
-const CONNECTION = process.env['SPIKE_DATABASE_URL'] ?? 'postgres://fiscal_owner:dev-only-password@127.0.0.1:54329/orbita_nfe';
+const CONNECTION = process.env['SPIKE_DATABASE_URL'] ?? 'postgres://fiscal_owner:dev-only-password@127.0.0.1:15432/orbita_nfe';
 const SCHEMA = `pgboss_spike_${randomUUID().slice(0, 8)}`;
 const APP_TABLE = `${SCHEMA}_documents`;
 const SUBMIT = 'nfse.submit';

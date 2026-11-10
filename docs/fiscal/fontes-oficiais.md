@@ -14,7 +14,8 @@ hash do arquivo** quando houver download.
 | CNPJ alfanumérico | IN RFB nº 2.229/2024 + NT DF-e correspondente | a consultar |
 | NFC-e da UF de operação (contingência, QR Code, CSC) | Portal da SEFAZ da UF | a consultar |
 | Prazo de guarda de documentos | CTN (decadência/prescrição) + orientação do contador | a confirmar |
-| ICP-Brasil (cadeia de certificados) | ITI — repositório de ACs | a consultar |
+| ICP-Brasil (cadeia de certificados) | ITI — repositório de ACs | **bundle de ACs raiz a carregar** (runbook kek-certificados) |
+| ICP-Brasil (campos do certificado de PJ) | ITI — DOC-ICP-04 e DOC-ICP-04.01 (atribuição de OID) | consultado em 2026-11-10 (CERT-001) |
 
 ## Registro de consultas
 | Data | Fonte | Versão/documento | Hash | Usado em |
@@ -30,3 +31,4 @@ hash do arquivo** quando houver download.
 
 > Nesta Fase 0 nenhuma regra fiscal foi implementada. Afirmações fiscais nos documentos
 > de arquitetura estão marcadas como "a confirmar" quando dependem de verificação.
+| 2026-11-10 | ITI — DOC-ICP-04.01 (atribuição de OID na ICP-Brasil) e DOC-ICP-04 (requisitos dos certificados), alteração pela Resolução CG ICP-Brasil nº 196/2021 | DOC-ICP-04.01 v3.x/v4.0 (repositório ITI) | — | CERT-001 (OID 2.16.76.1.3.3 = CNPJ do titular, 14 posições) — **baixar a versão vigente e registrar o hash** |

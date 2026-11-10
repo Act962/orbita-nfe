@@ -1,6 +1,6 @@
 # Acompanhamento do projeto
 
-Última atualização: 2026-11-09
+Última atualização: 2026-11-10
 
 ## Status geral
 **Fase 1 — Fundação em andamento** (iniciada em 2026-11-09 após aprovação da arquitetura consolidada e do ADR-0023).
@@ -58,6 +58,36 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - [x] "tenant" trocado por **empresa/company** em API (`/v1/companies`, `X-Company-Id`, escopos `companies:*`, códigos `COMPANY_*`), código (módulo `company`), banco (`companies`, `company_id`, `app_current_company()`), testes, CLI e documentação.
 - [x] Migrations reescritas antes do primeiro deploy: `0000_initial_schema` + `0001_security_roles_rls`.
 
+### Análise da Focus NFe como referência — concluída (2026-11-09)
+- [x] Documentação pública lida e comparada ([doc 16](architecture/16-referencia-focus-nfe.md)): 15 aprimoramentos (A1–A15) distribuídos no roadmap; ADR-0026 **aceito** em 2026-11-09.
+- Pontos em que o nosso desenho já é mais rigoroso foram mantidos (UNKNOWN, Idempotency-Key, webhooks assinados, credencial por aplicação).
+- Prazos e tamanhos fiscais vistos na Focus ficaram na lista "a confirmar em fonte oficial".
+
+### Análise da NFE.io como referência — concluída (2026-11-10)
+- [x] Documentação pública lida e comparada ([doc 17](architecture/17-referencia-nfe-io.md)): 10 aprimoramentos (B1–B10) distribuídos no roadmap; [ADR-0027](adr/0027-convencoes-cadastro-fiscal-referencia-nfe-io.md) **aceito** em 2026-11-10.
+- Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
+- EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
+
+### Certificate Vault e Audit log encadeado — concluído (2026-11-10, semana 5)
+- [x] **Audit** (`src/modules/audit`, migration 0003):
+  - uma cadeia por empresa e uma da plataforma, com `hash = SHA-256(prev ‖ JSON canônico)`, gravadas na mesma transação da mudança;
+  - append-only por trigger para todos os papéis, e o trigger de inserção confere o encadeamento com a cabeça;
+  - a aplicação só faz INSERT; o verificador `npm run audit -- verify` detecta alteração, remoção e corte do fim;
+  - empresas, estabelecimentos, séries, concessões, certificados, aplicações e credenciais são auditados.
+- [x] **Certificate Vault** (`src/modules/certificates`):
+  - envelope com DEK AES-256-GCM e KEK RSA-OAEP 4096, AAD por empresa e certificado; a API só tem a KEK pública e não sobe com a privada;
+  - upload 202 `PENDING_VALIDATION`, listagem, consulta e revogação com destruição criptográfica;
+  - validação no papel do worker-fiscal pela regra [CERT-001](fiscal/regras/CERT-001.md): CNPJ pelo OID 2.16.76.1.3.3 do DOC-ICP-04, cadeia, validade e keyUsage;
+  - troca com sobreposição; `withCertificate` entrega um KeyObject.
+- [x] Banco: grants por coluna (a API não lê o envelope; o worker-general lê só id, vencimento e status) e trigger `certificates_guard` (transições e imutabilidade do conteúdo cifrado, inclusive para o dono).
+- [x] Escopo `certificates:read`. A CLI do operador registra o operador (`--operator`) na auditoria. Novas CLIs: `npm run certificates -- validate`, `npm run audit -- verify`.
+- [x] Testes:
+  - unitários: envelope (AAD, adulteração, rotação), PKCS#12 com PKI ICP de teste, cadeia, regra CERT-001, JSON canônico e verificador;
+  - integração: fluxo API → worker, rejeições, grants, triggers, matriz de isolamento com as 4 rotas novas, canário de logs e adulteração da trilha detectada.
+  - Total: **283 testes**.
+- [x] Teste de fumaça no ambiente local: upload → validação → `ACTIVE` → cadeia íntegra, e a senha não aparece no log do servidor.
+- [x] Documentação: CERT-001, implementação nos ADR-0009 e 0012, docs 09, 11 e 13, runbook [kek-certificados](runbooks/kek-certificados.md), fontes oficiais e riscos R-28 e R-29.
+
 ### Atividades permanentes (valem para todo endpoint novo)
 - [ ] Toda rota declara schemas Zod para body/params/querystring/headers **e** para cada status de resposta, inclusive erros (`ProblemSchema`).
 - [ ] Todo erro esperado é um `ApplicationError` com `code` estável registrado no [catálogo](architecture/11-api.md#catálogo-de-códigos-de-erro) e coberto por teste.
@@ -70,8 +100,9 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 1. ~~Spikes obrigatórios~~ ✔
 2. ~~Drizzle + migrations + papéis de banco + RLS + meta-teste de schema + Testcontainers~~ ✔
 3. ~~IAM, Company, Fiscal Settings, matriz de isolamento da API~~ ✔
-4. Certificate Vault, Audit log, fila/outbox/write-ahead, webhooks, endpoints `ops`.
-5. Deploy no Coolify, backup WAL, runbooks.
+4. ~~Certificate Vault, Audit log~~ ✔
+5. Semana 6: fila/outbox/write-ahead, disparo da validação de certificado pela fila, webhooks (catálogo de eventos, filtros, calendário de retentativas), rate limit por credencial, endpoints `ops`.
+6. Semana 7: deploy no Coolify, backup WAL, âncora externa diária da cadeia de auditoria, habilitação de produção por estabelecimento, OpenAPI estável + `llms.txt`, changelog, `dryRun`.
 
 ### Versões adotadas
 Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0, pino 10.4, Vitest 5.1, ESLint 10, decimal.js 10.6 (fixadas no `package-lock.json`).
@@ -97,12 +128,16 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-09 | VPS Hostinger + Coolify; Redis adiado; S3 externo | 0020, 0010 |
 | 2026-11-09 | NFC-e Piauí: motor central primeiro, contingência local NERP/Tauri preparada | 0019 |
 | 2026-11-09 | Vocabulário único "empresa" (company) no lugar de "tenant" | 0025 |
+| 2026-11-09 | Convenções de API inspiradas na Focus NFe (referência externa, 201×202, dryRun, rate limit, hint) | 0026 |
+| 2026-11-10 | Cadastro fiscal, certificados e documentação inspirados na NFE.io (habilitação de produção, inscrições, contingência configurável) | 0027 |
 
 ## Pendente de decisão do responsável
 1. ~~Aprovação final da arquitetura consolidada~~ — aprovada em 2026-11-09.
 2. Provedor S3 (recomendado Backblaze B2; alternativa AWS S3 sa-east-1) e parecer LGPD se fora do Brasil.
 3. CNPJ real + certificado A1 para a produção restrita da NFS-e (dados de nota fictícios).
 4. Contato com a SEMF Teresina para o manual do webservice municipal.
+5. ~~Aprovar o [ADR-0026](adr/0026-convencoes-api-referencia-mercado.md)~~ — aprovado em 2026-11-09.
+6. ~~Aprovar o [ADR-0027](adr/0027-convencoes-cadastro-fiscal-referencia-nfe-io.md) (cadastro fiscal, certificados e documentação inspirados na NFE.io)~~ — aprovado em 2026-11-10.
 
 ## Riscos ativos principais
 R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente. Ver [riscos.md](riscos.md).
@@ -114,7 +149,15 @@ R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS �
 | Vulnerabilidade moderada `minimatch` (cadeia do ESLint, só em desenvolvimento) | — | Atualizar quando o ESLint publicar a correção; o CI audita só dependências de produção |
 | Faixas reservadas de série NF-e/NFC-e não validadas; SERIES-002 provisória | Fontes secundárias conflitantes (R-26) | Conferir MOC/XSD oficiais antes das Fases 2a e 3 |
 | Teste baseado em propriedades entre 3 empresas (docs/14 §B4, teste 10) | Ainda não escrito | Junto com o primeiro documento fiscal (Fase 2a) |
-| Porta do PostgreSQL local alterada para 54329 | Evitar conflito com outro PostgreSQL na máquina de desenvolvimento | Configurável por `POSTGRES_PORT` |
+| Bundle de ACs raiz ICP-Brasil (ITI) não carregado | Só a PKI fictícia de teste existe (R-29) | Antes da produção restrita (Fase 2a), com versão e hash em fontes-oficiais |
+| Sem consulta de revogação (LCR/OCSP) na validação de certificado | Fora do escopo da semana 5 (R-29) | Fase 2a |
+| `withCertificate` sem cache com TTL | O uso real (assinatura/mTLS) chega na Fase 2a | Junto com a assinatura XML |
+| Comando de re-embrulho das DEKs (rotação da KEK) | O banco e o opener já aceitam; falta o comando | Antes da primeira rotação (runbook kek-certificados §3) |
+| Validação de certificado disparada por CLI (`npm run certificates -- validate`) | A fila ainda não existe | Semana 6 (outbox) |
+| Âncora externa da cabeça da cadeia de auditoria | Depende do bucket S3 com Object Lock | Semana 7 |
+| Escrita da trilha serializada por empresa (trava da cabeça) | Simplicidade e ordem total; volume atual baixo | Reavaliar com carga real de emissão |
+| `scripts/dev-test-certificate.ts` usa a PKI de teste | Teste de fumaça local | Permanente (somente desenvolvimento) |
+| Porta do PostgreSQL local alterada para 15432 | Evitar conflito com outro PostgreSQL (5432) e com as faixas que o Windows/Hyper-V reserva na faixa dinâmica (a 54329 foi reservada após reinício) | Configurável por `POSTGRES_PORT` |
 
 ## Evidências de homologação
 Nenhuma ainda.

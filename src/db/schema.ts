@@ -5,3 +5,5 @@
 export * from '../modules/company/infrastructure/persistence/schema.js';
 export * from '../modules/iam/infrastructure/persistence/schema.js';
 export * from '../modules/fiscal-settings/infrastructure/persistence/schema.js';
+export * from '../modules/audit/infrastructure/persistence/schema.js';
+export * from '../modules/certificates/infrastructure/persistence/schema.js';

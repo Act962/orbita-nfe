@@ -1,4 +1,5 @@
 import { and, eq, gt, isNull, or, sql } from 'drizzle-orm';
+import type { AuditTrail, PlatformAuditTrail } from '../../../../shared/application/audit.js';
 import { ConflictError } from '../../../../shared/application/errors.js';
 import { withDatabaseErrors } from '../../../../shared/infrastructure/database/database-errors.js';
 import type { Database, CompanyTransactions, Transaction } from '../../../../shared/infrastructure/database/database.js';
@@ -11,6 +12,8 @@ import type {
   CompanyAccess,
   CompanyAccessLookup,
   CompanyGrantWriter,
+  CompanyAuditWrite,
+  PlatformAuditWrite,
 } from '../../application/ports.js';
 import { clientApplications, credentials, companyGrants } from './schema.js';
 
@@ -77,17 +80,29 @@ export function companyGrantWriter(tx: Transaction): CompanyGrantWriter {
   };
 }
 
+/** Fábricas das trilhas de auditoria ligadas a uma transação (módulo audit, via composition root). */
+export interface AdminAuditTrails {
+  readonly platform: (tx: Transaction) => PlatformAuditTrail;
+  readonly company: (tx: Transaction) => AuditTrail;
+}
+
 /** Operações do operador. Conexão do papel fiscal_admin (nunca a da API). */
 export class DrizzleIamAdminStore implements IamAdminStore {
   constructor(
     private readonly db: Database,
     private readonly transactions: CompanyTransactions,
+    private readonly audit: AdminAuditTrails,
   ) {}
 
-  async createClientApplication(id: string, name: string): Promise<void> {
-    await withDatabaseErrors(() => this.db.insert(clientApplications).values({ id, name }), {
-      uq_client_applications_name: () => new ConflictError('CLIENT_APPLICATION_ALREADY_EXISTS', 'Já existe uma aplicação cliente com este nome.'),
-    });
+  async createClientApplication(id: string, name: string, audit: PlatformAuditWrite): Promise<void> {
+    await withDatabaseErrors(
+      () =>
+        this.db.transaction(async (tx) => {
+          await tx.insert(clientApplications).values({ id, name });
+          await this.audit.platform(tx).record(audit.context, audit.record);
+        }),
+      { uq_client_applications_name: () => new ConflictError('CLIENT_APPLICATION_ALREADY_EXISTS', 'Já existe uma aplicação cliente com este nome.') },
+    );
   }
 
   async clientApplicationExists(id: string): Promise<boolean> {
@@ -97,48 +112,58 @@ export class DrizzleIamAdminStore implements IamAdminStore {
     return rows.length > 0;
   }
 
-  async insertCredential(credential: NewCredential): Promise<void> {
+  async insertCredential(credential: NewCredential, audit: PlatformAuditWrite): Promise<void> {
     await withDatabaseErrors(() =>
-      this.db.insert(credentials).values({
-        id: credential.id,
-        clientApplicationId: credential.clientApplicationId,
-        keyId: credential.keyId,
-        secretHash: Buffer.from(credential.secretHash),
-        environment: credential.environment,
-        scopes: [...credential.scopes],
-        expiresAt: credential.expiresAt ?? null,
+      this.db.transaction(async (tx) => {
+        await tx.insert(credentials).values({
+          id: credential.id,
+          clientApplicationId: credential.clientApplicationId,
+          keyId: credential.keyId,
+          secretHash: Buffer.from(credential.secretHash),
+          environment: credential.environment,
+          scopes: [...credential.scopes],
+          expiresAt: credential.expiresAt ?? null,
+        });
+        await this.audit.platform(tx).record(audit.context, audit.record);
       }),
     );
   }
 
-  async revokeCredential(keyId: string): Promise<boolean> {
-    const rows = await withDatabaseErrors(() =>
-      this.db
-        .update(credentials)
-        .set({ status: 'REVOKED', revokedAt: sql`now()` })
-        .where(and(eq(credentials.keyId, keyId), eq(credentials.status, 'ACTIVE')))
-        .returning({ id: credentials.id }),
+  async revokeCredential(keyId: string, audit: PlatformAuditWrite): Promise<boolean> {
+    return withDatabaseErrors(() =>
+      this.db.transaction(async (tx) => {
+        const rows = await tx
+          .update(credentials)
+          .set({ status: 'REVOKED', revokedAt: sql`now()` })
+          .where(and(eq(credentials.keyId, keyId), eq(credentials.status, 'ACTIVE')))
+          .returning({ id: credentials.id });
+        if (rows.length === 0) return false;
+        await this.audit.platform(tx).record(audit.context, audit.record);
+        return true;
+      }),
     );
-    return rows.length > 0;
   }
 
-  async grantCompany(clientApplicationId: string, companyId: string): Promise<boolean> {
+  async grantCompany(clientApplicationId: string, companyId: string, audit: CompanyAuditWrite): Promise<boolean> {
     return this.transactions.run(companyId, async (tx) => {
       const company = await tx.execute(sql`select 1 from companies where id = app_current_company()`);
       if (company.rows.length === 0) return false;
       await companyGrantWriter(tx).grant(companyId, clientApplicationId);
+      await this.audit.company(tx).record(audit.context, audit.record);
       return true;
     });
   }
 
-  async revokeCompanyGrant(clientApplicationId: string, companyId: string): Promise<boolean> {
+  async revokeCompanyGrant(clientApplicationId: string, companyId: string, audit: CompanyAuditWrite): Promise<boolean> {
     return this.transactions.run(companyId, async (tx) => {
       const rows = await tx
         .update(companyGrants)
         .set({ status: 'REVOKED', updatedAt: sql`now()` })
         .where(and(eq(companyGrants.companyId, companyId), eq(companyGrants.clientApplicationId, clientApplicationId), eq(companyGrants.status, 'ACTIVE')))
         .returning({ companyId: companyGrants.companyId });
-      return rows.length > 0;
+      if (rows.length === 0) return false;
+      await this.audit.company(tx).record(audit.context, audit.record);
+      return true;
     });
   }
 }

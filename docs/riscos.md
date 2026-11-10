@@ -30,6 +30,8 @@ Escala: Impacto (A/M/B) × Probabilidade (A/M/B).
 | R-24 | **Novo leiaute da DPS (NT 009)**: segundo comunicado CGNFS-e de 20/10/2026 citado por terceiro, entra em produção em 01/12/2026 (anterior válido até 30/11/2026) | A | A | **confirmar no portal oficial**; implementar a Fase 2a já no leiaute novo; XSDs com hash; versionamento de leiaute por documento (ADR-0013) |
 | R-25 | Dependência de bibliotecas fiscais de terceiros com licença GPL ou práticas inseguras | A | M | ADR-0023: núcleo fiscal próprio, allowlist de licenças no CI |
 | R-26 | Limites de série/número confirmados só em fontes secundárias (SERIES-001: faixas reservadas 890–999 conflitantes; SERIES-002 provisória) | M | A | conferir XSD/MOC oficiais antes das Fases 2a e 3; regras marcadas como provisórias |
+| R-28 | Mudança dos OIDs do SubjectAltName dos certificados ICP-Brasil (fonte secundária cita eliminação de OIDs em 31/12/2028) quebraria a leitura do CNPJ do titular | M | B | **confirmar no DOC-ICP-04 vigente**; leitura do CNPJ isolada em `extractIcpBrasilCnpj` com testes |
+| R-29 | Bundle oficial de ACs raiz ICP-Brasil ainda não carregado; sem LCR/OCSP, certificado revogado pela AC continua aceito | A | M | carregar bundle do ITI com hash antes da produção restrita (Fase 2a); revogação por LCR/OCSP como item da Fase 2a |
 | R-27 | Pepper das API keys perdido ou vazado (perda invalida todas as chaves; vazamento + dump do banco permite ataque offline) | B | A | arquivo só nos containers que precisam; backup no cofre do Coolify; runbook credenciais-api.md |
 
 ## Dúvidas fiscais/técnicas abertas (precisam de documentação oficial)

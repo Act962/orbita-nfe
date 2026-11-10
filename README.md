@@ -14,7 +14,7 @@ Requisitos: Node.js 24, Docker.
 ```bash
 npm ci
 npm run check          # typecheck + lint + regras de camadas + testes (unitários + integração; requer Docker)
-npm run spikes         # spikes da Fase 1 (requer Docker e PostgreSQL local na porta 54329)
+npm run spikes         # spikes da Fase 1 (requer Docker e PostgreSQL local na porta 15432)
 npm run test:coverage
 docker compose -f docker/docker-compose.yml up -d   # PostgreSQL (com bootstrap de papéis) + S3 local
 cp .env.example .env && npm run db:migrate          # migrations com o dono das tabelas

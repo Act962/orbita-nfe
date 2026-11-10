@@ -25,3 +25,20 @@ PKCS#12 aberto em memória com node-forge, inclusive no formato legado (RC2/3DES
 
 ## Riscos residuais
 Quem administra a VPS/Coolify é a raiz de confiança até a adoção de KMS gerenciado. Mitigado por 2FA, acesso restrito e auditoria. Detalhes: [13-seguranca-certificados.md](../architecture/13-seguranca-certificados.md).
+
+## Implementação (2026-11-10)
+- Módulo `src/modules/certificates`. A API usa `CertificateService` + `RsaEnvelopeSealer`, só com a KEK pública. O worker-fiscal usa `CertificateVault` + `RsaEnvelopeOpener`, com a KEK privada.
+- Envelope v1: DEK de 256 bits por certificado. PFX e senha são cifrados separadamente com AES-256-GCM (IV de 96 bits, tag de 128 bits). A AAD é `orbita-nfe/certificate/v1|empresa|certificado|finalidade`. A DEK é embrulhada com RSA-OAEP-SHA256 e KEK RSA de 4096 bits. O `kek_id` é o SHA-256 do SPKI, nos 16 primeiros hexadecimais.
+- Configuração: a API exige `CERTIFICATE_KEK_PUBLIC_FILE` e **não sobe** com `CERTIFICATE_KEK_PRIVATE_FILE` configurada. O loader recusa chave privada no lugar da pública.
+- Banco (migration 0003):
+  - grants por coluna: a API insere o envelope e lê só metadados; o worker-general lê só id, vencimento e status;
+  - a revogação apaga `wrapped_dek` (destruição criptográfica);
+  - o trigger `certificates_guard` impõe as transições de status e a imutabilidade do conteúdo cifrado, inclusive para o dono das tabelas.
+- Validação conforme a regra [CERT-001](../fiscal/regras/CERT-001.md). O CNPJ do titular vem do OID 2.16.76.1.3.3 (DOC-ICP-04). A troca de certificado tem sobreposição: o anterior só vira `REPLACED` quando o novo é validado, na mesma transação.
+- Upload em JSON (`pfx` em base64 + `password`), e não em multipart: mantém validação Zod, limite de corpo por rota e documentação no Scalar. O corpo nunca é logado. Isso é garantido pelo `redact` + `sanitize` e pelo teste canário `test/integration/certificates.test.ts`.
+- Pendências registradas no ACOMPANHAMENTO:
+  - bundle oficial ICP-Brasil (ITI);
+  - LCR/OCSP;
+  - cache com TTL em `withCertificate`;
+  - comando de re-embrulho (rotação);
+  - disparo da validação pela fila (semana 6).

@@ -19,6 +19,8 @@
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "iam": "node --env-file-if-exists=.env --import tsx src/main/iam-admin-cli.ts",
+    "certificates": "node --env-file-if-exists=.env --import tsx src/main/certificates-cli.ts",
+    "audit": "node --env-file-if-exists=.env --import tsx src/main/audit-cli.ts",
     "dev:secrets": "node scripts/dev-secrets.mjs"
   },
   "license": "UNLICENSED",

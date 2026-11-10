@@ -1,5 +1,6 @@
 import type { FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import type { AuditContext } from '../../application/audit.js';
 import { InternalError } from '../../application/errors.js';
 import { ProblemSchema } from './problem.js';
 
@@ -58,4 +59,13 @@ export function companyIdOf(request: FastifyRequest): string {
   const companyId = callerOf(request).companyId;
   if (companyId === undefined) throw new InternalError('ROUTE_WITHOUT_COMPANY_CONTEXT');
   return companyId;
+}
+
+/** Ator e correlation id da requisição, para a trilha de auditoria. */
+export function auditContextOf(request: FastifyRequest): AuditContext {
+  const caller = callerOf(request);
+  return {
+    actor: { kind: 'CLIENT_APPLICATION', clientApplicationId: caller.clientApplicationId, credentialRef: caller.credentialRef },
+    correlationId: request.id,
+  };
 }

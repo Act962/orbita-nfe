@@ -15,6 +15,20 @@
       "when": 1794259606430,
       "tag": "0001_security_roles_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794311810610,
+      "tag": "0002_audit_certificates",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794311820104,
+      "tag": "0003_security_audit_certificates",
+      "breakpoints": true
     }
   ]
 }

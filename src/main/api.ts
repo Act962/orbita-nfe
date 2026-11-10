@@ -1,4 +1,5 @@
 import { createDatabase, databaseReadinessCheck } from '../shared/infrastructure/database/database.js';
+import { loadPublicKek } from '../modules/certificates/public.js';
 import { loadPepperFile } from '../modules/iam/public.js';
 import { createLogger } from '../shared/infrastructure/logging/logger.js';
 import { buildApp } from './app.js';
@@ -15,7 +16,11 @@ const database = createDatabase({
   applicationName: 'orbita-nfe-api',
 });
 
-const modules = composeApi({ db: database.db, apiKeyPepper: loadPepperFile(config.API_KEY_PEPPER_FILE) });
+const modules = composeApi({
+  db: database.db,
+  apiKeyPepper: loadPepperFile(config.API_KEY_PEPPER_FILE),
+  certificateKek: loadPublicKek(config.CERTIFICATE_KEK_PUBLIC_FILE),
+});
 
 const app = await buildApp({
   logger,

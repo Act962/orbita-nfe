@@ -1,3 +1,4 @@
+import type { AuditContext, AuditRecord, PlatformAuditAction } from '../../../shared/application/audit.js';
 import type { CredentialEnvironment } from '../domain/api-key-token.js';
 
 /** Credencial ativa, como lida para autenticação. Nunca contém o segredo, só o HMAC. */
@@ -44,17 +45,27 @@ export interface NewCredential {
   readonly expiresAt: Date | undefined;
 }
 
-/** Operações administrativas (CLI de operador, papel de banco fiscal_admin). */
+/** Registro de auditoria gravado na MESMA transação da operação (só se ela tiver efeito). */
+export interface PlatformAuditWrite {
+  readonly context: AuditContext;
+  readonly record: AuditRecord<PlatformAuditAction>;
+}
+export interface CompanyAuditWrite {
+  readonly context: AuditContext;
+  readonly record: AuditRecord;
+}
+
+/** Operações administrativas (CLI de operador, papel de banco fiscal_admin). Toda escrita é auditada. */
 export interface IamAdminStore {
-  createClientApplication(id: string, name: string): Promise<void>;
+  createClientApplication(id: string, name: string, audit: PlatformAuditWrite): Promise<void>;
   clientApplicationExists(id: string): Promise<boolean>;
-  insertCredential(credential: NewCredential): Promise<void>;
-  /** `false` se não havia credencial ativa com esse keyId. */
-  revokeCredential(keyId: string): Promise<boolean>;
+  insertCredential(credential: NewCredential, audit: PlatformAuditWrite): Promise<void>;
+  /** `false` se não havia credencial ativa com esse keyId (nada é auditado). */
+  revokeCredential(keyId: string, audit: PlatformAuditWrite): Promise<boolean>;
   /** Cria ou reativa a concessão. `false` se a empresa não existe. */
-  grantCompany(clientApplicationId: string, companyId: string): Promise<boolean>;
+  grantCompany(clientApplicationId: string, companyId: string, audit: CompanyAuditWrite): Promise<boolean>;
   /** `false` se não havia concessão ativa. */
-  revokeCompanyGrant(clientApplicationId: string, companyId: string): Promise<boolean>;
+  revokeCompanyGrant(clientApplicationId: string, companyId: string, audit: CompanyAuditWrite): Promise<boolean>;
 }
 
 /** Usada dentro da transação de criação de empresa (módulo company). */

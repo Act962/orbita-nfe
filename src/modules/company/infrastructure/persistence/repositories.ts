@@ -1,4 +1,5 @@
 import { asc, eq, sql } from 'drizzle-orm';
+import type { AuditTrail } from '../../../../shared/application/audit.js';
 import { ConflictError } from '../../../../shared/application/errors.js';
 import type { UnitOfWork } from '../../../../shared/application/unit-of-work.js';
 import type { ConstraintErrorMap } from '../../../../shared/infrastructure/database/database-errors.js';
@@ -58,10 +59,11 @@ export function establishmentRepository(tx: Transaction): EstablishmentRepositor
 export function companyUnitOfWork(
   transactions: CompanyTransactions,
   accessGrantsFor: (tx: Transaction) => AccessGrants,
+  auditFor: (tx: Transaction) => AuditTrail,
 ): UnitOfWork<CompanyRepositories> {
   return companyScopedUnitOfWork(
     transactions,
-    (tx) => ({ companies: companyRepository(tx), establishments: establishmentRepository(tx), accessGrants: accessGrantsFor(tx) }),
+    (tx) => ({ companies: companyRepository(tx), establishments: establishmentRepository(tx), accessGrants: accessGrantsFor(tx), audit: auditFor(tx) }),
     COMPANY_CONSTRAINTS,
   );
 }

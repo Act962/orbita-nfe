@@ -1,7 +1,9 @@
+import { generateKeyPairSync, type KeyObject } from 'node:crypto';
 import type { LightMyRequestResponse } from 'fastify';
 import { buildApp } from '../../../src/main/app.js';
 import { composeApi, composeIamAdmin, type ApiModules } from '../../../src/main/compose.js';
 import type { IamAdmin, Scope } from '../../../src/modules/iam/public.js';
+import type { AuditContext } from '../../../src/shared/application/audit.js';
 import { computeCnpjCheckDigits } from '../../../src/shared/domain/cnpj.js';
 import type { DatabaseHandle } from '../../../src/shared/infrastructure/database/database.js';
 import { createLogger } from '../../../src/shared/infrastructure/logging/logger.js';
@@ -12,10 +14,39 @@ import { connect } from './db.js';
 /** Pepper fixo, só para testes. */
 export const TEST_PEPPER = Buffer.from('test-only-pepper-0123456789abcdef-xyz');
 
+/** Operador fictício dos testes (as operações de operador são auditadas). */
+export const OPERATOR: AuditContext = { actor: { kind: 'OPERATOR', operator: 'teste-automatizado' }, correlationId: null };
+
+/** IamAdmin com o operador de teste já informado. */
+export interface TestAdmin {
+  createClientApplication(name: string): Promise<string>;
+  issueCredential(input: Parameters<IamAdmin['issueCredential']>[0]): ReturnType<IamAdmin['issueCredential']>;
+  revokeCredential(keyId: string): Promise<void>;
+  grantCompany(clientApplicationId: string, companyId: string): Promise<void>;
+  revokeCompanyGrant(clientApplicationId: string, companyId: string): Promise<void>;
+}
+
+export function withOperator(admin: IamAdmin): TestAdmin {
+  return {
+    createClientApplication: (name) => admin.createClientApplication(name, OPERATOR),
+    issueCredential: (input) => admin.issueCredential(input, OPERATOR),
+    revokeCredential: (keyId) => admin.revokeCredential(keyId, OPERATOR),
+    grantCompany: (app, company) => admin.grantCompany(app, company, OPERATOR),
+    revokeCompanyGrant: (app, company) => admin.revokeCompanyGrant(app, company, OPERATOR),
+  };
+}
+
+let testKek: { publicKey: KeyObject; privateKey: KeyObject } | undefined;
+/** KEK RSA 4096 de teste (gerada uma vez por arquivo de teste). */
+export function testCertificateKek(): { publicKey: KeyObject; privateKey: KeyObject } {
+  testKek ??= generateKeyPairSync('rsa', { modulusLength: 4096 });
+  return testKek;
+}
+
 export interface TestApi {
   readonly app: HttpApp;
   readonly modules: ApiModules;
-  readonly admin: IamAdmin;
+  readonly admin: TestAdmin;
   readonly api: DatabaseHandle;
   readonly adminDb: DatabaseHandle;
   readonly logs: ReturnType<typeof captureStream>;
@@ -27,7 +58,7 @@ export async function startTestApi(): Promise<TestApi> {
   const api = connect('api', { poolMax: 10 });
   const adminDb = connect('admin', { poolMax: 2 });
   const logs = captureStream();
-  const modules = composeApi({ db: api.db, apiKeyPepper: TEST_PEPPER });
+  const modules = composeApi({ db: api.db, apiKeyPepper: TEST_PEPPER, certificateKek: testCertificateKek().publicKey });
   const app = await buildApp({
     logger: createLogger({ level: 'trace', service: 'test', destination: logs.stream }),
     bodyLimit: 1024 * 1024,
@@ -35,7 +66,7 @@ export async function startTestApi(): Promise<TestApi> {
     apiDocs: { enabled: false, version: 'test' },
     registerRoutes: modules.registerRoutes,
   });
-  const admin = composeIamAdmin({ db: adminDb.db, apiKeyPepper: TEST_PEPPER });
+  const admin = withOperator(composeIamAdmin({ db: adminDb.db, apiKeyPepper: TEST_PEPPER }));
   return {
     app,
     modules,
@@ -70,7 +101,7 @@ export interface ClientApp {
   key(scopes: readonly Scope[], environment?: 'live' | 'test'): Promise<string>;
 }
 
-export async function createClientApp(admin: IamAdmin, prefix = 'app'): Promise<ClientApp> {
+export async function createClientApp(admin: TestAdmin, prefix = 'app'): Promise<ClientApp> {
   const id = await admin.createClientApplication(uniqueName(prefix));
   return {
     id,

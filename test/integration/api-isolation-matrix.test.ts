@@ -20,6 +20,7 @@ interface Party {
   readonly establishmentId: string;
   readonly establishmentCnpj: string;
   readonly seriesId: string;
+  readonly certificateId: string;
 }
 
 interface Ctx {
@@ -33,6 +34,9 @@ interface MatrixCase {
   /** Requisição de B, na empresa B, usando ids/dados de A: o que se espera. */
   readonly expectCrossCompany: (res: LightMyRequestResponse, ctx: Ctx) => void;
 }
+
+/** Conteúdo qualquer: a matriz testa isolamento, não a validação do certificado (que é do worker). */
+const DUMMY_PFX = Buffer.from('nao-e-um-pfx-de-verdade').toString('base64');
 
 const expectNotFound = (code: string) => (res: LightMyRequestResponse) => {
   expect(res.statusCode).toBe(404);
@@ -69,6 +73,13 @@ const CASES: Record<string, MatrixCase> = {
     expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),
   },
   'GET /v1/establishments/:establishmentId/document-series': { expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND') },
+  'POST /v1/establishments/:establishmentId/certificates': {
+    payload: () => ({ pfx: DUMMY_PFX, password: 'senha-de-teste' }),
+    expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),
+  },
+  'GET /v1/establishments/:establishmentId/certificates': { expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND') },
+  'GET /v1/establishments/:establishmentId/certificates/:certificateId': { expectCrossCompany: expectNotFound('CERTIFICATE_NOT_FOUND') },
+  'POST /v1/establishments/:establishmentId/certificates/:certificateId/revocation': { expectCrossCompany: expectNotFound('CERTIFICATE_NOT_FOUND') },
 };
 
 /** Rotas /v1 sem empresa, revisadas uma a uma. */
@@ -86,7 +97,7 @@ let t: TestApi;
 let ctx: Ctx;
 
 function fill(url: string, party: Party): string {
-  return url.replace(':establishmentId', party.establishmentId).replace(':seriesId', party.seriesId);
+  return url.replace(':establishmentId', party.establishmentId).replace(':seriesId', party.seriesId).replace(':certificateId', party.certificateId);
 }
 
 async function setupParty(prefix: string): Promise<Party> {
@@ -101,7 +112,21 @@ async function setupParty(prefix: string): Promise<Party> {
     headers: bearer(key, company.id),
     payload: { kind: 'NFCE', environment: 'HOMOLOGATION', series: '1' },
   });
-  return { key, companyId: company.id, root: company.root, establishmentId, establishmentCnpj, seriesId: series.json<{ id: string }>().id };
+  const certificate = await t.app.inject({
+    method: 'POST',
+    url: `/v1/establishments/${establishmentId}/certificates`,
+    headers: bearer(key, company.id),
+    payload: { pfx: DUMMY_PFX, password: 'senha-de-teste' },
+  });
+  return {
+    key,
+    companyId: company.id,
+    root: company.root,
+    establishmentId,
+    establishmentCnpj,
+    seriesId: series.json<{ id: string }>().id,
+    certificateId: certificate.json<{ id: string }>().id,
+  };
 }
 
 beforeAll(async () => {

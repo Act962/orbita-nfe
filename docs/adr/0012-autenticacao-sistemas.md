@@ -15,3 +15,4 @@ Simples para Orbita/NERP agora; caminho claro para o padrão de mercado.
 - Concessões em `company_grants` (RLS forçado), consultadas a cada requisição, sem cache.
 - Escrita de IAM só pelo papel `fiscal_admin`, via CLI; a API apenas lê credenciais.
 - Runbook: [credenciais-api.md](../runbooks/credenciais-api.md).
+- 2026-11-10: escopo `certificates:read` adicionado ao catálogo (listar e consultar metadados de certificados); `certificates:manage` o implica. Toda escrita do operador passa a ser auditada (cadeia da plataforma para aplicações e credenciais; cadeia da empresa para concessões).

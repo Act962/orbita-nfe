@@ -24,11 +24,12 @@ Por que separar `worker-general`: é ele que faz requisições para URLs de terc
 Grants no PostgreSQL:
 ```sql
 -- api: pode inserir certificado e ler apenas metadados
-GRANT INSERT ON certificates TO fiscal_api;
-GRANT SELECT (id, company_id, establishment_id, subject_cnpj, serial_number, issuer,
-              not_before, not_after, thumbprint_sha256, status, created_at) ON certificates TO fiscal_api;
--- worker-fiscal: lê tudo
-GRANT SELECT, UPDATE ON certificates TO fiscal_worker;
+-- (versão implementada: src/db/migrations/0003_security_audit_certificates.sql)
+GRANT INSERT (id, company_id, establishment_id, envelope_version, kek_id, wrapped_dek, pfx_sealed, password_sealed) ON certificates TO fiscal_api;
+GRANT SELECT (<somente metadados>) ON certificates TO fiscal_api;
+GRANT UPDATE (status, wrapped_dek, revoked_at, updated_at) ON certificates TO fiscal_api;  -- revogação
+-- worker-fiscal: lê tudo; grava só status e metadados da validação
+GRANT SELECT, UPDATE (status, rejection_reason, <metadados>, validated_at, replaced_at, updated_at) ON certificates TO fiscal_worker;
 -- worker-general: só metadados para alertas de vencimento
 GRANT SELECT (id, company_id, establishment_id, not_after, status) ON certificates TO fiscal_general;
 ```
@@ -59,16 +60,16 @@ flowchart LR
 
 ## 4. Ciclo de vida
 
-1. **Upload** (`POST /v1/establishments/{id}/certificates`, escopo `certificates:manage`, multipart, limite 50 KB, rate limit): a API cifra, grava com status `PENDING_VALIDATION` e enfileira validação. Corpo da requisição nunca é logado (rota marcada como sensível).
-2. **Validação** (worker-fiscal): abre o PKCS#12; confere par chave/certificado; cadeia até as ACs raiz ICP-Brasil (bundle oficial do ITI versionado em `resources/`); validade; CNPJ do titular (extensão ICP-Brasil do certificado de PJ — OID a confirmar no DOC-ICP-04) igual ao do estabelecimento ou mesma raiz de CNPJ quando a modalidade permitir; uso de chave adequado. Resultado: `ACTIVE` ou `REJECTED` com motivo (sem dados sensíveis).
-3. **Uso**: `CertificateVault.withCertificate(establishmentId, purpose, fn)`.
+1. **Upload** (`POST /v1/establishments/{id}/certificates`, escopo `certificates:manage`, JSON com `pfx` em base64 + `password`, PFX até 50 KB, limite de corpo próprio da rota; rate limit na semana 6): a API cifra, grava com status `PENDING_VALIDATION` e responde 202. O disparo automático da validação pela fila entra na semana 6; até lá, `npm run certificates -- validate`. O corpo da requisição nunca é logado (redact + sanitize + teste canário).
+2. **Validação** (worker-fiscal), regra [CERT-001](../fiscal/regras/CERT-001.md): abre o PKCS#12; confere o par chave/certificado; cadeia até as ACs raiz do bundle confiável (ICP-Brasil do ITI em produção, pendente de carga); validade; CNPJ do titular no otherName **2.16.76.1.3.3** (DOC-ICP-04) com a mesma raiz da empresa; `digitalSignature` no keyUsage. Resultado: `ACTIVE` ou `REJECTED` com motivo estável, sem dados sensíveis. Status exibido na API: `EXPIRING` (≤ 30 dias) e `EXPIRED` derivam de `ACTIVE`.
+3. **Uso**: `CertificateVault.withCertificate(companyId, establishmentId, fn)` (implementado sem cache; o cache com TTL entra com a assinatura na Fase 2a).
    - decifra, cria `crypto.createPrivateKey()` (KeyObject; evita a chave como string no heap JS), monta agente mTLS dedicado por certificado;
    - cache em memória no worker-fiscal com TTL de 10 min e limite de entradas; invalidado na substituição/revogação;
    - buffers intermediários zerados com `fill(0)` após uso. (Limitação honesta: o runtime JS não garante apagar todas as cópias internas; por isso o controle principal é **onde** a chave pode existir — só no worker-fiscal.)
    - cada uso gera registro de auditoria (certificado, finalidade, documento, correlation id) agregado por documento.
-4. **Substituição/renovação**: novo upload → validação → ativo; o anterior vira `REPLACED`. Documentos guardam o thumbprint do certificado usado.
+4. **Substituição/renovação**: novo upload → validação → ativo; o anterior vira `REPLACED` **na mesma transação** da ativação (sobreposição, ADR-0027: nunca há janela sem certificado). Documentos guardam o thumbprint do certificado usado.
 5. **Vencimento**: varredura diária; alertas e webhook `certificate.expiring` em 30/15/7/1 dias; com certificado vencido a emissão vira `FAILED` **antes** do envio, com mensagem clara.
-6. **Remoção**: soft delete + destruição criptográfica (apagar `wrapped_dek` torna o ciphertext inútil), auditada.
+6. **Revogação** (`POST .../certificates/{id}/revocation`): status `REVOKED` + destruição criptográfica (`wrapped_dek` apagada torna o ciphertext inútil), auditada e irreversível (o trigger impede reviver).
 
 ## 5. Senha do certificado
 - Cifrada com a mesma DEK (registro separado), **nunca** retornada por nenhuma API, nunca exibida, não editável isoladamente (troca = novo upload).

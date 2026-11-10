@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { HttpApp } from '../../../../shared/presentation/http/http-app.js';
 import { withIssueFields } from '../../../../shared/presentation/http/issue-fields.js';
 import { ProblemSchema, commonErrorResponses } from '../../../../shared/presentation/http/problem.js';
-import { authErrorResponses, companyIdOf, CompanyHeaders } from '../../../../shared/presentation/http/request-context.js';
+import { auditContextOf, authErrorResponses, companyIdOf, CompanyHeaders } from '../../../../shared/presentation/http/request-context.js';
 import type { FiscalSettingsService } from '../../application/fiscal-settings-service.js';
 import { DOCUMENT_KINDS, FISCAL_ENVIRONMENTS, type DocumentSeries } from '../../domain/document-series.js';
 
@@ -76,7 +76,7 @@ export function registerFiscalSettingsRoutes(app: HttpApp, service: FiscalSettin
     },
     async (request, reply) => {
       const series = await withIssueFields('body', () =>
-        service.createSeries(companyIdOf(request), request.params.establishmentId, request.body),
+        service.createSeries(companyIdOf(request), request.params.establishmentId, request.body, auditContextOf(request)),
       );
       return reply.status(201).send(seriesJson(series));
     },

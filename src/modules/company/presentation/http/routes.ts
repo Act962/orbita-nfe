@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { HttpApp } from '../../../../shared/presentation/http/http-app.js';
 import { withIssueFields } from '../../../../shared/presentation/http/issue-fields.js';
 import { ProblemSchema, commonErrorResponses } from '../../../../shared/presentation/http/problem.js';
-import { authErrorResponses, callerOf, companyIdOf, CompanyHeaders } from '../../../../shared/presentation/http/request-context.js';
+import { auditContextOf, authErrorResponses, companyIdOf, CompanyHeaders } from '../../../../shared/presentation/http/request-context.js';
 import type { CompanyService } from '../../application/company-service.js';
 import type { Establishment, Company } from '../../domain/company.js';
 
@@ -84,7 +84,7 @@ export function registerCompanyRoutes(app: HttpApp, service: CompanyService): vo
       },
     },
     async (request, reply) => {
-      const company = await withIssueFields('body', () => service.registerCompany(request.body, callerOf(request).clientApplicationId));
+      const company = await withIssueFields('body', () => service.registerCompany(request.body, auditContextOf(request)));
       return reply.status(201).header('location', '/v1/company').send(companyJson(company));
     },
   );
@@ -126,7 +126,7 @@ export function registerCompanyRoutes(app: HttpApp, service: CompanyService): vo
       },
     },
     async (request, reply) => {
-      const establishment = await withIssueFields('body', () => service.registerEstablishment(companyIdOf(request), request.body));
+      const establishment = await withIssueFields('body', () => service.registerEstablishment(companyIdOf(request), request.body, auditContextOf(request)));
       return reply.status(201).header('location', `/v1/establishments/${establishment.id}`).send(establishmentJson(establishment));
     },
   );

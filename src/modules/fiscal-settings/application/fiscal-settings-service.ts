@@ -1,3 +1,4 @@
+import type { AuditContext, AuditTrail } from '../../../shared/application/audit.js';
 import { BusinessRuleError, NotFoundError, ValidationFailedError } from '../../../shared/application/errors.js';
 import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-of-work.js';
 import {
@@ -28,6 +29,7 @@ export interface EstablishmentDirectory {
 export interface FiscalSettingsRepositories {
   readonly series: DocumentSeriesRepository;
   readonly establishments: EstablishmentDirectory;
+  readonly audit: AuditTrail;
 }
 
 const establishmentNotFound = (): NotFoundError => new NotFoundError('ESTABLISHMENT_NOT_FOUND', 'Estabelecimento não encontrado.');
@@ -56,12 +58,19 @@ export class FiscalSettingsService {
     companyId: string,
     establishmentId: string,
     input: { kind: DocumentKind; environment: FiscalEnvironment; series: string; nextNumber?: number | undefined },
+    context: AuditContext,
   ): Promise<DocumentSeries> {
     const draft = newDocumentSeries({ id: this.newId(), companyId, establishmentId, ...input });
     if (!draft.ok) throw new ValidationFailedError(draft.error);
     return this.uow.inCompany(companyId, async (r) => {
       if (!(await r.establishments.exists(establishmentId))) throw establishmentNotFound();
-      return r.series.insert(draft.value);
+      const series = await r.series.insert(draft.value);
+      await r.audit.record(context, {
+        action: 'document_series.created',
+        subject: { type: 'document_series', id: series.id },
+        details: { establishmentId, kind: series.kind, environment: series.environment, series: series.series, nextNumber: series.nextNumber },
+      });
+      return series;
     });
   }
 

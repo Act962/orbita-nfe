@@ -37,6 +37,7 @@ export async function registerApiDocs(app: HttpApp, options: ApiDocsOptions): Pr
       tags: [
         { name: 'Empresas', description: 'Empresas (raiz do CNPJ) e estabelecimentos (matriz e filiais).' },
         { name: 'Configurações fiscais', description: 'Séries e numeração por estabelecimento, modalidade e ambiente.' },
+        { name: 'Certificados', description: 'Certificados e-CNPJ A1 por estabelecimento. A API cifra na chegada e devolve só metadados; chave privada e senha nunca saem do cofre.' },
         { name: 'Operação', description: 'Saúde e prontidão do serviço.' },
       ],
       components: {

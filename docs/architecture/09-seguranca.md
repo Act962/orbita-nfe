@@ -43,3 +43,16 @@ Configuração do sistema: variáveis de ambiente injetadas por secret manager; 
 `audit_log` append-only com hash encadeado: criação/alteração de empresa, credenciais,
 certificados (upload, uso, substituição), emissão, cancelamento, ações manuais de operador
 (ex.: resolução forçada de `UNKNOWN`, que exige justificativa).
+
+Implementado em 2026-11-10 (módulo `audit`, migration 0003):
+- Uma cadeia por empresa (`audit_log`, RLS) e uma da plataforma (`platform_audit_log`) para aplicações e credenciais.
+- Cálculo do hash: `hash = SHA-256(prev_hash ‖ JSON canônico do registro)`. O registro hasheado inclui a empresa e a sequência.
+- Gravação na mesma transação da mudança.
+- Append-only por trigger para todos os papéis, inclusive o dono das tabelas.
+- O trigger de inserção recusa um registro que não continue a cabeça da cadeia.
+- A aplicação só tem INSERT. Ler e verificar a cadeia é tarefa do operador (`npm run audit -- verify`, runbook [kek-certificados](../runbooks/kek-certificados.md)).
+- Catálogo fechado de ações:
+  - empresa: `company.registered`, `establishment.registered`, `document_series.created`, `company_grant.granted`, `company_grant.revoked`, `certificate.uploaded`, `certificate.activated`, `certificate.rejected`, `certificate.replaced`, `certificate.revoked`;
+  - plataforma: `client_application.created`, `credential.issued`, `credential.revoked`.
+- Os detalhes aceitam só valores escalares. Chave com nome sensível é recusada.
+- Pendências: âncora externa diária da cabeça (semana 7) e uso do certificado por documento (Fase 2a).

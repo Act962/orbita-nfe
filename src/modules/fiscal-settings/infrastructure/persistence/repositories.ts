@@ -1,4 +1,5 @@
 import { and, asc, eq, lte, sql } from 'drizzle-orm';
+import type { AuditTrail } from '../../../../shared/application/audit.js';
 import { ConflictError, NotFoundError } from '../../../../shared/application/errors.js';
 import type { UnitOfWork } from '../../../../shared/application/unit-of-work.js';
 import type { ConstraintErrorMap } from '../../../../shared/infrastructure/database/database-errors.js';
@@ -68,10 +69,11 @@ export function documentSeriesRepository(tx: Transaction): DocumentSeriesReposit
 export function fiscalSettingsUnitOfWork(
   transactions: CompanyTransactions,
   establishmentsFor: (tx: Transaction) => EstablishmentDirectory,
+  auditFor: (tx: Transaction) => AuditTrail,
 ): UnitOfWork<FiscalSettingsRepositories> {
   return companyScopedUnitOfWork(
     transactions,
-    (tx) => ({ series: documentSeriesRepository(tx), establishments: establishmentsFor(tx) }),
+    (tx) => ({ series: documentSeriesRepository(tx), establishments: establishmentsFor(tx), audit: auditFor(tx) }),
     FISCAL_SETTINGS_CONSTRAINTS,
   );
 }

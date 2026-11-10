@@ -11,6 +11,7 @@ export const SCOPES = [
   'companies:manage',
   'fiscal-settings:read',
   'fiscal-settings:manage',
+  'certificates:read',
   'certificates:manage',
   'webhooks:manage',
   'nfse:issue',

@@ -1,6 +1,8 @@
+import { userInfo } from 'node:os';
 import { parseArgs } from 'node:util';
 import { z } from 'zod';
 import { loadPepperFile, SCOPES, type CredentialEnvironment } from '../modules/iam/public.js';
+import type { AuditContext } from '../shared/application/audit.js';
 import { ApplicationError } from '../shared/application/errors.js';
 import { createDatabase } from '../shared/infrastructure/database/database.js';
 import { composeIamAdmin } from './compose.js';
@@ -17,6 +19,8 @@ import { composeIamAdmin } from './compose.js';
  *   npm run iam -- revoke-key --key-id <16 hex>
  *   npm run iam -- grant --app <uuid> --company <uuid>
  *   npm run iam -- revoke-grant --app <uuid> --company <uuid>
+ *
+ * Toda escrita é auditada com o operador (`--operator`, padrão: usuário do sistema operacional).
  */
 const EnvSchema = z.object({
   ADMIN_DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\//, 'deve ser uma URL postgres://'),
@@ -29,6 +33,7 @@ const USAGE = `uso: iam <comando> [opções]
   revoke-key   --key-id <16 hex>
   grant        --app <uuid> --company <uuid>
   revoke-grant --app <uuid> --company <uuid>
+opção comum: --operator <nome> (registrado na auditoria; padrão: usuário do sistema)
 escopos: ${SCOPES.join(', ')}
 `;
 
@@ -56,6 +61,7 @@ async function main(argv: string[]): Promise<void> {
       'expires-days': { type: 'string' },
       'key-id': { type: 'string' },
       company: { type: 'string' },
+      operator: { type: 'string' },
     },
     strict: true,
   });
@@ -63,12 +69,16 @@ async function main(argv: string[]): Promise<void> {
   const env = EnvSchema.safeParse(process.env);
   if (!env.success) throw new UsageError(env.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
 
+  const operator = (values.operator ?? userInfo().username).trim();
+  if (operator === '') throw new UsageError('--operator vazio');
+  const context: AuditContext = { actor: { kind: 'OPERATOR', operator }, correlationId: null };
+
   const database = createDatabase({ url: env.data.ADMIN_DATABASE_URL, poolMax: 1, statementTimeoutMs: 10_000, applicationName: 'orbita-nfe-iam-cli' });
   const admin = composeIamAdmin({ db: database.db, apiKeyPepper: loadPepperFile(env.data.API_KEY_PEPPER_FILE) });
   try {
     switch (command) {
       case 'create-app':
-        out(`aplicação criada: ${await admin.createClientApplication(required(values, 'name'))}`);
+        out(`aplicação criada: ${await admin.createClientApplication(required(values, 'name'), context)}`);
         return;
       case 'issue-key': {
         const environment = required(values, 'env');
@@ -81,22 +91,22 @@ async function main(argv: string[]): Promise<void> {
           environment: environment satisfies CredentialEnvironment,
           scopes: required(values, 'scopes').split(',').map((s) => s.trim()).filter((s) => s !== ''),
           ...(expiresAt === undefined ? {} : { expiresAt }),
-        });
+        }, context);
         out(`credencial ${issued.id} (keyId ${issued.keyId})`);
         out('API key (exibida somente agora; guarde no cofre de segredos da aplicação):');
         out(issued.token);
         return;
       }
       case 'revoke-key':
-        await admin.revokeCredential(required(values, 'key-id'));
+        await admin.revokeCredential(required(values, 'key-id'), context);
         out('credencial revogada');
         return;
       case 'grant':
-        await admin.grantCompany(required(values, 'app'), required(values, 'company'));
+        await admin.grantCompany(required(values, 'app'), required(values, 'company'), context);
         out('concessão ativa');
         return;
       case 'revoke-grant':
-        await admin.revokeCompanyGrant(required(values, 'app'), required(values, 'company'));
+        await admin.revokeCompanyGrant(required(values, 'app'), required(values, 'company'), context);
         out('concessão revogada');
         return;
       default:

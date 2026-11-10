@@ -1,3 +1,4 @@
+import { clientApplicationOf, type AuditContext, type AuditTrail } from '../../../shared/application/audit.js';
 import { BusinessRuleError, InternalError, NotFoundError, ValidationFailedError } from '../../../shared/application/errors.js';
 import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-of-work.js';
 import { newEstablishment, newCompany, type Establishment, type NewEstablishment, type NewCompany, type Company } from '../domain/company.js';
@@ -25,6 +26,7 @@ export interface CompanyRepositories {
   readonly companies: CompanyRepository;
   readonly establishments: EstablishmentRepository;
   readonly accessGrants: AccessGrants;
+  readonly audit: AuditTrail;
 }
 
 export const establishmentNotFound = (): NotFoundError => new NotFoundError('ESTABLISHMENT_NOT_FOUND', 'Estabelecimento não encontrado.');
@@ -40,12 +42,20 @@ export class CompanyService {
    * Cria a empresa e concede a quem a criou o acesso a ela, atomicamente. O id é gerado aqui:
    * o cliente nunca escolhe o identificador da empresa.
    */
-  async registerCompany(input: { legalName: string; rootCnpj: string }, createdBy: string): Promise<Company> {
+  async registerCompany(input: { legalName: string; rootCnpj: string }, context: AuditContext): Promise<Company> {
+    const createdBy = clientApplicationOf(context);
+    if (createdBy === undefined) throw new InternalError('COMPANY_CREATOR_NOT_CLIENT_APPLICATION');
     const draft = newCompany({ id: this.newId(), ...input });
     if (!draft.ok) throw new ValidationFailedError(draft.error);
     return this.uow.inCompany(draft.value.id, async (r) => {
       const company = await r.companies.insert(draft.value);
       await r.accessGrants.grant(company.id, createdBy);
+      await r.audit.record(context, {
+        action: 'company.registered',
+        subject: { type: 'company', id: company.id },
+        details: { rootCnpj: company.rootCnpj, legalName: company.legalName },
+      });
+      await r.audit.record(context, { action: 'company_grant.granted', subject: { type: 'client_application', id: createdBy } });
       return company;
     });
   }
@@ -59,7 +69,11 @@ export class CompanyService {
     });
   }
 
-  async registerEstablishment(companyId: string, input: { cnpj: string; tradeName: string; municipalityCode: string }): Promise<Establishment> {
+  async registerEstablishment(
+    companyId: string,
+    input: { cnpj: string; tradeName: string; municipalityCode: string },
+    context: AuditContext,
+  ): Promise<Establishment> {
     return this.uow.inCompany(companyId, async (r) => {
       const company = await r.companies.current();
       if (company === undefined) throw new InternalError('COMPANY_CONTEXT_WITHOUT_COMPANY');
@@ -68,7 +82,13 @@ export class CompanyService {
         if (draft.error.kind === 'INVALID') throw new ValidationFailedError(draft.error.issues);
         throw new BusinessRuleError(draft.error.issue.code, draft.error.issue.message, [draft.error.issue]);
       }
-      return r.establishments.insert(draft.value);
+      const establishment = await r.establishments.insert(draft.value);
+      await r.audit.record(context, {
+        action: 'establishment.registered',
+        subject: { type: 'establishment', id: establishment.id },
+        details: { cnpj: establishment.cnpj, municipalityCode: establishment.municipalityCode },
+      });
+      return establishment;
     });
   }
 

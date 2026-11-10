@@ -11,7 +11,7 @@ services:
       # Senha apenas de desenvolvimento local; nunca reutilizar fora daqui.
       POSTGRES_PASSWORD: dev-only-password
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-54329}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-15432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
