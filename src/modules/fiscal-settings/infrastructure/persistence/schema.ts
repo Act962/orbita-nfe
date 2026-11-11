@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, check, index, pgTable, text, timestamp, unique, uuid, varchar } from 'drizzle-orm/pg-core';
+import { bigint, check, index, pgTable, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 
 /**
  * Séries de documentos (ADR-0008). A FK composta (company_id, establishment_id) →
@@ -31,5 +31,34 @@ export const documentSeries = pgTable(
     // next_number = max_number + 1 significa série esgotada.
     check('ck_document_series_numbers', sql`${t.maxNumber} between 1 and 999999999999999 and ${t.nextNumber} between 1 and ${t.maxNumber} + 1`),
     index('ix_document_series_company').on(t.companyId),
+  ],
+);
+
+/**
+ * Habilitação de produção por estabelecimento e modalidade (ADR-0027). No máximo uma ACTIVE por
+ * (estabelecimento, modalidade). Na migration de segurança: FK composta para establishments,
+ * RLS, grants por coluna e trigger que só permite ACTIVE → REVOKED (o resto é imutável).
+ */
+export const productionEnablements = pgTable(
+  'production_enablements',
+  {
+    id: uuid('id').primaryKey(),
+    companyId: uuid('company_id').notNull(),
+    establishmentId: uuid('establishment_id').notNull(),
+    kind: text('kind').notNull(),
+    status: text('status').notNull().default('ACTIVE'),
+    enabledAt: timestamp('enabled_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revocationReason: text('revocation_reason'),
+  },
+  (t) => [
+    uniqueIndex('uq_production_enablements_active').on(t.establishmentId, t.kind).where(sql`${t.status} = 'ACTIVE'`),
+    check('ck_production_enablements_kind', sql`${t.kind} in ('NFSE_DPS', 'NFE', 'NFCE')`),
+    check('ck_production_enablements_status', sql`${t.status} in ('ACTIVE', 'REVOKED')`),
+    check(
+      'ck_production_enablements_revocation',
+      sql`(${t.status} = 'ACTIVE' and ${t.revokedAt} is null and ${t.revocationReason} is null) or (${t.status} = 'REVOKED' and ${t.revokedAt} is not null and length(${t.revocationReason}) between 1 and 300)`,
+    ),
+    index('ix_production_enablements_company').on(t.companyId),
   ],
 );

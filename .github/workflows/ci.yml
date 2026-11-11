@@ -64,5 +64,49 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Build da imagem
+      - name: Build da imagem da aplicação
         run: docker build -f docker/Dockerfile -t orbita-nfe:${{ github.sha }} .
+      - name: Build da imagem do banco (confere o checksum do WAL-G)
+        run: docker build -f docker/postgres/Dockerfile -t orbita-nfe-postgres:${{ github.sha }} .
+      - name: Compose de produção válido
+        env:
+          IMAGE_TAG: sha-ci
+          POSTGRES_IMAGE_TAG: sha-ci
+          WALG_S3_PREFIX: s3://ci/ci
+          BACKUP_S3_ENDPOINT: https://s3.invalid
+          MIGRATION_DATABASE_URL: postgres://ci
+          API_DATABASE_URL: postgres://ci
+          WORKER_DATABASE_URL: postgres://ci
+          GENERAL_DATABASE_URL: postgres://ci
+          AUDIT_ANCHOR_S3_ENDPOINT: https://s3.invalid
+          AUDIT_ANCHOR_S3_BUCKET: ci-anchors
+        run: docker compose -f docker/coolify/docker-compose.yml config --quiet
+
+  # Publica as imagens no GHCR só em push na main que passou em tudo (ADR-0020: o Coolify só faz
+  # deploy de imagem pronta, fixada por tag imutável sha-<commit>).
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [check, docker]
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login no GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build e push das imagens
+        run: |
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          tag="sha-${GITHUB_SHA::12}"
+          for image in orbita-nfe:docker/Dockerfile orbita-nfe-postgres:docker/postgres/Dockerfile; do
+            name="ghcr.io/${owner}/${image%%:*}"
+            docker build -f "${image#*:}" \
+              --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+              --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+              -t "${name}:${tag}" -t "${name}:main" .
+            docker push "${name}:${tag}"
+            docker push "${name}:main"
+          done
+          echo "Imagens publicadas com a tag ${tag}" >> "$GITHUB_STEP_SUMMARY"

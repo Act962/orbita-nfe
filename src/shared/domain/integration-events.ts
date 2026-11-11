@@ -6,6 +6,8 @@ export const INTEGRATION_EVENT_TYPES = [
   'certificate.activated',
   'certificate.rejected',
   'certificate.revoked',
+  'certificate.expiring',
+  'certificate.expired',
   /** Evento de teste disparado pelo cliente para conferir a assinatura de webhook. */
   'webhook.test',
 ] as const;

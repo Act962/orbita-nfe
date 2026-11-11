@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { anchorConfigState, anchorEnvShape } from './anchor-config.js';
 
 /**
  * Configuração dos workers (fail fast). Cada worker recebe SÓ os segredos do seu papel
@@ -42,6 +43,7 @@ const GeneralWorkerSchema = z
     GENERAL_WEBHOOK_SECRET_KEY_PRIVATE_FILE: z.string().min(1),
     WEBHOOK_ALLOW_PRIVATE_TARGETS: booleanFromEnv.default(false),
     WEBHOOK_TIMEOUT_MS: z.coerce.number().int().min(1000).max(30_000).default(10_000),
+    ...anchorEnvShape,
     CERTIFICATE_KEK_PRIVATE_FILE: z.undefined({ error: 'a KEK de certificados não pode ser configurada no worker-general' }).optional(),
     WORKER_CERTIFICATE_KEK_PRIVATE_FILE: z.string().optional(),
   })
@@ -52,6 +54,14 @@ const GeneralWorkerSchema = z
   .refine(notInProduction('WORKER_CERTIFICATE_KEK_PRIVATE_FILE'), {
     path: ['WORKER_CERTIFICATE_KEK_PRIVATE_FILE'],
     message: 'a KEK de certificados não pode estar no container do worker-general',
+  })
+  .refine((c) => anchorConfigState(c) !== 'partial', {
+    path: ['AUDIT_ANCHOR_S3_ENDPOINT'],
+    message: 'âncora de auditoria configurada pela metade: informe endpoint, bucket e os dois arquivos de credencial',
+  })
+  .refine((c) => !(c.NODE_ENV === 'production' && anchorConfigState(c) !== 'configured'), {
+    path: ['AUDIT_ANCHOR_S3_BUCKET'],
+    message: 'obrigatória em produção: a âncora externa da auditoria (ADR-0031)',
   });
 
 export type FiscalWorkerConfig = z.infer<typeof FiscalWorkerSchema>;

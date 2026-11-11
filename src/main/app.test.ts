@@ -305,3 +305,88 @@ describe('API — rotas protegidas (padrão fechado)', () => {
     expect(app.routeCatalog.filter((r) => r.url === '/v1/x').map((r) => r.method)).toEqual(['GET', 'HEAD']);
   });
 });
+
+describe('Documentação para agentes (ADR-0027 item 8)', () => {
+  it('/openapi.json é o mesmo contrato de /docs/openapi.json', async () => {
+    const { app } = await setup({ docs: true });
+    const stable = await app.inject({ method: 'GET', url: '/openapi.json' });
+    expect(stable.statusCode).toBe(200);
+    const docs = await app.inject({ method: 'GET', url: '/docs/openapi.json' });
+    expect(stable.json()).toEqual(docs.json());
+    expect(Object.keys(stable.json<{ paths: object }>().paths)).not.toContain('/llms.txt');
+  });
+
+  it('/llms.txt lista o contrato e os guias; todo link de guia responde Markdown', async () => {
+    const { app } = await setup({ docs: true });
+    const index = await app.inject({ method: 'GET', url: '/llms.txt' });
+    expect(index.statusCode).toBe(200);
+    expect(index.headers['content-type']).toContain('text/markdown');
+    expect(index.body).toMatch(/^# Motor Fiscal/);
+    const links = [...index.body.matchAll(/\]\((\/guides\/[^)]+)\)/g)].map((m) => m[1] ?? '');
+    expect(links.length).toBe(4);
+    for (const link of links) {
+      const page = await app.inject({ method: 'GET', url: link });
+      expect(page.statusCode, link).toBe(200);
+      expect(page.body, link).toMatch(/^---\r?\ntitle: /);
+    }
+  });
+
+  it('guia fora da lista fechada → 400 (sem leitura arbitrária de arquivo)', async () => {
+    const { app } = await setup({ docs: true });
+    for (const url of ['/guides/..%2F..%2Fpackage.json', '/guides/README.md', '/guides/changelog']) {
+      expect((await app.inject({ method: 'GET', url })).statusCode, url).toBe(400);
+    }
+  });
+
+  it('com a documentação desligada, /openapi.json e /llms.txt não existem', async () => {
+    const { app } = await setup({ docs: false });
+    expect((await app.inject({ method: 'GET', url: '/openapi.json' })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/llms.txt' })).statusCode).toBe(404);
+  });
+});
+
+describe('Descontinuação de rotas (ADR-0026 item 9)', () => {
+  const since = new Date('2027-01-01T00:00:00Z');
+  const deprecation = { since, sunset: new Date('2027-07-01T00:00:00Z'), link: '/guides/changelog.md' };
+
+  it('rota descontinuada responde com Deprecation, Sunset e Link, e o OpenAPI a marca', async () => {
+    const { app } = await setup({
+      docs: true,
+      routes: (a) => {
+        a.get('/legado', { config: { deprecation }, schema: { deprecated: true } }, () => ({ ok: true }));
+      },
+    });
+    const res = await app.inject({ method: 'GET', url: '/legado' });
+    expect(res.headers['deprecation']).toBe('@1798761600');
+    expect(res.headers['sunset']).toBe('Thu, 01 Jul 2027 00:00:00 GMT');
+    expect(res.headers['link']).toBe('</guides/changelog.md>; rel="deprecation"; type="text/markdown"');
+    const spec = (await app.inject({ method: 'GET', url: '/openapi.json' })).json<{ paths: Record<string, { get: { deprecated?: boolean } }> }>();
+    expect(spec.paths['/legado']?.get.deprecated).toBe(true);
+    expect((await app.inject({ method: 'GET', url: '/health/live' })).headers['deprecation']).toBeUndefined();
+  });
+
+  it('declaração incompleta ou prazo curto impedem a subida', async () => {
+    await expect(
+      setup({
+        routes: (a) => {
+          a.get('/x', { schema: { deprecated: true } }, () => ({}));
+        },
+      }),
+    ).rejects.toThrow(/Sunset/);
+    await expect(
+      setup({
+        routes: (a) => {
+          a.get('/x', { config: { deprecation } }, () => ({}));
+        },
+      }),
+    ).rejects.toThrow(/schema.deprecated/);
+    const short = { ...deprecation, sunset: new Date('2027-02-01T00:00:00Z') };
+    await expect(
+      setup({
+        routes: (a) => {
+          a.get('/x', { config: { deprecation: short }, schema: { deprecated: true } }, () => ({}));
+        },
+      }),
+    ).rejects.toThrow(/180 dias/);
+  });
+});

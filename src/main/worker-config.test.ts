@@ -49,6 +49,19 @@ describe('separação de segredos por processo (ADR-0021)', () => {
     expect(() => loadGeneralWorkerConfig({ ...GENERAL, NODE_ENV: 'production', WEBHOOK_ALLOW_PRIVATE_TARGETS: 'true' })).toThrow(/WEBHOOK_ALLOW_PRIVATE_TARGETS/);
   });
 
+  it('âncora da auditoria (ADR-0031): opcional fora de produção, obrigatória em produção, nunca pela metade', () => {
+    const anchor = {
+      AUDIT_ANCHOR_S3_ENDPOINT: 'https://s3.us-east-005.backblazeb2.com',
+      AUDIT_ANCHOR_S3_BUCKET: 'orbita-audit-anchors',
+      AUDIT_ANCHOR_S3_ACCESS_KEY_ID_FILE: '/run/secrets/anchor-key-id',
+      AUDIT_ANCHOR_S3_SECRET_ACCESS_KEY_FILE: '/run/secrets/anchor-secret',
+    };
+    expect(loadGeneralWorkerConfig(GENERAL).AUDIT_ANCHOR_RETENTION_DAYS).toBe(1830);
+    expect(() => loadGeneralWorkerConfig({ ...GENERAL, NODE_ENV: 'production' })).toThrow(/AUDIT_ANCHOR_S3_BUCKET/);
+    expect(() => loadGeneralWorkerConfig({ ...GENERAL, NODE_ENV: 'production', ...anchor })).not.toThrow();
+    expect(() => loadGeneralWorkerConfig({ ...GENERAL, AUDIT_ANCHOR_S3_BUCKET: 'so-o-bucket' })).toThrow(/pela metade/);
+  });
+
   it('rate limit com padrões e limites', () => {
     const config = loadConfig(API);
     expect(config).toMatchObject({ RATE_LIMIT_PER_MINUTE: 600, RATE_LIMIT_BURST: 120 });

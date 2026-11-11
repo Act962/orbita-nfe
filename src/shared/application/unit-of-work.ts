@@ -4,7 +4,15 @@
  * empresa definida no banco (RLS). Erros saem sempre como ApplicationError.
  */
 export interface UnitOfWork<R> {
-  inCompany<T>(companyId: string, work: (repositories: R) => Promise<T>): Promise<T>;
+  inCompany<T>(companyId: string, work: (repositories: R) => Promise<T>, options?: TransactionOptions): Promise<T>;
+}
+
+export interface TransactionOptions {
+  /**
+   * Ensaio (`dryRun`, ADR-0026): roda tudo, inclusive restrições do banco, triggers e
+   * auditoria, e DESFAZ a transação no fim. Nada é gravado, nenhum job ou evento sai.
+   */
+  readonly dryRun?: boolean;
 }
 
 /** Gerador de identificadores (UUID v7 na infraestrutura). */

@@ -2,6 +2,7 @@ import Fastify, { LogController, type FastifyBaseLogger } from 'fastify';
 import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from 'fastify-type-provider-zod';
 import { registerApiDocs } from '../shared/presentation/http/api-docs.js';
 import { CORRELATION_HEADER, correlationIdFrom } from '../shared/presentation/http/correlation-id.js';
+import { registerDeprecation } from '../shared/presentation/http/deprecation.js';
 import { registerErrorHandling } from '../shared/presentation/http/error-handler.js';
 import { registerHealthRoutes, type ReadinessCheck } from '../shared/presentation/http/health.js';
 import { assertAuthenticationRegistered, registerRouteCatalog } from '../shared/presentation/http/route-catalog.js';
@@ -41,6 +42,7 @@ export async function buildApp(deps: AppDependencies): Promise<HttpApp> {
   });
 
   registerErrorHandling(app);
+  registerDeprecation(app);
   await registerApiDocs(app, deps.apiDocs);
   registerRouteCatalog(app);
   registerHealthRoutes(app, deps.readinessChecks);

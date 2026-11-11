@@ -31,8 +31,11 @@ Fase atual: **Fase 1 — Fundação** (arquitetura aprovada em 2026-11-09; spike
 | — | [Runbook: aplicações, API keys e concessões](runbooks/credenciais-api.md) |
 | — | [Runbook: KEK dos certificados, ACs confiáveis e auditoria](runbooks/kek-certificados.md) |
 | — | [Runbook: filas, workers e webhooks](runbooks/filas-e-webhooks.md) |
-| — | Regras implementadas: [CNPJ-001](fiscal/regras/CNPJ-001.md), [COMPANY-001](fiscal/regras/COMPANY-001.md), [SERIES-001](fiscal/regras/SERIES-001.md), [SERIES-002](fiscal/regras/SERIES-002.md) (conferida no XSD oficial), [CERT-001](fiscal/regras/CERT-001.md) |
+| — | [Runbook: deploy na VPS com Coolify](runbooks/deploy-coolify.md) |
+| — | [Runbook: backup contínuo e restauração (WAL-G)](runbooks/backup-restauracao.md) |
+| — | Guias da API (servidos em `/guides/`): [guia rápido](api/guia-rapido.md), [webhooks](api/webhooks.md), [versionamento](api/versionamento.md), [changelog](api/changelog.md) |
+| — | Regras implementadas: [CNPJ-001](fiscal/regras/CNPJ-001.md), [COMPANY-001](fiscal/regras/COMPANY-001.md), [SERIES-001](fiscal/regras/SERIES-001.md), [SERIES-002](fiscal/regras/SERIES-002.md) (conferida no XSD oficial), [CERT-001](fiscal/regras/CERT-001.md), [PROD-001](fiscal/regras/PROD-001.md) (regra de cadastro) |
 | — | [Riscos e dúvidas abertas](riscos.md) |
 | — | [Roadmap](roadmap.md) |
-| — | [ADRs](adr/) (0001–0030) |
+| — | [ADRs](adr/) (0001–0031) |
 | — | [Acompanhamento do projeto](ACOMPANHAMENTO.md) |

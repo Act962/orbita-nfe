@@ -24,11 +24,14 @@
     "certificates": "node --env-file-if-exists=.env --import tsx src/main/certificates-cli.ts",
     "audit": "node --env-file-if-exists=.env --import tsx src/main/audit-cli.ts",
     "ops": "node --env-file-if-exists=.env --import tsx src/main/ops-cli.ts",
-    "dev:secrets": "node scripts/dev-secrets.mjs"
+    "dev:secrets": "node scripts/dev-secrets.mjs",
+    "dev:object-storage": "node --env-file-if-exists=.env scripts/dev-object-storage.mjs",
+    "drill:backup": "bash scripts/backup-drill.sh"
   },
   "license": "UNLICENSED",
   "type": "module",
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1157.0",
     "@fastify/swagger": "^9.9.3",
     "@scalar/fastify-api-reference": "^1.77.0",
     "@xmldom/xmldom": "^0.9.12",
@@ -57,6 +60,7 @@
     "fast-check": "^4.10.2",
     "pg-boss": "^12.38.1",
     "pino-pretty": "^13.2.0",
+    "testcontainers": "12.2.1",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.72.1",

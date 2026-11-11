@@ -31,6 +31,37 @@ export const QUEUES = {
     timeoutSeconds: 60,
     priority: 10,
   },
+  /**
+   * Aviso de vencimento de certificado (30/15/7/1 dia e vencimento). Agendado pelo worker-fiscal
+   * na ativação, executado pelo worker-general, que só vê vencimento e status (ADR-0021).
+   */
+  'certificates.expiry-notice': {
+    lane: 'general',
+    maxAttempts: 8,
+    backoff: { baseSeconds: 60, maxSeconds: 3600, jitter: 0.2 },
+    timeoutSeconds: 30,
+    priority: 3,
+  },
+  /**
+   * Âncora diária da cadeia de auditoria de uma empresa no bucket com Object Lock (ADR-0031).
+   * Cada execução agenda a do dia seguinte ANTES de gravar, para a corrente não parar se a
+   * gravação falhar até o job morrer.
+   */
+  'audit.anchor-company': {
+    lane: 'general',
+    maxAttempts: 24,
+    backoff: { baseSeconds: 300, maxSeconds: 3600, jitter: 0.2 },
+    timeoutSeconds: 60,
+    priority: 1,
+  },
+  /** Âncora diária da cadeia de auditoria da plataforma (operador). */
+  'audit.anchor-platform': {
+    lane: 'general',
+    maxAttempts: 24,
+    backoff: { baseSeconds: 300, maxSeconds: 3600, jitter: 0.2 },
+    timeoutSeconds: 60,
+    priority: 1,
+  },
   /** Distribui um evento do outbox às assinaturas de webhook interessadas. */
   'webhooks.fanout': {
     lane: 'general',

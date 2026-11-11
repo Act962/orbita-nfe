@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DryRunQuery, dryRunResponse, isDryRun } from '../../../../shared/presentation/http/dry-run.js';
 import type { HttpApp } from '../../../../shared/presentation/http/http-app.js';
 import { withIssueFields } from '../../../../shared/presentation/http/issue-fields.js';
 import { ProblemSchema, commonErrorResponses } from '../../../../shared/presentation/http/problem.js';
@@ -74,9 +75,11 @@ export function registerCompanyRoutes(app: HttpApp, service: CompanyService): vo
         description:
           'Cria a empresa (contribuinte identificado pela raiz do CNPJ) e concede à aplicação chamadora acesso a ela. O id é gerado pelo servidor.',
         security: [{ apiKey: [] }],
+        querystring: DryRunQuery,
         body: CreateCompanyBody,
         response: {
           201: CompanyResponse,
+          200: dryRunResponse(CompanyResponse, 'Company'),
           ...commonErrorResponses,
           ...authErrorResponses,
           409: ProblemSchema.describe('COMPANY_ALREADY_REGISTERED'),
@@ -84,7 +87,9 @@ export function registerCompanyRoutes(app: HttpApp, service: CompanyService): vo
       },
     },
     async (request, reply) => {
-      const company = await withIssueFields('body', () => service.registerCompany(request.body, auditContextOf(request)));
+      const dryRun = isDryRun(request.query);
+      const company = await withIssueFields('body', () => service.registerCompany(request.body, auditContextOf(request), { dryRun }));
+      if (dryRun) return reply.status(200).send({ dryRun: true, result: companyJson(company) });
       return reply.status(201).header('location', '/v1/company').send(companyJson(company));
     },
   );
@@ -115,9 +120,11 @@ export function registerCompanyRoutes(app: HttpApp, service: CompanyService): vo
         description: 'Cadastra matriz ou filial da empresa. O CNPJ precisa ter a mesma raiz da empresa (regra COMPANY-001).',
         security: [{ apiKey: [] }],
         headers: CompanyHeaders,
+        querystring: DryRunQuery,
         body: CreateEstablishmentBody,
         response: {
           201: EstablishmentResponse,
+          200: dryRunResponse(EstablishmentResponse, 'Establishment'),
           ...commonErrorResponses,
           ...authErrorResponses,
           409: ProblemSchema.describe('ESTABLISHMENT_ALREADY_REGISTERED'),
@@ -126,7 +133,11 @@ export function registerCompanyRoutes(app: HttpApp, service: CompanyService): vo
       },
     },
     async (request, reply) => {
-      const establishment = await withIssueFields('body', () => service.registerEstablishment(companyIdOf(request), request.body, auditContextOf(request)));
+      const dryRun = isDryRun(request.query);
+      const establishment = await withIssueFields('body', () =>
+        service.registerEstablishment(companyIdOf(request), request.body, auditContextOf(request), { dryRun }),
+      );
+      if (dryRun) return reply.status(200).send({ dryRun: true, result: establishmentJson(establishment) });
       return reply.status(201).header('location', `/v1/establishments/${establishment.id}`).send(establishmentJson(establishment));
     },
   );

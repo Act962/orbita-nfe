@@ -186,3 +186,29 @@ export class DrizzleAuditChainReader implements AuditChainReader {
     });
   }
 }
+
+/**
+ * Cabeças lidas pelo worker-general para a âncora (ADR-0031). Ele não tem privilégio nenhum nas
+ * tabelas de auditoria: lê só (sequência, hash) pelas funções SECURITY DEFINER da migration 0011.
+ * A cabeça da empresa vem da empresa do CONTEXTO da transação (RLS), nunca de um id informado.
+ */
+export function anchorHeadReader(
+  db: Database,
+  inCompany: <T>(companyId: string, work: (tx: Transaction) => Promise<T>) => Promise<T>,
+): { head(chain: AuditChainRef): Promise<AuditChainHead | undefined> } {
+  const toHead = (row: { last_sequence: string | number; last_hash: Buffer } | undefined): AuditChainHead | undefined =>
+    row === undefined ? undefined : { sequence: Number(row.last_sequence), hashHex: row.last_hash.toString('hex') };
+  return {
+    async head(chain) {
+      if (chain.kind === 'PLATFORM') {
+        const rows = await db.execute<{ last_sequence: string; last_hash: Buffer }>(sql`select last_sequence, last_hash from audit_platform_head_for_anchor()`);
+        return toHead(rows.rows[0]);
+      }
+      return inCompany(chain.companyId, async (tx) => {
+        const rows = await tx.execute<{ last_sequence: string; last_hash: Buffer }>(sql`select last_sequence, last_hash from audit_company_head_for_anchor()`);
+        return toHead(rows.rows[0]);
+      });
+    },
+  };
+}
+

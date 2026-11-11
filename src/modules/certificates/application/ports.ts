@@ -106,4 +106,6 @@ export interface CertificateWorkerRepositories {
   readonly company: CompanyLookup;
   readonly audit: AuditTrail;
   readonly events: EventOutbox;
+  /** Agenda os avisos de vencimento (lane general) na mesma transação da ativação. */
+  readonly jobs: JobScheduler;
 }

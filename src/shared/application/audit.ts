@@ -24,6 +24,8 @@ export const COMPANY_AUDIT_ACTIONS = [
   'webhook_subscription.updated',
   'webhook_subscription.secret_rotated',
   'webhook_delivery.redelivered',
+  'production_enablement.granted',
+  'production_enablement.revoked',
 ] as const;
 export type CompanyAuditAction = (typeof COMPANY_AUDIT_ACTIONS)[number];
 

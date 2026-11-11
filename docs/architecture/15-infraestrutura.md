@@ -48,8 +48,8 @@ Recomendação: **Backblaze B2** (ou AWS S3 sa-east-1 se preferir dados no Brasi
 LGPD: XMLs contêm dados pessoais (CPF, endereço). Armazenamento fora do Brasil é transferência internacional — avaliar base legal com o responsável jurídico antes de produção.
 
 ## 3. Backup e recuperação
-- PostgreSQL: WAL-G ou pgBackRest com archive contínuo de WAL + base backup diário no bucket `backups` (cifrado). **RPO alvo: ≤ 5 min. RTO alvo: ≤ 4 h** (VPS única).
-- Teste de restauração **mensal** documentado em runbook.
+- PostgreSQL: **WAL-G** (decidido na semana 7; imagem `docker/postgres`) com archive contínuo de WAL (`archive_timeout=60`) + base backup diário no bucket `backups`, cifrado no cliente com libsodium. **RPO alvo: ≤ 5 min. RTO alvo: ≤ 4 h** (VPS única). Runbook: [backup-restauracao](../runbooks/backup-restauracao.md).
+- Teste de restauração **mensal** documentado em runbook: `npm run drill:backup` (exercício local completo; primeiro OK em 2026-11-11).
 - Backup offline das KEKs (doc 13).
 - VPS única é ponto único de falha: aceitável na fase inicial com RPO/RTO acima; reavaliar antes de muitas empresas.
 

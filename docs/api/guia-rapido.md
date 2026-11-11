@@ -1,0 +1,113 @@
+---
+title: Guia rápido
+status: current
+last_updated: 2026-11-11
+---
+
+# Guia rápido
+
+Este guia cobre o caminho mínimo: credencial, empresa, cadastro e leitura de erros. Rotas, campos e escopos estão no contrato: [`/openapi.json`](/openapi.json).
+
+## 1. Credencial
+
+O operador da plataforma emite a credencial da sua aplicação. Ela tem este formato:
+
+```
+fk_<live|test>_<keyId>_<segredo>
+```
+
+Envie a credencial em toda requisição:
+
+```
+Authorization: Bearer fk_test_...
+```
+
+- **O ambiente vem da credencial.** Uma chave `test` só opera em homologação; uma chave `live`, em produção. A credencial é a primeira trava contra emissão em produção por engano. A segunda é a [habilitação de produção](#5-produção-duas-travas).
+- Cada credencial recebe só os escopos de que precisa (`companies:manage`, `certificates:manage`, `webhooks:manage` e outros). Faltando escopo, a resposta é `403 INSUFFICIENT_SCOPE`.
+- Guarde o segredo como senha. Ele aparece uma única vez, na emissão.
+
+## 2. Empresa e estabelecimentos
+
+A empresa é o contribuinte, identificado pela raiz do CNPJ (8 posições). Cada estabelecimento (matriz ou filial) tem o seu CNPJ completo, com a mesma raiz.
+
+```http
+POST /v1/companies
+{ "legalName": "EMPRESA EXEMPLO LTDA", "rootCnpj": "12345678" }
+```
+
+A resposta traz o `id` da empresa, gerado pelo servidor. A partir daí, toda rota de empresa exige o header:
+
+```
+X-Company-Id: <id da empresa>
+```
+
+A empresa é conferida no servidor: a credencial precisa ter concessão para ela. **CNPJ ou id enviados no corpo nunca definem a empresa.** Sem concessão, a resposta é `403 COMPANY_ACCESS_DENIED`. Recurso de outra empresa responde `404`, como se não existisse.
+
+```http
+POST /v1/establishments
+X-Company-Id: <id>
+{ "cnpj": "12.345.678/0001-95", "tradeName": "Matriz", "municipalityCode": "2211001" }
+```
+
+## 3. Erros
+
+Toda resposta de erro segue a RFC 9457 (`application/problem+json`):
+
+```json
+{
+  "type": "urn:orbita-nfe:problem:validation-failed",
+  "title": "Requisição inválida",
+  "status": 400,
+  "code": "VALIDATION_FAILED",
+  "correlationId": "…",
+  "issues": [{ "field": "body.cnpj", "code": "CNPJ_INVALID_CHECK_DIGITS", "message": "…", "ruleId": "CNPJ-001" }]
+}
+```
+
+- Trate o erro pelo `code`, nunca pela mensagem.
+- `issues[].ruleId` aponta a regra documentada que recusou o dado.
+- Envie `X-Correlation-Id` para rastrear a requisição nos logs. Ele volta em toda resposta.
+- `429 RATE_LIMITED` vem com `Retry-After` (segundos). Os headers `RateLimit-*` mostram o saldo de requisições.
+
+## 4. Ensaio (`dryRun`)
+
+Os cadastros aceitam `?dryRun=true`: empresa, estabelecimento, série, assinatura de webhook e habilitação de produção. O ensaio:
+
+- passa pelas mesmas validações e regras do cadastro real, inclusive as restrições do banco (CNPJ repetido devolve o mesmo `409`);
+- não grava nada, não dispara evento nem webhook e não deixa auditoria;
+- responde `200` com `{ "dryRun": true, "result": { … } }`. O `id` em `result` é provisório e não existe no sistema. O ensaio de webhook não devolve segredo.
+
+## 5. Produção: duas travas
+
+Para um documento ir à produção, duas condições independentes precisam valer:
+
+1. a requisição usa uma credencial `live`;
+2. a modalidade (`NFSE_DPS`, `NFE` ou `NFCE`) está habilitada para produção no estabelecimento.
+
+Estabelecimento novo nasce só com homologação. Para habilitar a produção:
+
+```http
+POST /v1/establishments/{id}/production-enablements
+Authorization: Bearer fk_live_...
+X-Company-Id: <id>
+{ "kind": "NFSE_DPS", "confirmCnpj": "12.345.678/0001-95" }
+```
+
+- Exige o escopo `production:manage`.
+- Pré-requisitos (regra PROD-001): estabelecimento ativo, certificado `ACTIVE` dentro da validade e série `ACTIVE` de produção da modalidade.
+- `confirmCnpj` repete o CNPJ do estabelecimento, como proteção contra habilitar o estabelecimento errado.
+- O que faltar volta em `issues` de um `422 PRODUCTION_PREREQUISITES_NOT_MET`.
+- A revogação é `POST …/production-enablements/{enablementId}/revocation`, com o motivo. A partir dela, a modalidade volta a operar só em homologação.
+
+## 6. Certificado A1
+
+Envie o PFX em base64 junto com a senha:
+
+```http
+POST /v1/establishments/{id}/certificates
+```
+
+- A resposta `202` vem com status `PENDING_VALIDATION`. A validação é assíncrona: assine o evento `certificate.activated` (veja o guia de [webhooks](/guides/webhooks.md)) ou consulte o certificado.
+- A API devolve só metadados: titular, validade e thumbprint. Chave privada e senha nunca saem do cofre.
+- A troca de certificado tem sobreposição: o anterior só sai quando o novo é validado.
+- Antes do vencimento chegam os avisos `certificate.expiring`, a 30, 15, 7 e 1 dia.

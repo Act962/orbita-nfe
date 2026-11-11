@@ -95,8 +95,9 @@ Motivos de rejeição de certificado (campo `rejectionReason`, não é erro HTTP
 ## Webhooks (implementado na semana 6; ADR-0015, ADR-0027 B6)
 - **Eventos disponíveis:**
   - `certificate.activated`, `certificate.rejected` (com `data.reason`) e `certificate.revoked`;
+  - `certificate.expiring` (30, 15, 7 e 1 dia antes; `data.thresholdDays`, `data.daysRemaining`) e `certificate.expired` (semana 7);
   - `webhook.test`, que só sai pelo endpoint de teste.
-  - Previstos: `service_invoice.*` (Fase 2a) e `certificate.expiring`.
+  - Previstos: `service_invoice.*` (Fase 2a).
 - **Corpo:** `{ id, type, occurredAt, companyId, subject: { type, id }, data }`. Só identificadores e status, nunca XML ou dados pessoais.
 - **Headers (Standard Webhooks):**
   - `webhook-id` = `id` do evento, igual em todas as tentativas e reenvios: o consumidor deduplica por ele;
@@ -109,3 +110,20 @@ Motivos de rejeição de certificado (campo `rejectionReason`, não é erro HTTP
 - **Sucesso** = resposta 2xx em até 10 s. Redirecionamentos não são seguidos.
 - **Segredo** exibido uma única vez (criação e rotação). A rotação invalida o anterior na hora.
 - **Destino:** só https público (proteção contra SSRF no cadastro e de novo na resolução de DNS da entrega).
+
+## Semana 7: ensaio, habilitação de produção, documentação e descontinuação
+- **`?dryRun=true`** (ADR-0026 item 4) em `POST /v1/companies`, `/v1/establishments`, `…/document-series`, `/v1/webhook-subscriptions` e `…/production-enablements`:
+  - a transação roda inteira (restrições, triggers, auditoria) e é desfeita no fim;
+  - resposta `200 { dryRun: true, result }`; os erros são os do cadastro real.
+  - O upload de certificado **não** tem ensaio: a validação só acontece no worker-fiscal.
+- **Habilitação de produção** (ADR-0027 item 1, regra [PROD-001](../fiscal/regras/PROD-001.md)):
+  - `GET` e `POST /v1/establishments/{id}/production-enablements` e `POST …/{enablementId}/revocation`;
+  - escopos `production:read` e `production:manage`; alterar exige credencial `live` (`403 LIVE_CREDENTIAL_REQUIRED`);
+  - erros: `422 PRODUCTION_PREREQUISITES_NOT_MET` (itens em `issues`), `409 PRODUCTION_ALREADY_ENABLED`, `404 PRODUCTION_ENABLEMENT_NOT_FOUND`.
+- **Documentação para agentes** (ADR-0027 item 8):
+  - `/openapi.json` (URL estável) e `/llms.txt` (índice);
+  - guias em Markdown em `/guides/{guia-rapido,webhooks,versionamento,changelog}.md`, com fonte em `docs/api/`.
+- **Descontinuação** (ADR-0026 item 9, política em `docs/api/versionamento.md`):
+  - a rota declara `config.deprecation` e `schema.deprecated`;
+  - as respostas levam `Deprecation: @<unix>` (RFC 9745), `Sunset` (RFC 8594, mínimo de 180 dias) e `Link rel="deprecation"`;
+  - declaração incompleta ou prazo curto impedem a subida.

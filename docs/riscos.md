@@ -20,7 +20,7 @@ Escala: Impacto (A/M/B) × Probabilidade (A/M/B).
 | R-14 | Responsabilidade legal: erros de emissão afetam clientes reais | A | M | homologação extensa, piloto com uma empresa, checklist de go-live com contador, feature flags por empresa |
 | R-15 | Escopo grande para equipe pequena | A | A | roadmap faseado, uma modalidade/UF/município por vez, critérios de saída claros |
 | R-16 | Relógio do servidor fora de sincronia → rejeições | B | M | NTP monitorado, alerta de drift |
-| R-17 | **VPS única** (ponto único de falha) | A | M | backup WAL contínuo externo, RPO ≤ 5 min / RTO ≤ 4 h, teste mensal de restauração, artefatos fora da VPS |
+| R-17 | **VPS única** (ponto único de falha) | A | M | backup WAL contínuo externo (WAL-G cifrado), RPO ≤ 5 min / RTO ≤ 4 h, teste mensal de restauração (`npm run drill:backup`, primeiro OK local em 2026-11-11), artefatos fora da VPS. **Pendente:** exercício no provedor real |
 | R-18 | Administrador da VPS/Coolify é a raiz de confiança dos certificados | A | B | 2FA, acesso restrito, KEK só no worker-fiscal, evolução para KMS gerenciado |
 | R-19 | Teresina com dois caminhos (nacional × municipal) e regras em transição | M | A | roteamento versionado por regime/serviço/vigência; Fase 2b só com manual oficial |
 | R-20 | Produção restrita exige CNPJ e certificado reais | M | A | usar CNPJ próprio com dados de nota fictícios; planejar com antecedência |
@@ -37,6 +37,8 @@ Escala: Impacto (A/M/B) × Probabilidade (A/M/B).
 | R-31 | Algoritmos da assinatura da DPS (RSA-SHA1, C14N) documentados só pela DSF/Teresina, não pela SEFIN | M | M | perfil de assinatura provisório (ADR-0014, complemento); confirmar na primeira DPS em produção restrita |
 | R-32 | Conflito normativo: a Portaria SEMF 20/2026 diz que o emissor municipal é "obrigatório e exclusivo" para o ISSQN, e a Res. CGSN 191/2026 manda ME/EPP do Simples para o Emissor Nacional | M | M | o motor segue a Res. 191 e o Portal NFS-e (ADR-0028); pedir posição escrita da SEMF; decisão jurídica fica com o contador |
 | R-33 | Swagger da SEFIN acessível só com certificado de cliente: prefixo de caminho, nome do campo do envelope e schema de erro ainda não confirmados | A | M | valores só no perfil de endpoint e no simulador, marcados como provisórios (ADR-0029); ler o Swagger com o A1 real antes de implementar o adapter |
+| R-34 | Corrente diária de âncora de uma empresa para se o job morrer dois dias seguidos (falha prolongada do bucket) | B | M | Agendamento do dia seguinte antes de gravar, 24 tentativas por job, runbook manda reprocessar mortos `audit.anchor-*` (ADR-0031). Evoluir: alerta de fila morta |
+| R-35 | Comportamento do Coolify com o container one-shot `migrate` e com o login no GHCR não confirmados num painel real | M | B | Runbook deploy-coolify marca os passos "(conferir no Coolify)"; alternativa de comando de pré-deploy documentada |
 
 ## Dúvidas fiscais/técnicas abertas (precisam de documentação oficial)
 1. ~~Município-piloto~~ → Teresina/PI definido. Pendente: confirmações oficiais listadas em [fiscal/nfse-teresina.md](fiscal/nfse-teresina.md) §6.

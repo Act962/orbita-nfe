@@ -54,6 +54,8 @@ Implementado em 2026-11-10 (módulo `audit`, migration 0003):
 - Catálogo fechado de ações:
   - empresa: `company.registered`, `establishment.registered`, `document_series.created`, `company_grant.granted`, `company_grant.revoked`, `certificate.uploaded`, `certificate.activated`, `certificate.rejected`, `certificate.replaced`, `certificate.revoked`;
   - empresa (webhooks): `webhook_subscription.created`, `webhook_subscription.updated`, `webhook_subscription.secret_rotated`, `webhook_delivery.redelivered` (só o host da URL, nunca a URL inteira nem o segredo);
+  - empresa (habilitação de produção): `production_enablement.granted`, `production_enablement.revoked` (modalidade e estabelecimento; o motivo da revogação fica no registro da habilitação);
   - plataforma: `client_application.created`, `credential.issued`, `credential.revoked`, `queue.paused`, `queue.resumed`, `job.retried`, `job.discarded`.
 - Os detalhes aceitam só valores escalares. Chave com nome sensível é recusada.
-- Pendências: âncora externa diária da cabeça (semana 7) e uso do certificado por documento (Fase 2a).
+- Âncora externa diária (semana 7, [ADR-0031](../adr/0031-ancora-externa-auditoria.md)): a cabeça de cada cadeia vai para um bucket com Object Lock COMPLIANCE; `npm run audit -- verify --anchor` confere a cadeia contra ela.
+- Pendência: uso do certificado por documento (Fase 2a).

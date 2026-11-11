@@ -33,11 +33,11 @@ Regras:
 
 ## A4. Trilha de auditoria à prova de adulteração
 - `audit_log` append-only (sem UPDATE/DELETE por grant + trigger), com `hash = sha256(prev_hash ‖ registro)` por empresa.
-- Diariamente, o hash da cabeça da cadeia de cada empresa é exportado para o bucket com Object Lock (âncora externa): adulterar o banco passa a ser detectável.
+- Diariamente, o hash da cabeça da cadeia de cada empresa (e da plataforma) é exportado para o bucket com Object Lock (âncora externa, [ADR-0031](../adr/0031-ancora-externa-auditoria.md), implementada na semana 7): adulterar o banco, mesmo recalculando todos os hashes, passa a ser detectável (`ANCHOR_MISMATCH`).
 
 ## A5. Ambientes
 - `environment` é imutável por documento; séries e certificados de homologação e produção separados.
-- Uma empresa só emite em produção depois de flag `production_enabled` habilitada por operador (auditado).
+- Um estabelecimento só emite em produção uma modalidade habilitada para produção (ADR-0027, regra [PROD-001](../fiscal/regras/PROD-001.md); implementado na semana 7). Duas travas independentes: credencial `live` + habilitação ativa. Habilitar e revogar são atos auditados, com escopo próprio e credencial `live`.
 - O processo **não inicia** em produção se algum gateway estiver configurado como simulador (`fake`).
 
 ## A6. Valores e tempo

@@ -276,7 +276,7 @@ describe('certificado validado pela fila (semana 6)', () => {
     const certificateId = await uploadCertificate();
     const job = (
       await t.adminDb.db.execute<{ queue: string; lane: string; payload: Record<string, string> }>(
-        sql`select queue, lane, payload from jobs where payload->>'certificateId' = ${certificateId}`,
+        sql`select queue, lane, payload from jobs where payload->>'certificateId' = ${certificateId} and queue = 'certificates.validate'`,
       )
     ).rows[0];
     expect(job).toEqual({ queue: 'certificates.validate', lane: 'fiscal', payload: { companyId, certificateId } });

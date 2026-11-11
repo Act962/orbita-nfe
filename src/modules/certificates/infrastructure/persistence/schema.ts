@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { check, index, integer, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { check, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 import { bytea } from '../../../../shared/infrastructure/database/columns.js';
 
 /**
@@ -53,5 +53,24 @@ export const certificates = pgTable(
     uniqueIndex('uq_certificates_active').on(t.establishmentId).where(sql`${t.status} = 'ACTIVE'`),
     index('ix_certificates_establishment').on(t.companyId, t.establishmentId),
     index('ix_certificates_expiry').on(t.notAfter).where(sql`${t.status} = 'ACTIVE'`),
+  ],
+);
+
+/**
+ * Avisos de vencimento já dados (um por certificado e limiar). Impede aviso repetido quando o job
+ * roda de novo. FK composta (company_id, certificate_id) → certificates e RLS na migration de segurança.
+ */
+export const certificateExpiryNotices = pgTable(
+  'certificate_expiry_notices',
+  {
+    companyId: uuid('company_id').notNull(),
+    certificateId: uuid('certificate_id').notNull(),
+    thresholdDays: integer('threshold_days').notNull(),
+    notifiedAt: timestamp('notified_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_certificate_expiry_notices', columns: [t.certificateId, t.thresholdDays] }),
+    check('ck_certificate_expiry_notices_threshold', sql`${t.thresholdDays} in (30, 15, 7, 1, 0)`),
+    index('ix_certificate_expiry_notices_company').on(t.companyId),
   ],
 );

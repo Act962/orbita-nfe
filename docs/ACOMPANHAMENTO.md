@@ -1,6 +1,6 @@
 # Acompanhamento do projeto
 
-Última atualização: 2026-11-10
+Última atualização: 2026-11-11
 
 ## Status geral
 **Fase 1 — Fundação em andamento** (iniciada em 2026-11-09 após aprovação da arquitetura consolidada e do ADR-0023).
@@ -67,6 +67,40 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - [x] Documentação pública lida e comparada ([doc 17](architecture/17-referencia-nfe-io.md)): 10 aprimoramentos (B1–B10) distribuídos no roadmap; [ADR-0027](adr/0027-convencoes-cadastro-fiscal-referencia-nfe-io.md) **aceito** em 2026-11-10.
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
+
+### Semana 7 — concluída no código (2026-11-11); deploy real pendente de infraestrutura
+- [x] **Ensaio `?dryRun=true`** (ADR-0026 item 4):
+  - em empresa, estabelecimento, série, assinatura de webhook e habilitação de produção;
+  - a transação roda inteira (restrições, triggers, auditoria) e é desfeita no fim (`TransactionOptions.dryRun`);
+  - resposta `200 { dryRun: true, result }`; o ensaio de webhook não devolve segredo.
+- [x] **Habilitação de produção por estabelecimento e modalidade** (ADR-0027 item 1, regra [PROD-001](fiscal/regras/PROD-001.md)):
+  - tabela `production_enablements` (migrations 0006 e 0007): RLS, FK composta, só `ACTIVE → REVOKED`, ninguém apaga;
+  - escopos `production:read` e `production:manage`; alterar exige credencial `live`;
+  - pré-requisitos: confirmação do CNPJ, estabelecimento ativo, certificado válido e série de produção da modalidade;
+  - `isEnabled` pronto para a trava L5 da Fase 2a (o worker-fiscal só lê).
+- [x] **Avisos de vencimento** `certificate.expiring` (30, 15, 7 e 1 dia) e `certificate.expired` (migrations 0008 e 0009):
+  - sem varredura entre empresas: a ativação agenda um job por limiar, e o worker-general decide na hora e registra para não repetir;
+  - certificado revogado ou substituído não gera aviso.
+- [x] **Âncora externa da auditoria** ([ADR-0031](adr/0031-ancora-externa-auditoria.md), migration 0010):
+  - cabeça de cada cadeia, por dia, num bucket S3 com Object Lock COMPLIANCE (adapter `S3AnchorStore`, AWS SDK 3.1157.0 fixado);
+  - o cadastro da empresa inicia a corrente diária, e o worker-general garante a da plataforma;
+  - `npm run audit -- verify --anchor`.
+  - O teste reproduz o ataque: um superusuário reescreve a cadeia com hashes recalculados; a verificação interna passa e a âncora acusa `ANCHOR_MISMATCH`.
+- [x] **Documentação para agentes e versionamento** (ADR-0027 item 8, ADR-0026 item 9):
+  - `/openapi.json` (URL estável), `/llms.txt` e guias em Markdown em `/guides/` (fonte em `docs/api/`: guia rápido, webhooks, versionamento, changelog);
+  - mecanismo de descontinuação com `Deprecation` (RFC 9745), `Sunset` (RFC 8594, mínimo de 180 dias) e `Link`, conferido na subida.
+- [x] **Deploy, imagens e backup** (ADR-0020 revisado):
+  - imagem do banco com WAL-G v3.0.9 (checksum conferido), cifra libsodium e credenciais em arquivo;
+  - compose de produção `docker/coolify/docker-compose.yml`: segredos por serviço, rootfs somente leitura, `migrate` antes da API;
+  - CI publica as duas imagens no GHCR com a tag `sha-<commit>`;
+  - runbooks [deploy-coolify](runbooks/deploy-coolify.md) e [backup-restauracao](runbooks/backup-restauracao.md).
+- [x] **Exercício de backup** `npm run drill:backup` (2026-11-11): o banco foi destruído e restaurado num volume vazio, voltando 1000 linhas do backup base e 250 que só existiam no WAL.
+- [x] **Teste de fumaça das imagens em modo produção** (containers locais, rootfs somente leitura): API pronta, `/llms.txt` e `/openapi.json`, `dryRun`, cadastro → âncora gravada pelo worker-general → `audit verify --anchor` íntegro; nenhum segredo nos logs.
+- [x] Testes:
+  - novos: habilitação e `dryRun` (11), vencimento (4 de integração + 3 unitários), âncora (6 de integração + 4 unitários), docs e descontinuação (6), agenda diária, configuração da âncora e matriz de isolamento com as 3 rotas novas;
+  - o SeaweedFS sobe por Testcontainers nos testes de integração (também no CI);
+  - Total: **406 testes**; typecheck, lint, regras de camadas e build verdes.
+- [ ] **Deploy real no Coolify:** depende da VPS, do domínio e dos buckets (provedor S3, decisão pendente 2). Runbook pronto, com os passos de painel marcados "(conferir no Coolify)".
 
 ### Fila, outbox, webhooks e rate limit — concluído (2026-11-10, semana 6)
 - [x] **Fila própria** (ADR-0030; migrations 0004 e 0005):
@@ -140,7 +174,8 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 3. ~~IAM, Company, Fiscal Settings, matriz de isolamento da API~~ ✔
 4. ~~Certificate Vault, Audit log~~ ✔
 5. ~~Semana 6: fila, outbox, validação de certificado pela fila, webhooks, rate limit, operação das filas~~ ✔ (o write-ahead e o reconciliador foram para a Fase 2a)
-6. Semana 7: deploy no Coolify, backup WAL, âncora externa diária da cadeia de auditoria, habilitação de produção por estabelecimento, OpenAPI estável + `llms.txt`, changelog, `dryRun`.
+6. ~~Semana 7: backup WAL, âncora externa da auditoria, habilitação de produção, OpenAPI estável + `llms.txt`, changelog, `dryRun`, avisos de vencimento~~ ✔ (deploy real aguardando VPS, domínio e buckets)
+7. Encerramento da Fase 1: deploy real (quando houver infraestrutura), remoção de `spikes/` e do pg-boss, e gate de entrada da Fase 2a (pré-requisitos do responsável no roadmap).
 
 ### Versões adotadas
 Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0, pino 10.4, Vitest 5.1, ESLint 10, decimal.js 10.6 (fixadas no `package-lock.json`).
@@ -174,7 +209,9 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 
 ## Pendente de decisão do responsável
 1. ~~Aprovação final da arquitetura consolidada~~ — aprovada em 2026-11-09.
-2. Provedor S3 (recomendado Backblaze B2; alternativa AWS S3 sa-east-1) e parecer LGPD se fora do Brasil.
+2. Provedor S3 (recomendado Backblaze B2; alternativa AWS S3 sa-east-1) e parecer LGPD se fora do Brasil. **Agora bloqueia o deploy:** são 3 buckets (backups, âncoras com Object Lock, XML), e o provedor precisa oferecer Object Lock pela API S3 (ADR-0031).
+9. VPS Hostinger com Coolify e domínio da API, para o primeiro deploy (runbook deploy-coolify §1).
+10. Visibilidade do repositório no GitHub (hoje público) e das imagens no GHCR.
 3. CNPJ real + certificado A1 para a produção restrita da NFS-e (dados de nota fictícios).
 4. ~~Contato com a SEMF para o manual do webservice~~: o manual foi publicado (Guia API THE V7). Falta enviar à SEMF as perguntas do §10 do diagnóstico (conflito da Portaria 20/2026, eventos de notas antigas, endpoint ADN/DPS).
 7. Levantar o regime dos clientes de Teresina (Simples/MEI × Lucro Presumido/Real), que define a prioridade da Fase 2b.
@@ -183,7 +220,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 6. ~~Aprovar o [ADR-0027](adr/0027-convencoes-cadastro-fiscal-referencia-nfe-io.md) (cadastro fiscal, certificados e documentação inspirados na NFE.io)~~ — aprovado em 2026-11-10.
 
 ## Riscos ativos principais
-R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente · R-30 enquadramento `regApTribSN` da empresa-piloto · R-33 Swagger da SEFIN só com certificado. Ver [riscos.md](riscos.md).
+R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente · R-30 enquadramento `regApTribSN` da empresa-piloto · R-33 Swagger da SEFIN só com certificado · R-34 corrente de âncora · R-35 Coolify não exercitado. Ver [riscos.md](riscos.md).
 
 ## Código temporário / dívidas registradas
 | Item | Finalidade | Remoção |
@@ -198,15 +235,16 @@ R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS �
 | Sem consulta de revogação (LCR/OCSP) na validação de certificado | Fora do escopo da semana 5 (R-29) | Fase 2a |
 | `withCertificate` sem cache com TTL | O uso real (assinatura/mTLS) chega na Fase 2a | Junto com a assinatura XML |
 | Comando de re-embrulho das DEKs (rotação da KEK) | O banco e o opener já aceitam; falta o comando | Antes da primeira rotação (runbook kek-certificados §3) |
-| Validação de certificado disparada por CLI (`npm run certificates -- validate`) | A fila ainda não existe | Semana 6 (outbox) |
-| Âncora externa da cabeça da cadeia de auditoria | Depende do bucket S3 com Object Lock | Semana 7 |
 | Escrita da trilha serializada por empresa (trava da cabeça) | Simplicidade e ordem total; volume atual baixo | Reavaliar com carga real de emissão |
 | Write-ahead de tentativas e reconciliador de `UNKNOWN` (ADR-0022, doc 12) | Sem transmissor ainda (reescopo da semana 6) | Fase 2a, com o adapter SEFIN |
 | Rate limit em memória por réplica da API | Uma réplica hoje (ADR-0020) | Redis ou tabela quando houver mais de uma réplica |
 | Fila por polling (sem LISTEN/NOTIFY) | Simplicidade; 1 s de latência basta | Reavaliar no teste de carga (Fase 5) |
 | Endpoints HTTP de operação (`/ops/v1`) substituídos pela CLI `npm run ops` | Menor superfície; o papel da API não lê a fila (ADR-0030) | Reavaliar se surgir painel de operação |
 | `pg-boss` em devDependencies (só o spike 04) | Spike mantido até o fim da Fase 1 | Junto com a remoção de `spikes/` |
-| Evento `certificate.expiring` (aviso de vencimento) | Precisa de agendamento diário | Semana 7 |
+| Restauração de backup e âncora ainda não exercitadas no provedor S3 real | Bucket de produção não existe (decisão pendente 2) | No primeiro deploy (runbooks backup-restauracao §5 e deploy-coolify §4) |
+| Container one-shot `migrate` e login do Coolify no GHCR não confirmados num painel real (R-35) | Sem VPS ainda | No primeiro deploy |
+| Alerta automático de fila morta (ex.: `audit.anchor-*`) | Hoje só `ops dead` e log (R-34) | Fase 5 (observabilidade) ou antes, se houver incidente |
+| Imagem do banco no PostgreSQL 17.10 (17.11 tem menos de 2 semanas) | Prudência com versão recém-publicada | Atualizar para 17.11 e rodar `npm run drill:backup` |
 | `scripts/dev-test-certificate.ts` usa a PKI de teste | Teste de fumaça local | Permanente (somente desenvolvimento) |
 | Porta do PostgreSQL local alterada para 15432 | Evitar conflito com outro PostgreSQL (5432) e com as faixas que o Windows/Hyper-V reserva na faixa dinâmica (a 54329 foi reservada após reinício) | Configurável por `POSTGRES_PORT` |
 

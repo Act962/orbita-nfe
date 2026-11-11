@@ -68,7 +68,7 @@ flowchart LR
    - buffers intermediários zerados com `fill(0)` após uso. (Limitação honesta: o runtime JS não garante apagar todas as cópias internas; por isso o controle principal é **onde** a chave pode existir — só no worker-fiscal.)
    - cada uso gera registro de auditoria (certificado, finalidade, documento, correlation id) agregado por documento.
 4. **Substituição/renovação**: novo upload → validação → ativo; o anterior vira `REPLACED` **na mesma transação** da ativação (sobreposição, ADR-0027: nunca há janela sem certificado). Documentos guardam o thumbprint do certificado usado.
-5. **Vencimento**: varredura diária; alertas e webhook `certificate.expiring` em 30/15/7/1 dias; com certificado vencido a emissão vira `FAILED` **antes** do envio, com mensagem clara.
+5. **Vencimento** (implementado na semana 7): sem varredura entre empresas. A ativação agenda um job `certificates.expiry-notice` por limiar (30, 15, 7 e 1 dia, mais o vencimento). O worker-general, que só lê id, estabelecimento, vencimento e status, publica `certificate.expiring` ou `certificate.expired` uma vez por limiar. Certificado revogado ou substituído não gera aviso. Com certificado vencido, a emissão vira `FAILED` **antes** do envio, com mensagem clara (`CertificateVault.withCertificate`).
 6. **Revogação** (`POST .../certificates/{id}/revocation`): status `REVOKED` + destruição criptográfica (`wrapped_dek` apagada torna o ciphertext inútil), auditada e irreversível (o trigger impede reviver).
 
 ## 5. Senha do certificado

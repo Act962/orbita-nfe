@@ -1,8 +1,11 @@
+import { sql } from 'drizzle-orm';
 import type { LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES } from '../../src/modules/iam/public.js';
+import { CompanyTransactions, type DatabaseHandle } from '../../src/shared/infrastructure/database/database.js';
 import type { RouteCatalogEntry } from '../../src/shared/presentation/http/route-catalog.js';
 import { bearer, cnpjOf, createClientApp, createEstablishment, createCompany, fakeRoot, problemCode, startTestApi, type TestApi } from './support/api.js';
+import { connect } from './support/db.js';
 
 /**
  * Matriz de isolamento da API (docs/architecture/14 §B4, testes 2, 7 e 8).
@@ -23,6 +26,7 @@ interface Party {
   readonly certificateId: string;
   readonly subscriptionId: string;
   readonly deliveryId: string;
+  readonly enablementId: string;
 }
 
 interface Ctx {
@@ -82,6 +86,15 @@ const CASES: Record<string, MatrixCase> = {
   'GET /v1/establishments/:establishmentId/certificates': { expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND') },
   'GET /v1/establishments/:establishmentId/certificates/:certificateId': { expectCrossCompany: expectNotFound('CERTIFICATE_NOT_FOUND') },
   'POST /v1/establishments/:establishmentId/certificates/:certificateId/revocation': { expectCrossCompany: expectNotFound('CERTIFICATE_NOT_FOUND') },
+  'GET /v1/establishments/:establishmentId/production-enablements': { expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND') },
+  'POST /v1/establishments/:establishmentId/production-enablements': {
+    payload: ({ a }) => ({ kind: 'NFCE', confirmCnpj: a.establishmentCnpj }),
+    expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),
+  },
+  'POST /v1/establishments/:establishmentId/production-enablements/:enablementId/revocation': {
+    payload: () => ({ reason: 'tentativa de outra empresa' }),
+    expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),
+  },
   'POST /v1/webhook-subscriptions': {
     payload: () => ({ url: 'http://127.0.0.1:9/matriz', eventTypes: ['certificate.activated'] }),
     expectCrossCompany: (res, { a }) => {
@@ -129,6 +142,7 @@ function missingCases(catalog: readonly RouteCatalogEntry[]): string[] {
 
 let t: TestApi;
 let ctx: Ctx;
+let superuser: DatabaseHandle;
 
 function fill(url: string, party: Party): string {
   return url
@@ -136,12 +150,14 @@ function fill(url: string, party: Party): string {
     .replace(':seriesId', party.seriesId)
     .replace(':certificateId', party.certificateId)
     .replace(':subscriptionId', party.subscriptionId)
-    .replace(':deliveryId', party.deliveryId);
+    .replace(':deliveryId', party.deliveryId)
+    .replace(':enablementId', party.enablementId);
 }
 
 async function setupParty(prefix: string): Promise<Party> {
   const app = await createClientApp(t.admin, prefix);
-  const key = await app.key([...SCOPES]);
+  // `live`: as rotas de habilitação de produção exigem credencial live antes de olhar o recurso.
+  const key = await app.key([...SCOPES], 'live');
   const company = await createCompany(t.app, key, fakeRoot());
   const establishmentCnpj = cnpjOf(company.root);
   const establishmentId = await createEstablishment(t.app, key, company.id, establishmentCnpj);
@@ -165,6 +181,11 @@ async function setupParty(prefix: string): Promise<Party> {
   });
   const subscriptionId = subscription.json<{ id: string }>().id;
   const delivery = await t.app.inject({ method: 'POST', url: `/v1/webhook-subscriptions/${subscriptionId}/test`, headers: bearer(key, company.id) });
+  // Habilitação real de A, gravada direto pelo superusuário (os pré-requisitos não são o assunto aqui).
+  const enablementId = crypto.randomUUID();
+  await new CompanyTransactions(superuser.db).run(company.id, (tx) =>
+    tx.execute(sql`insert into production_enablements (id, company_id, establishment_id, kind) values (${enablementId}, ${company.id}, ${establishmentId}, 'NFCE')`),
+  );
   return {
     key,
     companyId: company.id,
@@ -175,14 +196,17 @@ async function setupParty(prefix: string): Promise<Party> {
     certificateId: certificate.json<{ id: string }>().id,
     subscriptionId,
     deliveryId: delivery.json<{ id: string }>().id,
+    enablementId,
   };
 }
 
 beforeAll(async () => {
   t = await startTestApi();
+  superuser = connect('superuser', { poolMax: 1 });
   ctx = { a: await setupParty('orbita'), b: await setupParty('nerp') };
 });
 afterAll(async () => {
+  await superuser.close();
   await t.close();
 });
 

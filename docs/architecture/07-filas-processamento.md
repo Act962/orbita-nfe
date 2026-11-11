@@ -23,6 +23,13 @@ Filas implementadas (catálogo fechado em `job-queue.ts`):
 | `certificates.validate` | fiscal (`fiscal_worker`) | 5 | 30 s → 30 min | 60 s |
 | `webhooks.fanout` | general (`fiscal_general`) | 8 | 15 s → 15 min | 30 s |
 | `webhooks.deliver` | general (`fiscal_general`) | 5 (falha do processo; o calendário de reentrega é o do webhook) | 30 s → 15 min | 30 s |
+| `certificates.expiry-notice` | general (`fiscal_general`) | 8 | 1 min → 1 h | 30 s |
+| `audit.anchor-company` | general (`fiscal_general`) | 24 | 5 min → 1 h | 60 s |
+| `audit.anchor-platform` | general (`fiscal_general`) | 24 | 5 min → 1 h | 60 s |
+
+Jobs agendados (semana 7):
+- **`certificates.expiry-notice`:** a ativação do certificado (worker-fiscal) agenda um job por limiar: 30, 15, 7 e 1 dia antes do vencimento, mais o próprio vencimento. Na hora, o worker-general decide qual aviso vale e registra em `certificate_expiry_notices`, para não repetir. Não há varredura entre empresas.
+- **`audit.anchor-*`:** recorrentes diários às 06:00 UTC (ADR-0031). Cada execução agenda a do dia seguinte antes de gravar, com chave singleton `<cadeia>:<dia>`.
 
 Filas previstas:
 

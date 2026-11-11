@@ -50,7 +50,7 @@ O comando usa `ADMIN_DATABASE_URL`, com o papel `fiscal_admin`.
 
 | Saída | Significado | Ação |
 |---|---|---|
-| 0 `cadeia íntegra` | Os hashes conferem do início até a cabeça | Guardar o hash da cabeça. A âncora externa diária entra na semana 7 |
-| 2 `ADULTERAÇÃO DETECTADA: <motivo>` | `HASH_MISMATCH` (registro alterado), `SEQUENCE_GAP`/`BROKEN_LINK` (removido ou reescrito) ou `HEAD_MISMATCH` (registros apagados do fim) | **Incidente de segurança.** Congelar o acesso administrativo, preservar o banco e os backups, comparar com a última âncora e investigar quem tinha acesso de superusuário |
+| 0 `cadeia íntegra` | Os hashes conferem do início até a cabeça | Com `--anchor`, a cadeia também confere com a âncora mais recente do bucket com Object Lock (ADR-0031). A saída 3 indica que não há âncora para a cadeia |
+| 2 `ADULTERAÇÃO DETECTADA: <motivo>` | `HASH_MISMATCH` (registro alterado), `SEQUENCE_GAP`/`BROKEN_LINK` (removido ou reescrito), `HEAD_MISMATCH` (registros apagados do fim) ou `ANCHOR_MISMATCH` (cadeia reescrita com hashes recalculados ou encurtada antes da âncora) | **Incidente de segurança.** Congelar o acesso administrativo, preservar o banco e os backups, comparar com a última âncora e investigar quem tinha acesso de superusuário |
 
 A trilha é append-only para todos os papéis, inclusive o dono das tabelas. Só um superusuário que desligue os triggers consegue alterá-la, e o verificador detecta a alteração.

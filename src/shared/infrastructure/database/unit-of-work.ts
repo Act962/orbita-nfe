@@ -12,6 +12,6 @@ export function companyScopedUnitOfWork<R>(
   constraints: ConstraintErrorMap,
 ): UnitOfWork<R> {
   return {
-    inCompany: (companyId, work) => transactions.run(companyId, (tx) => work(build(tx)), constraints),
+    inCompany: (companyId, work, options) => transactions.run(companyId, (tx) => work(build(tx)), constraints, options),
   };
 }

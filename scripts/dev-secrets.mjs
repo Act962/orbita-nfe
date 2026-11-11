@@ -45,3 +45,16 @@ if (existsSync(whPublic) || existsSync(whPrivate)) {
   writeFileSync(whPublic, publicKey, { mode: 0o644 });
   process.stdout.write(`${whPublic} e ${whPrivate} criados (somente desenvolvimento)\n`);
 }
+
+// Credenciais do S3 LOCAL (SeaweedFS do docker-compose, sem autenticação) para a âncora da
+// auditoria (ADR-0031). Em produção: chaves do provedor, de escrita no worker-general e de
+// leitura para o operador.
+for (const [file, value] of [
+  ['secrets/anchor-s3-access-key-id', 'dev-only'],
+  ['secrets/anchor-s3-secret-access-key', 'dev-only'],
+]) {
+  if (!existsSync(file)) {
+    writeFileSync(file, `${value}\n`, { mode: 0o600 });
+    process.stdout.write(`${file} criado (somente desenvolvimento)\n`);
+  }
+}

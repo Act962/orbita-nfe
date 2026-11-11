@@ -95,3 +95,35 @@ export function displayedStatus(certificate: Pick<Certificate, 'status' | 'metad
   if (remainingMs < 0) return 'EXPIRED';
   return remainingMs <= EXPIRING_WINDOW_DAYS * 86_400_000 ? 'EXPIRING' : 'ACTIVE';
 }
+
+/**
+ * Avisos de vencimento (doc 13 §4, doc 05 §5): `certificate.expiring` a 30, 15, 7 e 1 dia do
+ * vencimento e `certificate.expired` no vencimento (limiar 0). O primeiro limiar coincide com a
+ * janela de EXPIRING exibida.
+ */
+export const EXPIRY_NOTICE_DAYS = [EXPIRING_WINDOW_DAYS, 15, 7, 1, 0] as const;
+const DAY_MS = 86_400_000;
+
+/**
+ * Quando agendar os avisos de um certificado recém-ativado: cada limiar ainda no futuro, mais
+ * `now` se o certificado já está dentro de alguma janela (ativado com menos de 30 dias de
+ * validade, por exemplo). Avisos repetidos para o mesmo limiar são descartados no envio.
+ */
+export function expiryNoticeTimes(notAfter: Date, now: Date): Date[] {
+  const times = EXPIRY_NOTICE_DAYS.map((days) => new Date(notAfter.getTime() - days * DAY_MS)).filter((at) => at.getTime() > now.getTime());
+  const alreadyInWindow = notAfter.getTime() - now.getTime() <= EXPIRING_WINDOW_DAYS * DAY_MS;
+  return alreadyInWindow ? [now, ...times] : times;
+}
+
+/**
+ * Qual aviso vale agora: o menor limiar já alcançado (dias restantes arredondados para cima).
+ * 0 = vencido. `null` = ainda fora da janela de aviso.
+ */
+export function expiryNoticeThreshold(notAfter: Date, now: Date): { thresholdDays: number; daysRemaining: number } | null {
+  const remainingMs = notAfter.getTime() - now.getTime();
+  if (remainingMs <= 0) return { thresholdDays: 0, daysRemaining: 0 };
+  const daysRemaining = Math.ceil(remainingMs / DAY_MS);
+  const reached = EXPIRY_NOTICE_DAYS.filter((days) => days > 0 && daysRemaining <= days);
+  if (reached.length === 0) return null;
+  return { thresholdDays: Math.min(...reached), daysRemaining };
+}

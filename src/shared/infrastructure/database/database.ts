@@ -3,6 +3,7 @@ import { drizzle, type NodePgDatabase, type NodePgTransaction } from 'drizzle-or
 import type { ExtractTablesWithRelations } from 'drizzle-orm';
 import pg from 'pg';
 import type { ReadinessCheck } from '../../application/readiness.js';
+import type { TransactionOptions } from '../../application/unit-of-work.js';
 import { withDatabaseErrors, type ConstraintErrorMap } from './database-errors.js';
 
 export type Database = NodePgDatabase;
@@ -47,16 +48,29 @@ export function createDatabase(options: DatabaseOptions): DatabaseHandle {
 export class CompanyTransactions {
   constructor(private readonly db: Database) {}
 
-  async run<T>(companyId: string, work: (tx: Transaction) => Promise<T>, constraints: ConstraintErrorMap = {}): Promise<T> {
+  async run<T>(companyId: string, work: (tx: Transaction) => Promise<T>, constraints: ConstraintErrorMap = {}, options: TransactionOptions = {}): Promise<T> {
     if (!UUID.test(companyId)) throw new Error('companyId inválido para contexto de transação');
-    return withDatabaseErrors(
-      () =>
-        this.db.transaction(async (tx) => {
+    return withDatabaseErrors(async () => {
+      try {
+        return await this.db.transaction(async (tx) => {
           await tx.execute(sql`select set_config('app.company_id', ${companyId}, true)`);
-          return work(tx);
-        }),
-      constraints,
-    );
+          const result = await work(tx);
+          // Ensaio: o resultado sai, a transação é desfeita (o PostgreSQL já validou tudo).
+          if (options.dryRun === true) throw new DryRunRollback(result);
+          return result;
+        });
+      } catch (error) {
+        if (error instanceof DryRunRollback) return error.result as T;
+        throw error;
+      }
+    }, constraints);
+  }
+}
+
+/** Sinal interno do ensaio: desfaz a transação levando o resultado. Nunca sai deste arquivo. */
+class DryRunRollback extends Error {
+  constructor(readonly result: unknown) {
+    super('dry run');
   }
 }
 

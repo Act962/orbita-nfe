@@ -1,7 +1,7 @@
 import type { AuditContext } from '../../../shared/application/audit.js';
 import { BusinessRuleError, InternalError } from '../../../shared/application/errors.js';
 import type { UnitOfWork } from '../../../shared/application/unit-of-work.js';
-import { evaluateCertificate, type CertificateStatus, type RejectionReason } from '../domain/certificate.js';
+import { evaluateCertificate, expiryNoticeTimes, type CertificateStatus, type RejectionReason } from '../domain/certificate.js';
 import { wipe } from './certificate-service.js';
 import type { CertificateOpener, CertificateWorkerRepositories, OpenedCertificate, Pkcs12Reader, TrustStore } from './ports.js';
 
@@ -94,6 +94,10 @@ export class CertificateVault {
         },
         correlationId: context.correlationId,
       });
+      // Avisos de vencimento: um job por limiar, executado pelo worker-general na data certa.
+      for (const runAt of expiryNoticeTimes(metadata.notAfter, this.now())) {
+        await r.jobs.enqueue({ queue: 'certificates.expiry-notice', payload: { companyId, certificateId }, runAt, correlationId: context.correlationId });
+      }
       return { kind: 'ACTIVATED', replaced };
     });
   }

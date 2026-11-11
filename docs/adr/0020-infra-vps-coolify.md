@@ -11,3 +11,9 @@
 
 ## Consequências
 Custo baixo e operação simples; VPS única é ponto único de falha (aceito na fase inicial, reavaliar com crescimento de empresas). Detalhes: [15-infraestrutura.md](../architecture/15-infraestrutura.md).
+
+## Revisão (2026-11-11, semana 7)
+- **Backup:** WAL-G, com cifra libsodium no cliente e credenciais do bucket em arquivos. A imagem do banco (`docker/postgres/Dockerfile`) traz o binário conferido por checksum. Exercício de restauração: `npm run drill:backup`.
+- **Imagens:** o CI publica `ghcr.io/act962/orbita-nfe` e `orbita-nfe-postgres` com a tag imutável `sha-<commit>`. O compose de produção é `docker/coolify/docker-compose.yml`.
+- **Segredos:** arquivos do host montados somente leitura, cada um só no serviço que precisa dele (runbook [deploy-coolify](../runbooks/deploy-coolify.md)).
+- **Containers da aplicação:** rootfs somente leitura, `cap_drop: ALL`, `no-new-privileges`, core dump desligado.

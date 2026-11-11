@@ -1,0 +1,149 @@
+# Produção na VPS com Coolify (ADR-0020, ADR-0021, doc 15). Runbook: docs/runbooks/deploy-coolify.md
+#
+# - Imagens publicadas pelo CI no GHCR, fixadas por tag imutável (sha-<commit>): o Coolify só faz deploy.
+# - Cada segredo é um ARQUIVO do host montado somente leitura, e SÓ no container que precisa dele
+#   (/srv/orbita-nfe/secrets/<serviço>/, dono e permissões no runbook). Nenhum segredo em variável,
+#   exceto as URLs de banco (senha do usuário de login do papel), cadastradas como secret no Coolify.
+# - Só a API recebe tráfego (proxy do Coolify, TLS). Banco e workers ficam só na rede interna.
+name: orbita-nfe
+
+x-app: &app
+  image: ghcr.io/act962/orbita-nfe:${IMAGE_TAG:?informe IMAGE_TAG (sha-<commit>)}
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  ulimits:
+    core: 0
+  environment: &app-env
+    NODE_ENV: production
+    APP_VERSION: ${IMAGE_TAG}
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+  networks: [internal]
+  logging:
+    driver: json-file
+    options: { max-size: 20m, max-file: '5' }
+
+services:
+  postgres:
+    image: ghcr.io/act962/orbita-nfe-postgres:${POSTGRES_IMAGE_TAG:?informe POSTGRES_IMAGE_TAG}
+    restart: unless-stopped
+    shm_size: 256m
+    environment:
+      POSTGRES_DB: orbita_nfe
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-superuser-password
+      # Backup contínuo (docs/runbooks/backup-restauracao.md): bucket SEPARADO do de âncoras e de XML.
+      WALG_S3_PREFIX: ${WALG_S3_PREFIX:?informe WALG_S3_PREFIX (s3://<bucket-backups>/orbita-nfe)}
+      AWS_ENDPOINT: ${BACKUP_S3_ENDPOINT:?informe BACKUP_S3_ENDPOINT}
+      AWS_REGION: ${BACKUP_S3_REGION:-us-east-1}
+      AWS_S3_FORCE_PATH_STYLE: ${BACKUP_S3_FORCE_PATH_STYLE:-false}
+      WALG_S3_ACCESS_KEY_ID_FILE: /run/secrets/backup-s3-access-key-id
+      WALG_S3_SECRET_ACCESS_KEY_FILE: /run/secrets/backup-s3-secret-access-key
+      WALG_LIBSODIUM_KEY_PATH: /run/secrets/backup-encryption-key
+    # RPO ≤ 5 min (doc 15 §3): segmento de WAL fechado e enviado no máximo a cada 60 s.
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=walg wal-push %p
+      - -c
+      - archive_timeout=60
+      - -c
+      - log_min_duration_statement=2000
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - /srv/orbita-nfe/secrets/postgres:/run/secrets:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d orbita_nfe']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  # Migrations com o papel DONO das tabelas (sem superuser). Roda e termina a cada deploy;
+  # a API só sobe depois de ela terminar com sucesso.
+  migrate:
+    <<: *app
+    restart: 'no'
+    command: ['node', 'dist/db/migrate.js']
+    environment:
+      <<: *app-env
+      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:?informe MIGRATION_DATABASE_URL (login fiscal_owner)}
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *app
+    command: ['node', '--disable-proto=throw', 'dist/main/api.js']
+    environment:
+      <<: *app-env
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: '3000'
+      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
+      DATABASE_URL: ${API_DATABASE_URL:?informe API_DATABASE_URL (login membro de fiscal_api)}
+      API_KEY_PEPPER_FILE: /run/secrets/api-key-pepper
+      CERTIFICATE_KEK_PUBLIC_FILE: /run/secrets/certificate-kek-public.pem
+      WEBHOOK_SECRET_KEY_PUBLIC_FILE: /run/secrets/webhook-secret-key-public.pem
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-600}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-120}
+    volumes:
+      - /srv/orbita-nfe/secrets/api:/run/secrets:ro
+    expose: ['3000']
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3000/health/ready').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  # ÚNICO processo com a KEK privada dos certificados (ADR-0009, ADR-0021). Sem porta exposta.
+  worker-fiscal:
+    <<: *app
+    command: ['node', '--disable-proto=throw', 'dist/main/worker-fiscal.js']
+    environment:
+      <<: *app-env
+      WORKER_DATABASE_URL: ${WORKER_DATABASE_URL:?informe WORKER_DATABASE_URL (login membro de fiscal_worker)}
+      WORKER_CERTIFICATE_KEK_PRIVATE_FILE: /run/secrets/certificate-kek-private.pem
+      CERTIFICATE_TRUST_BUNDLE_FILE: /run/secrets/trust-bundle.pem
+      WORKER_CONCURRENCY: ${FISCAL_WORKER_CONCURRENCY:-4}
+    volumes:
+      - /srv/orbita-nfe/secrets/worker-fiscal:/run/secrets:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  # Outbox, webhooks (requisições a URLs de clientes), avisos de vencimento e âncora da auditoria.
+  # NUNCA recebe material de certificado.
+  worker-general:
+    <<: *app
+    command: ['node', '--disable-proto=throw', 'dist/main/worker-general.js']
+    environment:
+      <<: *app-env
+      GENERAL_DATABASE_URL: ${GENERAL_DATABASE_URL:?informe GENERAL_DATABASE_URL (login membro de fiscal_general)}
+      GENERAL_WEBHOOK_SECRET_KEY_PRIVATE_FILE: /run/secrets/webhook-secret-key-private.pem
+      WEBHOOK_TIMEOUT_MS: '10000'
+      WORKER_CONCURRENCY: ${GENERAL_WORKER_CONCURRENCY:-4}
+      AUDIT_ANCHOR_S3_ENDPOINT: ${AUDIT_ANCHOR_S3_ENDPOINT:?informe AUDIT_ANCHOR_S3_ENDPOINT}
+      AUDIT_ANCHOR_S3_REGION: ${AUDIT_ANCHOR_S3_REGION:-us-east-1}
+      AUDIT_ANCHOR_S3_BUCKET: ${AUDIT_ANCHOR_S3_BUCKET:?informe AUDIT_ANCHOR_S3_BUCKET (com Object Lock)}
+      AUDIT_ANCHOR_S3_FORCE_PATH_STYLE: ${AUDIT_ANCHOR_S3_FORCE_PATH_STYLE:-false}
+      AUDIT_ANCHOR_S3_ACCESS_KEY_ID_FILE: /run/secrets/anchor-s3-access-key-id
+      AUDIT_ANCHOR_S3_SECRET_ACCESS_KEY_FILE: /run/secrets/anchor-s3-secret-access-key
+      AUDIT_ANCHOR_RETENTION_DAYS: ${AUDIT_ANCHOR_RETENTION_DAYS:-1830}
+    volumes:
+      - /srv/orbita-nfe/secrets/worker-general:/run/secrets:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:
+
+networks:
+  internal:

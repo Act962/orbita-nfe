@@ -1,6 +1,8 @@
 import { clientApplicationOf, type AuditContext, type AuditTrail } from '../../../shared/application/audit.js';
 import { BusinessRuleError, InternalError, NotFoundError, ValidationFailedError } from '../../../shared/application/errors.js';
-import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-of-work.js';
+import type { JobScheduler } from '../../../shared/application/job-queue.js';
+import { runDay } from '../../../shared/domain/daily-schedule.js';
+import type { IdGenerator, TransactionOptions, UnitOfWork } from '../../../shared/application/unit-of-work.js';
 import { newEstablishment, newCompany, type Establishment, type NewEstablishment, type NewCompany, type Company } from '../domain/company.js';
 
 export interface CompanyRepository {
@@ -27,6 +29,8 @@ export interface CompanyRepositories {
   readonly establishments: EstablishmentRepository;
   readonly accessGrants: AccessGrants;
   readonly audit: AuditTrail;
+  /** Agenda a primeira âncora da cadeia de auditoria da empresa (ADR-0031). */
+  readonly jobs: JobScheduler;
 }
 
 export const establishmentNotFound = (): NotFoundError => new NotFoundError('ESTABLISHMENT_NOT_FOUND', 'Estabelecimento não encontrado.');
@@ -42,7 +46,7 @@ export class CompanyService {
    * Cria a empresa e concede a quem a criou o acesso a ela, atomicamente. O id é gerado aqui:
    * o cliente nunca escolhe o identificador da empresa.
    */
-  async registerCompany(input: { legalName: string; rootCnpj: string }, context: AuditContext): Promise<Company> {
+  async registerCompany(input: { legalName: string; rootCnpj: string }, context: AuditContext, options: TransactionOptions = {}): Promise<Company> {
     const createdBy = clientApplicationOf(context);
     if (createdBy === undefined) throw new InternalError('COMPANY_CREATOR_NOT_CLIENT_APPLICATION');
     const draft = newCompany({ id: this.newId(), ...input });
@@ -56,8 +60,15 @@ export class CompanyService {
         details: { rootCnpj: company.rootCnpj, legalName: company.legalName },
       });
       await r.audit.record(context, { action: 'company_grant.granted', subject: { type: 'client_application', id: createdBy } });
+      // A cadeia da empresa nasce aqui: a âncora diária começa já, e cada execução agenda a seguinte.
+      await r.jobs.enqueue({
+        queue: 'audit.anchor-company',
+        payload: { companyId: company.id },
+        singletonKey: `${company.id}:${runDay(new Date())}`,
+        correlationId: context.correlationId,
+      });
       return company;
-    });
+    }, options);
   }
 
   async currentCompany(companyId: string): Promise<Company> {
@@ -73,6 +84,7 @@ export class CompanyService {
     companyId: string,
     input: { cnpj: string; tradeName: string; municipalityCode: string },
     context: AuditContext,
+    options: TransactionOptions = {},
   ): Promise<Establishment> {
     return this.uow.inCompany(companyId, async (r) => {
       const company = await r.companies.current();
@@ -89,7 +101,7 @@ export class CompanyService {
         details: { cnpj: establishment.cnpj, municipalityCode: establishment.municipalityCode },
       });
       return establishment;
-    });
+    }, options);
   }
 
   async establishment(companyId: string, id: string): Promise<Establishment> {

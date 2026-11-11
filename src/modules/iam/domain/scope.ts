@@ -15,6 +15,8 @@ export const SCOPES = [
   'certificates:manage',
   'webhooks:read',
   'webhooks:manage',
+  'production:read',
+  'production:manage',
   'nfse:issue',
   'nfse:read',
   'nfse:cancel',

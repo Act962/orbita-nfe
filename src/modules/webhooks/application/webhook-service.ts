@@ -1,7 +1,7 @@
 import type { AuditContext } from '../../../shared/application/audit.js';
 import { BusinessRuleError, NotFoundError, ValidationFailedError } from '../../../shared/application/errors.js';
 import type { ValidationIssue } from '../../../shared/domain/validation-issue.js';
-import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-of-work.js';
+import type { IdGenerator, TransactionOptions, UnitOfWork } from '../../../shared/application/unit-of-work.js';
 import type { IntegrationEventType } from '../../../shared/domain/integration-events.js';
 import { EVENT_CATALOG, isSubscribableEventType, type EventTypeDescription } from '../domain/event-catalog.js';
 import { checkWebhookUrl } from '../domain/target-policy.js';
@@ -67,7 +67,12 @@ export class WebhookService {
     return issues;
   }
 
-  async create(companyId: string, input: SubscriptionInput, context: AuditContext & { clientApplicationId: string }): Promise<SubscriptionWithSecret> {
+  async create(
+    companyId: string,
+    input: SubscriptionInput,
+    context: AuditContext & { clientApplicationId: string },
+    options: TransactionOptions = {},
+  ): Promise<SubscriptionWithSecret> {
     const issues = this.validate(input);
     if (issues.length > 0) throw new ValidationFailedError(issues);
     const id = this.newId();
@@ -92,7 +97,7 @@ export class WebhookService {
         details: { host: new URL(input.url).host, eventTypes: [...created.eventTypes] },
       });
       return created;
-    });
+    }, options);
     return { subscription, secret };
   }
 

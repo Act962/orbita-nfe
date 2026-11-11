@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DryRunQuery, dryRunResponse, isDryRun } from '../../../../shared/presentation/http/dry-run.js';
 import type { HttpApp } from '../../../../shared/presentation/http/http-app.js';
 import { withIssueFields } from '../../../../shared/presentation/http/issue-fields.js';
 import { ProblemSchema, commonErrorResponses } from '../../../../shared/presentation/http/problem.js';
@@ -155,12 +156,19 @@ export function registerWebhookRoutes(app: HttpApp, service: WebhookService): vo
         description: `A assinatura pertence à aplicação que a cria, na empresa do header. ${SIGNATURE_DOC}`,
         security: [{ apiKey: [] }],
         headers: CompanyHeaders,
+        querystring: DryRunQuery,
         body: CreateBody,
-        response: { 201: SubscriptionWithSecretResponse, ...commonErrorResponses, ...authErrorResponses, 422: ProblemSchema.describe('WEBHOOK_SUBSCRIPTION_LIMIT') },
+        response: {
+          201: SubscriptionWithSecretResponse,
+          // No ensaio o segredo NÃO é devolvido: ele seria descartado e nunca funcionaria.
+          200: dryRunResponse(SubscriptionResponse, 'WebhookSubscription'),
+          ...commonErrorResponses, ...authErrorResponses, 422: ProblemSchema.describe('WEBHOOK_SUBSCRIPTION_LIMIT') },
       },
     },
     async (request, reply) => {
-      const created = await withIssueFields('body', () => service.create(companyIdOf(request), request.body, ownerContext(request)));
+      const dryRun = isDryRun(request.query);
+      const created = await withIssueFields('body', () => service.create(companyIdOf(request), request.body, ownerContext(request), { dryRun }));
+      if (dryRun) return reply.status(200).send({ dryRun: true, result: subscriptionJson(created.subscription) });
       return reply
         .status(201)
         .header('location', `/v1/webhook-subscriptions/${created.subscription.id}`)

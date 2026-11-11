@@ -7,7 +7,7 @@ Referências: [ADR-0030](../adr/0030-fila-propria-postgresql.md), ADR-0015, ADR-
 |---|---|---|---|---|
 | api | `node dist/main/api.js` | `DATABASE_URL` (fiscal_api) | pepper, KEK **pública**, chave **pública** de webhooks (`WEBHOOK_SECRET_KEY_PUBLIC_FILE`) | só enfileira |
 | worker-fiscal | `node dist/main/worker-fiscal.js` | `WORKER_DATABASE_URL` (fiscal_worker) | KEK **privada**, bundle de ACs | `certificates.validate` |
-| worker-general | `node dist/main/worker-general.js` | `GENERAL_DATABASE_URL` (fiscal_general) | chave **privada** de webhooks (`GENERAL_WEBHOOK_SECRET_KEY_PRIVATE_FILE`) | `webhooks.fanout`, `webhooks.deliver` |
+| worker-general | `node dist/main/worker-general.js` | `GENERAL_DATABASE_URL` (fiscal_general) | chave **privada** de webhooks (`GENERAL_WEBHOOK_SECRET_KEY_PRIVATE_FILE`), credencial de ESCRITA do bucket de âncoras | `webhooks.fanout`, `webhooks.deliver`, `certificates.expiry-notice`, `audit.anchor-company`, `audit.anchor-platform` |
 
 Regras de configuração:
 - Em produção, cada container recusa subir com segredo de outro papel.
@@ -35,6 +35,8 @@ Gerar a chave de webhooks de produção: mesmo procedimento da KEK ([kek-certifi
 | Fila crescendo, nada sai | `ops queues`: está pausada? O worker da lane está rodando (log `worker iniciado`)? | Retomar a fila ou subir o worker. Um job ativo com concessão vencida volta sozinho para a fila (log `jobs com concessão vencida devolvidos à fila`) |
 | Mortos em `certificates.validate` | `ops dead`: código `JOB_PAYLOAD_INVALID` (bug) ou erro de banco | Corrigir a causa e rodar `ops retry`. A CLI `npm run certificates -- validate` continua disponível para revalidar uma empresa |
 | Cliente diz que não recebe webhook | Pela API do cliente: `GET /v1/webhook-deliveries?subscriptionId=…` (`status`, `lastHttpStatus`, `lastErrorCode`) | `TARGET_FORBIDDEN`: URL resolve para endereço privado. `TIMEOUT`/`CONNECTION_FAILED`: destino fora. `HTTP_STATUS`: o destino respondeu erro. O cliente pode usar `/redeliver` e `/test` |
+| Mortos em `audit.anchor-company` ou `audit.anchor-platform` | `ops dead`: erro do bucket (credencial, Object Lock desligado, provedor fora) | Corrigir e rodar `ops retry` **sempre**. O job de amanhã já foi agendado, mas a âncora de hoje fica faltando até o retry (ADR-0031) |
+| Log `âncora da auditoria não configurada` | Variáveis `AUDIT_ANCHOR_S3_*` | Em produção o worker nem sobe sem elas; fora de produção, as filas de âncora ficam paradas |
 | Muitos `429 RATE_LIMITED` | Limite por credencial ou por endereço | Ajustar `RATE_LIMIT_*`. Os baldes ficam em memória por réplica da API: com N réplicas, o limite efetivo é N × o configurado |
 
 ## 4. Garantias que a operação não pode quebrar

@@ -1,12 +1,24 @@
 import type { KeyObject } from 'node:crypto';
-import { AuditVerifier, DrizzleAuditChainReader, companyAuditTrail, platformAuditTrail, sha256ChainHasher } from '../modules/audit/public.js';
 import {
+  AuditAnchorer,
+  AuditVerifier,
+  DrizzleAuditChainReader,
+  anchorHeadReader,
+  companyAuditTrail,
+  platformAuditTrail,
+  sha256ChainHasher,
+  type AnchorStore,
+} from '../modules/audit/public.js';
+import {
+  CertificateExpiryNotifier,
   CertificateService,
   CertificateVault,
   ForgePkcs12Reader,
   RsaEnvelopeOpener,
   RsaEnvelopeSealer,
   certificateApiUnitOfWork,
+  certificateAvailability,
+  certificateExpiryUnitOfWork,
   certificateWorkerUnitOfWork,
   registerCertificateRoutes,
   type CompanyLookup,
@@ -19,6 +31,7 @@ import {
   fiscalSettingsUnitOfWork,
   registerFiscalSettingsRoutes,
   type EstablishmentDirectory,
+  type EstablishmentProfiles,
 } from '../modules/fiscal-settings/public.js';
 import {
   AccessControl,
@@ -46,6 +59,7 @@ import {
 import type { AuditContext } from '../shared/application/audit.js';
 import { PermanentJobError, type ClaimedJob, type JobHandler, type JobLane, type JobScheduler, type QueueName } from '../shared/application/job-queue.js';
 import type { EventOutbox } from '../shared/application/outbox.js';
+import { nextDailyRun, runDay } from '../shared/domain/daily-schedule.js';
 import type { BucketPolicy } from '../shared/domain/token-bucket.js';
 import { CompanyTransactions, type Database, type Transaction } from '../shared/infrastructure/database/database.js';
 import { uuidv7 } from '../shared/infrastructure/ids.js';
@@ -55,8 +69,12 @@ import { QueueAdmin } from '../shared/infrastructure/queue/queue-admin.js';
 import type { HttpApp } from '../shared/presentation/http/http-app.js';
 import { RateLimiter } from '../shared/presentation/http/rate-limit.js';
 
-const establishmentDirectory = (tx: Transaction): EstablishmentDirectory & EstablishmentLookup => ({
+const establishmentDirectory = (tx: Transaction): EstablishmentDirectory & EstablishmentProfiles & EstablishmentLookup => ({
   exists: async (id) => (await establishmentRepository(tx).findById(id)) !== undefined,
+  profile: async (id) => {
+    const found = await establishmentRepository(tx).findById(id);
+    return found === undefined ? undefined : { cnpj: found.cnpj, status: found.status };
+  },
 });
 
 const companyLookup = (tx: Transaction): CompanyLookup => ({
@@ -108,8 +126,11 @@ export function composeApi(deps: ApiModulesDependencies): ApiModules {
     new HmacSecretHasher(deps.apiKeyPepper),
     new DrizzleCompanyAccessLookup(transactions),
   );
-  const company = new CompanyService(companyUnitOfWork(transactions, companyGrantWriter, auditFor), uuidv7);
-  const fiscalSettings = new FiscalSettingsService(fiscalSettingsUnitOfWork(transactions, establishmentDirectory, auditFor), uuidv7);
+  const company = new CompanyService(companyUnitOfWork(transactions, companyGrantWriter, auditFor, apiJobs), uuidv7);
+  const fiscalSettings = new FiscalSettingsService(
+    fiscalSettingsUnitOfWork(transactions, { establishmentsFor: establishmentDirectory, certificatesFor: certificateAvailability, auditFor }),
+    uuidv7,
+  );
   const certificates = new CertificateService(
     certificateApiUnitOfWork(transactions, { establishmentsFor: establishmentDirectory, auditFor, jobsFor: apiJobs, outboxFor: apiOutbox }),
     new RsaEnvelopeSealer(deps.certificateKek),
@@ -164,7 +185,12 @@ export interface FiscalWorkerDependencies {
 export function composeFiscalWorker(deps: FiscalWorkerDependencies): { vault: CertificateVault; handlers: Partial<Record<QueueName, JobHandler>> } {
   const transactions = new CompanyTransactions(deps.db);
   const vault = new CertificateVault(
-    certificateWorkerUnitOfWork(transactions, { companyFor: companyLookup, auditFor, outboxFor: outboxWith(schedulerFor('fiscal')) }),
+    certificateWorkerUnitOfWork(transactions, {
+      companyFor: companyLookup,
+      auditFor,
+      outboxFor: outboxWith(schedulerFor('fiscal')),
+      jobsFor: schedulerFor('fiscal'),
+    }),
     new RsaEnvelopeOpener(deps.certificateKeks),
     new ForgePkcs12Reader(),
     deps.trustStore,
@@ -187,13 +213,18 @@ export interface GeneralWorkerDependencies {
   readonly webhookSecretKeys: readonly KeyObject[];
   readonly allowPrivateWebhookTargets: boolean;
   readonly webhookTimeoutMs: number;
+  /** Bucket com Object Lock das âncoras de auditoria (ADR-0031). Sem ele, as filas de âncora ficam paradas. */
+  readonly anchorStore?: AnchorStore;
   readonly now?: () => Date;
 }
 
 /** Composition root do worker-general (outbox e entrega de webhooks). Nunca recebe material de certificado. */
 export function composeGeneralWorker(deps: GeneralWorkerDependencies): {
   dispatcher: WebhookDispatcher;
+  expiry: CertificateExpiryNotifier;
   handlers: Partial<Record<QueueName, JobHandler>>;
+  /** Garante a âncora diária da plataforma (idempotente); chamar na inicialização. */
+  ensureRecurringJobs: () => Promise<void>;
   close: () => Promise<void>;
 } {
   const transactions = new CompanyTransactions(deps.db);
@@ -206,9 +237,44 @@ export function composeGeneralWorker(deps: GeneralWorkerDependencies): {
     uuidv7,
     deps.now,
   );
+  const expiry = new CertificateExpiryNotifier(certificateExpiryUnitOfWork(transactions, { outboxFor: outboxWith(schedulerFor('general')) }), deps.now);
+  const now = deps.now ?? (() => new Date());
+  // Fora de transação de empresa: o job só carrega ids e a fila é da plataforma (lane general).
+  const generalJobs = transactionalJobScheduler(deps.db, uuidv7, 'general');
+  const scheduleNextAnchor = async (job: ClaimedJob, chain: { companyId: string } | null): Promise<void> => {
+    const next = nextDailyRun(now());
+    await generalJobs.enqueue(
+      chain === null
+        ? { queue: 'audit.anchor-platform', payload: {}, singletonKey: `platform:${runDay(next)}`, runAt: next, correlationId: job.correlationId }
+        : { queue: 'audit.anchor-company', payload: { companyId: chain.companyId }, singletonKey: `${chain.companyId}:${runDay(next)}`, runAt: next, correlationId: job.correlationId },
+    );
+  };
+  const anchorHandlers: Partial<Record<QueueName, JobHandler>> = {};
+  if (deps.anchorStore !== undefined) {
+    const anchorer = new AuditAnchorer(anchorHeadReader(deps.db, (companyId, work) => transactions.run(companyId, work)), deps.anchorStore, now);
+    anchorHandlers['audit.anchor-company'] = async (job) => {
+      const companyId = payloadId(job, 'companyId');
+      await scheduleNextAnchor(job, { companyId });
+      await anchorer.anchor({ kind: 'COMPANY', companyId });
+    };
+    anchorHandlers['audit.anchor-platform'] = async (job) => {
+      await scheduleNextAnchor(job, null);
+      await anchorer.anchor({ kind: 'PLATFORM' });
+    };
+  }
   return {
     dispatcher,
+    expiry,
+    ensureRecurringJobs: async () => {
+      if (deps.anchorStore === undefined) return;
+      const next = nextDailyRun(now());
+      await generalJobs.enqueue({ queue: 'audit.anchor-platform', payload: {}, singletonKey: `platform:${runDay(next)}`, runAt: next });
+    },
     handlers: {
+      ...anchorHandlers,
+      'certificates.expiry-notice': async (job) => {
+        await expiry.notify(payloadId(job, 'companyId'), payloadId(job, 'certificateId'), job.correlationId);
+      },
       'webhooks.fanout': async (job) => {
         await dispatcher.fanout(payloadId(job, 'companyId'), payloadId(job, 'eventId'));
       },
