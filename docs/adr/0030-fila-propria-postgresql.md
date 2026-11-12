@@ -30,7 +30,7 @@ Ao ligar a fila aos papéis de banco do projeto, surgiram três problemas:
 5. **`ON CONFLICT` só na lane do próprio processo.** O PostgreSQL exige que a linha nova passe na política de LEITURA quando há `ON CONFLICT`, e a API não lê a fila. Por isso a API sempre enfileira com chave nova. Se uma chave se repetir fora da lane do processo, é erro de programação, e o banco devolve violação de unicidade.
 6. **Catálogo fechado de filas** em `shared/application/job-queue.ts` (lane, tentativas, backoff, timeout, prioridade).
 7. **Operação manual pela CLI `npm run ops`** (papel `fiscal_admin`), com auditoria na cadeia da plataforma. Não há endpoints HTTP de operação na API pública: eles exigiriam dar ao papel da API acesso à fila de todas as empresas, e aumentariam a superfície exposta.
-8. O pg-boss continua só como dependência de desenvolvimento do spike 04, que será apagado no fim da Fase 1.
+8. ~~O pg-boss continua só como dependência de desenvolvimento do spike 04~~: removido do projeto em 2026-11-11, junto com o spike.
 
 ## Alternativas consideradas
 - **pg-boss com `migrate: false` e schema criado pela nossa migration.** Ainda exigiria grants amplos sobre tabelas e funções internas e manutenção periódica com DDL de partições. Também criaria acoplamento a detalhes internos que mudam entre versões.

@@ -1,6 +1,10 @@
 # Resultados dos spikes técnicos — Fase 1
 
-Data: 2026-11-09 · Código: [`spikes/`](../../spikes/README.md) · Execução: `npm run spikes` → **41 testes passando**.
+Data: 2026-11-09 · Execução na época: `npm run spikes` → **41 testes passando**.
+
+> **Encerrado em 2026-11-11.** A pasta `spikes/` foi apagada. O código dos spikes 01 a 03 virou implementação definitiva com testes próprios: ADR-0014 (seção "Implementação definitiva") e ADR-0022. O spike 04 (pg-boss) foi substituído pela fila própria (ADR-0030). Este relatório fica como registro histórico.
+>
+> **Correção:** a regra "sem correlação → `UNKNOWN`" do spike 02, descrita abaixo, não estava no código do spike, que dava `NOT_SENT` nesse caso. A implementação definitiva corrige isso e tem teste.
 
 Ambiente: Node 24.12, OpenSSL 3.2.1 (CLI, só para gerar fixtures), xmlsec1 1.3.7 (Docker alpine:3.22), PostgreSQL 17 (Docker).
 

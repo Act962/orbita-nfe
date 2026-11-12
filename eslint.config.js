@@ -35,11 +35,6 @@ export default tseslint.config(
     },
   },
   {
-    // Spikes (código temporário, spikes/README.md) imprimem medições nos testes.
-    files: ['spikes/**/*.ts'],
-    rules: { 'no-console': 'off' },
-  },
-  {
     files: ['**/*.js', '**/*.cjs', '**/*.mjs'],
     ...tseslint.configs.disableTypeChecked,
   },

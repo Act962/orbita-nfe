@@ -3,6 +3,8 @@
 Última atualização: 2026-11-11
 
 ## Status geral
+Painel resumido para acompanhamento: [status.html](status.html) (abrir no navegador; atualizado a cada etapa).
+
 **Fase 1 — Fundação em andamento** (iniciada em 2026-11-09 após aprovação da arquitetura consolidada e do ADR-0023).
 
 ## Fase 1 — progresso
@@ -67,6 +69,24 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - [x] Documentação pública lida e comparada ([doc 17](architecture/17-referencia-nfe-io.md)): 10 aprimoramentos (B1–B10) distribuídos no roadmap; [ADR-0027](adr/0027-convencoes-cadastro-fiscal-referencia-nfe-io.md) **aceito** em 2026-11-10.
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
+
+### Encerramento da Fase 1 — código concluído (2026-11-11)
+- [x] **Spikes 01 a 03 promovidos a código definitivo** em `src/shared/infrastructure/` (ADR-0014, seção "Implementação definitiva"):
+  - `xml/untrusted-xml.ts`: parser de XML não confiável;
+  - `xml/fiscal-schema-catalog.ts`: XSD oficiais com hash conferido na carga, seleção por ambiente e erratas;
+  - `xml/xml-signer.ts`: XMLDSig com o perfil `nfse-nacional-dps`; a verificação só aceita os algoritmos do perfil;
+  - `transport/mtls-transport.ts`: mTLS com a fase da falha (ADR-0022).
+- [x] **Validação contra os XSD oficiais da NFS-e Nacional:** uma DPS mínima fictícia valida nos pacotes de produção e de produção restrita, e o XML assinado também valida. O xmlsec1 confirmou a assinatura.
+- [x] **Achado no XSD oficial de produção** (`1.01-20260209`):
+  - `TSSerieDPS` usa `^0{0,4}\d{1,5}$`, e a libxml2 recusa **qualquer** série com esse padrão;
+  - tratado com a errata explícita XSD-ERRATA-001 (ADR-0013, complemento de 2026-11-11; risco R-36). O arquivo oficial continua intocado;
+  - SERIES-002 foi corrigida: ela dizia que o motor não dependia desse padrão.
+- [x] **Correção no transporte:** o spike classificava como `NOT_SENT` uma requisição sem correlação com o trace. O correto, e o que agora está no código, é `UNKNOWN`.
+- [x] Removidos `spikes/`, o job `spikes` do CI, `vitest.spikes.config.ts` e o pg-boss.
+- [x] Testes: 58 novos (XSD oficial, errata, integridade, parser, assinatura, mTLS, xmlsec1, PFX legado do OpenSSL). Total: **464 testes**; typecheck, lint, regras de camadas e build verdes.
+- [ ] Gate de saída da Fase 1:
+  - o "fluxo completo com documento fake" foi para a Fase 2a, junto com o write-ahead e o reconciliador (reescopo da semana 6);
+  - o deploy real continua aguardando VPS, domínio e buckets.
 
 ### Semana 7 — concluída no código (2026-11-11); deploy real pendente de infraestrutura
 - [x] **Ensaio `?dryRun=true`** (ADR-0026 item 4):
@@ -175,7 +195,14 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 4. ~~Certificate Vault, Audit log~~ ✔
 5. ~~Semana 6: fila, outbox, validação de certificado pela fila, webhooks, rate limit, operação das filas~~ ✔ (o write-ahead e o reconciliador foram para a Fase 2a)
 6. ~~Semana 7: backup WAL, âncora externa da auditoria, habilitação de produção, OpenAPI estável + `llms.txt`, changelog, `dryRun`, avisos de vencimento~~ ✔ (deploy real aguardando VPS, domínio e buckets)
-7. Encerramento da Fase 1: deploy real (quando houver infraestrutura), remoção de `spikes/` e do pg-boss, e gate de entrada da Fase 2a (pré-requisitos do responsável no roadmap).
+7. ~~Encerramento da Fase 1: promoção e remoção dos spikes, remoção do pg-boss~~ ✔ (deploy real aguardando infraestrutura)
+8. Fase 2a, parte técnica que não depende de decisão fiscal:
+   - agregado `ServiceInvoice` com a máquina de estados e `UNKNOWN`;
+   - write-ahead de tentativas e reconciliador;
+   - simulador do autorizador com modos de falha;
+   - fluxo completo com documento fake (gate da Fase 1).
+
+   A parte fiscal (regras L3, adapter SEFIN real) espera os pré-requisitos do roadmap: CNPJ e A1 reais, contador e gate fiscal 1.
 
 ### Versões adotadas
 Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0, pino 10.4, Vitest 5.1, ESLint 10, decimal.js 10.6 (fixadas no `package-lock.json`).
@@ -220,12 +247,11 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 6. ~~Aprovar o [ADR-0027](adr/0027-convencoes-cadastro-fiscal-referencia-nfe-io.md) (cadastro fiscal, certificados e documentação inspirados na NFE.io)~~ — aprovado em 2026-11-10.
 
 ## Riscos ativos principais
-R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente · R-30 enquadramento `regApTribSN` da empresa-piloto · R-33 Swagger da SEFIN só com certificado · R-34 corrente de âncora · R-35 Coolify não exercitado. Ver [riscos.md](riscos.md).
+R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente · R-30 enquadramento `regApTribSN` da empresa-piloto · R-33 Swagger da SEFIN só com certificado · R-34 corrente de âncora · R-35 Coolify não exercitado · R-36 errata do XSD de produção da NFS-e. Ver [riscos.md](riscos.md).
 
 ## Código temporário / dívidas registradas
 | Item | Finalidade | Remoção |
 |---|---|---|
-| `spikes/` (+ job `spikes` no CI, `vitest.spikes.config.ts`) | Provas técnicas da Fase 1 | Promover a adapters em `src/` com testes definitivos e apagar até o fim da Fase 1 |
 | Vulnerabilidade moderada `minimatch` (cadeia do ESLint, só em desenvolvimento) | — | Atualizar quando o ESLint publicar a correção; o CI audita só dependências de produção |
 | Faixas reservadas de série NF-e/NFC-e não validadas (SERIES-001) | Fontes secundárias conflitantes (R-26) | Conferir MOC/XSD oficiais antes da Fase 3 |
 | Séries do motor ainda aceitam 80000–89999 (faixa de transcrição manual do Emissor Web) | SERIES-002, conferida em 2026-11-10 | Bloquear na Fase 2a, junto com a DPS |
@@ -233,6 +259,9 @@ R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS �
 | Teste baseado em propriedades entre 3 empresas (docs/14 §B4, teste 10) | Ainda não escrito | Junto com o primeiro documento fiscal (Fase 2a) |
 | Bundle de ACs raiz ICP-Brasil (ITI) não carregado | Só a PKI fictícia de teste existe (R-29) | Antes da produção restrita (Fase 2a), com versão e hash em fontes-oficiais |
 | Sem consulta de revogação (LCR/OCSP) na validação de certificado | Fora do escopo da semana 5 (R-29) | Fase 2a |
+| Errata XSD-ERRATA-001 no pacote de produção da NFS-e (R-36) | Defeito do XSD oficial (`^`/`$` em `TSSerieDPS`) | Retirar quando o pacote de produção for substituído; confirmar no primeiro envio aceito |
+| `resources/fiscal` fora da imagem Docker | O catálogo de schemas ainda não é usado em tempo de execução | Copiar na imagem do worker-fiscal quando a validação L4 for ligada (Fase 2a) |
+| Validação XSD instancia o wasm a cada chamada (~200 ms com o XSD oficial) | Suficiente para o volume do piloto | Instância persistente ou `worker_threads` se a vazão exigir |
 | `withCertificate` sem cache com TTL | O uso real (assinatura/mTLS) chega na Fase 2a | Junto com a assinatura XML |
 | Comando de re-embrulho das DEKs (rotação da KEK) | O banco e o opener já aceitam; falta o comando | Antes da primeira rotação (runbook kek-certificados §3) |
 | Escrita da trilha serializada por empresa (trava da cabeça) | Simplicidade e ordem total; volume atual baixo | Reavaliar com carga real de emissão |
@@ -240,7 +269,6 @@ R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS �
 | Rate limit em memória por réplica da API | Uma réplica hoje (ADR-0020) | Redis ou tabela quando houver mais de uma réplica |
 | Fila por polling (sem LISTEN/NOTIFY) | Simplicidade; 1 s de latência basta | Reavaliar no teste de carga (Fase 5) |
 | Endpoints HTTP de operação (`/ops/v1`) substituídos pela CLI `npm run ops` | Menor superfície; o papel da API não lê a fila (ADR-0030) | Reavaliar se surgir painel de operação |
-| `pg-boss` em devDependencies (só o spike 04) | Spike mantido até o fim da Fase 1 | Junto com a remoção de `spikes/` |
 | Restauração de backup e âncora ainda não exercitadas no provedor S3 real | Bucket de produção não existe (decisão pendente 2) | No primeiro deploy (runbooks backup-restauracao §5 e deploy-coolify §4) |
 | Container one-shot `migrate` e login do Coolify no GHCR não confirmados num painel real (R-35) | Sem VPS ainda | No primeiro deploy |
 | Alerta automático de fila morta (ex.: `audit.anchor-*`) | Hoje só `ops dead` e log (R-34) | Fase 5 (observabilidade) ou antes, se houver incidente |

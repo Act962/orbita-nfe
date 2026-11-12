@@ -17,8 +17,8 @@
 | `TSIdDPS` | `DPS[0-9]{42}` | `DPS[0-9]{7}(1[0-9]{14}\|2[0-9A-Z]{14})[0-9]{20}` (CNPJ alfanumérico) |
 
 - O nDPS bate com a regra implementada nos dois pacotes.
-- A série implementada (0 a 89999, sem zeros à esquerda) é aceita pelos dois pacotes.
-- Observação: no XSD 1.0, `^` e `$` não são âncoras. O padrão de produção é uma particularidade do pacote oficial, e o motor não depende dele.
+- A série implementada (0 a 89999, sem zeros à esquerda) é aceita pelo pacote de produção restrita e, com a errata XSD-ERRATA-001, pelo de produção.
+- **Correção (2026-11-11):** no XSD 1.0, `^` e `$` não são âncoras, e isso afeta o motor. A validação de leiaute (L4) usa a libxml2, que segue a especificação: com o arquivo original de produção, **nenhuma série é aceita**, nem `1`. O teste `fiscal-schema-catalog.test.ts` reproduz o defeito. O catálogo aplica em memória a errata [XSD-ERRATA-001](../../../resources/fiscal/schemas/nfse-nacional/1.01-20260209/ERRATA.json), que só remove os dois caracteres (ADR-0013, complemento de 2026-11-11). O arquivo oficial continua intocado e conferido pelo hash.
 - A divergência da documentação Senior (nDPS com tamanho 5) fica descartada: é implementação de fornecedor.
 
 ## Faixa 80000–89999

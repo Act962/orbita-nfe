@@ -4,7 +4,7 @@ import type { CertificateMaterial, OpenedCertificate, Pkcs12Failure, Pkcs12Reade
 
 /**
  * Leitura do PKCS#12 (PFX) inteiramente em memória, sem disco e sem processo externo.
- * Promovido do spike 01 (docs/spikes): node-forge porque o Node não expõe PKCS#12 → KeyObject e
+ * Promovido do spike 01 (docs/spikes/resultados-fase1.md): node-forge porque o Node não expõe PKCS#12 → KeyObject e
  * o OpenSSL 3 do Node recusa PFX com criptografia legada (RC2/3DES) sem o provider "legacy".
  *
  * Limitação aceita (ADR-0009): senha e chave passam brevemente por string no heap; o controle

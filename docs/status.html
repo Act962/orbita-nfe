@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>orbita-nfe · Status</title>
+<!--
+  Painel de acompanhamento do projeto. Atualizado a cada etapa concluída, junto com
+  docs/ACOMPANHAMENTO.md (que continua sendo o registro detalhado).
+-->
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5f6b7a; --line: #e3e7ed;
+    --done: #1f8a4c; --done-bg: #e5f5ec; --doing: #b26a00; --doing-bg: #fff3dc;
+    --todo: #6b7685; --todo-bg: #eef1f5; --block: #c0392b; --block-bg: #fdeaea; --accent: #2f5bd3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --card: #1a1f27; --text: #e6e9ee; --muted: #9aa5b4; --line: #2a313c;
+      --done: #4cc782; --done-bg: #173325; --doing: #f0b04a; --doing-bg: #3a2c12;
+      --todo: #9aa5b4; --todo-bg: #232a35; --block: #ff7b6e; --block-bg: #3a1d1b; --accent: #7aa2ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
+  header h1 { margin: 0; font-size: 24px; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  h2 { font-size: 17px; margin: 32px 0 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .kpi .label { color: var(--muted); font-size: 13px; }
+  .kpi .value { font-size: 22px; font-weight: 600; margin-top: 2px; }
+  .kpi .note { color: var(--muted); font-size: 13px; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .done { color: var(--done); background: var(--done-bg); }
+  .doing { color: var(--doing); background: var(--doing-bg); }
+  .todo { color: var(--todo); background: var(--todo-bg); }
+  .block { color: var(--block); background: var(--block-bg); }
+  .phases { display: flex; flex-direction: column; gap: 10px; }
+  .phase { display: grid; grid-template-columns: 56px 1fr auto; gap: 12px; align-items: start; }
+  .phase .id { font-weight: 700; font-size: 18px; color: var(--accent); }
+  .phase h3 { margin: 0; font-size: 15px; }
+  .phase p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+  .bar { height: 6px; background: var(--todo-bg); border-radius: 999px; margin-top: 8px; overflow: hidden; }
+  .bar span { display: block; height: 100%; background: var(--done); }
+  ul.check { list-style: none; margin: 0; padding: 0; }
+  ul.check li { display: flex; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); align-items: baseline; }
+  ul.check li:first-child { border-top: 0; }
+  ul.check li .tag { flex: none; min-width: 84px; text-align: center; }
+  ul.check li small { color: var(--muted); display: block; }
+  .two { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  ol { margin: 0; padding-left: 20px; }
+  ol li { padding: 3px 0; }
+  code { font-size: 13px; background: var(--todo-bg); padding: 1px 5px; border-radius: 4px; }
+  footer { margin-top: 32px; color: var(--muted); font-size: 13px; }
+  @media (max-width: 560px) {
+    .phase { grid-template-columns: 40px 1fr; }
+    .phase .tag { grid-column: 2; justify-self: start; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>orbita-nfe · Status do projeto</h1>
+  <p>Motor fiscal próprio (NFS-e, NFC-e, NF-e) para o Orbita e o NERP · Atualizado em <strong>12/11/2026</strong></p>
+</header>
+
+<h2>Visão geral</h2>
+<div class="grid">
+  <div class="card kpi">
+    <div class="label">Fase atual</div>
+    <div class="value">Fim da Fase 1</div>
+    <div class="note">Código concluído; falta o deploy real</div>
+  </div>
+  <div class="card kpi">
+    <div class="label">Próxima fase</div>
+    <div class="value">2a · NFS-e Nacional</div>
+    <div class="note">Parte técnica pode começar já</div>
+  </div>
+  <div class="card kpi">
+    <div class="label">Testes automatizados</div>
+    <div class="value">464 ✓</div>
+    <div class="note">Typecheck, lint, camadas e build verdes</div>
+  </div>
+  <div class="card kpi">
+    <div class="label">Deploy em produção</div>
+    <div class="value"><span class="tag block">Bloqueado</span></div>
+    <div class="note">Falta VPS, domínio e buckets S3</div>
+  </div>
+</div>
+
+<h2>Fases do roadmap</h2>
+<div class="card phases">
+  <div class="phase">
+    <div class="id">0</div>
+    <div><h3>Arquitetura</h3><p>Documentação, ADRs, riscos e plano aprovados.</p><div class="bar"><span style="width:100%"></span></div></div>
+    <span class="tag done">Concluída</span>
+  </div>
+  <div class="phase">
+    <div class="id">1</div>
+    <div><h3>Fundação · 5–7 semanas</h3><p>API, banco com isolamento por empresa, certificados, auditoria, filas, webhooks, backup, imagens de deploy.</p><div class="bar"><span style="width:92%"></span></div></div>
+    <span class="tag doing">Falta deploy</span>
+  </div>
+  <div class="phase">
+    <div class="id">2a</div>
+    <div><h3>NFS-e Nacional (Simples, Teresina) · 8–12 semanas</h3><p>Emissão pela SEFIN Nacional: DPS, assinatura, envio, consulta, cancelamento, piloto.</p><div class="bar"><span style="width:5%"></span></div></div>
+    <span class="tag todo">Próxima</span>
+  </div>
+  <div class="phase">
+    <div class="id">2b</div>
+    <div><h3>NFS-e emissor municipal de Teresina · 2–4 semanas</h3><p>Só se houver cliente fora do Simples (Lucro Presumido/Real).</p><div class="bar"><span style="width:0%"></span></div></div>
+    <span class="tag todo">Não iniciada</span>
+  </div>
+  <div class="phase">
+    <div class="id">3</div>
+    <div><h3>NFC-e Piauí · 10–14 semanas</h3><p>Motor central, homologação SEFAZ-PI, integração com o NERP.</p><div class="bar"><span style="width:0%"></span></div></div>
+    <span class="tag todo">Não iniciada</span>
+  </div>
+  <div class="phase">
+    <div class="id">3b</div>
+    <div><h3>Contingência local NERP · 6–10 semanas</h3><p>Só depois da NFC-e validada em produção.</p><div class="bar"><span style="width:0%"></span></div></div>
+    <span class="tag todo">Não iniciada</span>
+  </div>
+  <div class="phase">
+    <div class="id">4</div>
+    <div><h3>NF-e modelo 55 · 12–16 semanas</h3><p>Emissão, eventos, inutilização, contingência.</p><div class="bar"><span style="width:0%"></span></div></div>
+    <span class="tag todo">Não iniciada</span>
+  </div>
+  <div class="phase">
+    <div class="id">5</div>
+    <div><h3>Robustez e expansão</h3><p>Observabilidade, carga, SDK, exportação para o contador.</p><div class="bar"><span style="width:0%"></span></div></div>
+    <span class="tag todo">Contínua</span>
+  </div>
+</div>
+
+<h2>Fase 1 · o que foi entregue</h2>
+<div class="card">
+  <ul class="check">
+    <li><span class="tag done">Pronto</span><div>Base do projeto, CI, logs sem dados sensíveis, padrão de erros da API</div></li>
+    <li><span class="tag done">Pronto</span><div>Banco PostgreSQL com isolamento por empresa (RLS) e testes de vazamento entre empresas</div></li>
+    <li><span class="tag done">Pronto</span><div>Chaves de API (<code>fk_test</code> / <code>fk_live</code>), empresas, estabelecimentos e séries fiscais</div></li>
+    <li><span class="tag done">Pronto</span><div>Cofre de certificados A1 (cifrado; só o worker fiscal abre) e trilha de auditoria encadeada</div></li>
+    <li><span class="tag done">Pronto</span><div>Fila própria, webhooks assinados, limite de requisições, CLI de operação</div></li>
+    <li><span class="tag done">Pronto</span><div>Habilitação de produção, ensaio <code>dryRun</code>, avisos de vencimento do certificado</div></li>
+    <li><span class="tag done">Pronto</span><div>Âncora externa da auditoria, documentação para agentes (<code>/llms.txt</code>, OpenAPI)</div></li>
+    <li><span class="tag done">Pronto</span><div>XSD oficial da NFS-e, assinatura XML e envio com certificado (mTLS)<small>Achado: o XSD oficial de produção recusa qualquer série; tratado com errata registrada.</small></div></li>
+    <li><span class="tag done">Pronto</span><div>Backup contínuo do banco com exercício de restauração aprovado</div></li>
+    <li><span class="tag block">Bloqueado</span><div>Deploy real no Coolify<small>Depende da VPS, do domínio e do provedor S3.</small></div></li>
+  </ul>
+</div>
+
+<h2>Deploy</h2>
+<div class="card">
+  <ul class="check">
+    <li><span class="tag done">Pronto</span><div>Compose de produção para o Coolify (segredos por serviço, somente leitura)</div></li>
+    <li><span class="tag done">Pronto</span><div>Imagens publicadas pelo CI no GHCR a cada push na <code>main</code></div></li>
+    <li><span class="tag done">Pronto</span><div>Teste local das imagens em modo produção</div></li>
+    <li><span class="tag done">Pronto</span><div>Runbooks de deploy e de backup/restauração</div></li>
+    <li><span class="tag block">Você</span><div>VPS Hostinger com Coolify instalado</div></li>
+    <li><span class="tag block">Você</span><div>Domínio da API (ex.: <code>api.seudominio</code>)</div></li>
+    <li><span class="tag block">Você</span><div>Provedor S3 com 3 buckets (backups, âncoras com Object Lock, XML)</div></li>
+    <li><span class="tag todo">Depois</span><div>Primeiro deploy, backup agendado e restauração no provedor real</div></li>
+  </ul>
+</div>
+
+<div class="two">
+  <div>
+    <h2>Próximos passos (desenvolvimento)</h2>
+    <div class="card">
+      <ol>
+        <li>Modelo da NFS-e com os estados da nota, inclusive “indeterminado”</li>
+        <li>Registro de cada tentativa antes do envio</li>
+        <li>Reconciliação: consultar o órgão antes de qualquer reenvio</li>
+        <li>Simulador do órgão com falhas, e fluxo completo de teste</li>
+        <li>Rotas de emissão na API (ambiente pela chave)</li>
+        <li>Envio real à produção restrita (precisa do A1)</li>
+      </ol>
+    </div>
+  </div>
+  <div>
+    <h2>Pendências com você</h2>
+    <div class="card">
+      <ul class="check">
+        <li><span class="tag block">Deploy</span><div>VPS, domínio e provedor S3 (+ LGPD)</div></li>
+        <li><span class="tag block">Fase 2a</span><div>CNPJ real + certificado A1 para a produção restrita</div></li>
+        <li><span class="tag block">Fase 2a</span><div>Enquadramento da empresa-piloto com o contador</div></li>
+        <li><span class="tag doing">Fase 2a</span><div>Perguntas à SEMF de Teresina</div></li>
+        <li><span class="tag doing">Fase 2b</span><div>Regime dos clientes de Teresina</div></li>
+        <li><span class="tag todo">Geral</span><div>Visibilidade do repositório e das imagens</div></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h2>Riscos em acompanhamento</h2>
+<div class="card">
+  <ul class="check">
+    <li><span class="tag block">Alto</span><div>Swagger da SEFIN só abre com certificado: caminhos da API ainda não confirmados (R-33)</div></li>
+    <li><span class="tag doing">Médio</span><div>Enquadramento do Simples da empresa-piloto a confirmar com o contador (R-30)</div></li>
+    <li><span class="tag doing">Médio</span><div>Algoritmo de assinatura da SEFIN só documentado pela DSF (R-31)</div></li>
+    <li><span class="tag doing">Médio</span><div>Uma VPS só: depende de backup e restauração testados (R-17)</div></li>
+    <li><span class="tag todo">Baixo</span><div>Errata no XSD oficial de produção a confirmar no primeiro envio (R-36)</div></li>
+  </ul>
+</div>
+
+<h2>Versões no repositório</h2>
+<div class="card">
+  <ul class="check">
+    <li><span class="tag done">Enviado</span><div><code>295b55c</code> Semana 7: habilitação de produção, dryRun, âncora da auditoria e deploy</div></li>
+    <li><span class="tag done">Enviado</span><div>Encerramento da Fase 1: spikes promovidos, errata do XSD, este painel</div></li>
+  </ul>
+</div>
+
+<footer>
+  Detalhes técnicos: <code>docs/ACOMPANHAMENTO.md</code>, <code>docs/roadmap.md</code> e <code>docs/riscos.md</code>.
+  Esta página é atualizada a cada etapa concluída.
+</footer>
+
+</main>
+</body>
+</html>

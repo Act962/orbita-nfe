@@ -1,0 +1,21 @@
+{
+  "package": "nfse-nacional/1.01-20260209",
+  "note": "Correções aplicadas em memória pelo FiscalSchemaCatalog (ADR-0013, complemento de 2026-11-11). Os arquivos oficiais em xsd/ não são alterados e continuam conferidos pelo SHA-256 do MANIFEST.",
+  "entries": [
+    {
+      "id": "XSD-ERRATA-001",
+      "file": "tiposSimples_v1.01.xsd",
+      "fileSha256": "830ea116c34d7310699e34b214b7214a65f7e5d3b1f09aeaa702f7e3f4283b17",
+      "simpleType": "TSSerieDPS",
+      "original": "<xs:pattern value=\"^0{0,4}\\d{1,5}$\"/>",
+      "replacement": "<xs:pattern value=\"0{0,4}\\d{1,5}\"/>",
+      "reason": "Na linguagem de expressões regulares do XML Schema (W3C XML Schema 1.0 Parte 2, Apêndice F), '^' e '$' não são âncoras: fora de uma classe de caracteres são caracteres comuns, e o padrão inteiro já é implicitamente ancorado. Um validador conforme (libxml2) recusa qualquer série com o padrão original, inclusive '1'. A correção só remove os dois caracteres, o que dá ao padrão o significado que ele tem em dialetos com âncoras. Nenhuma faixa de valores foi inventada.",
+      "evidence": [
+        "Teste src/shared/infrastructure/xml/fiscal-schema-catalog.test.ts: com o arquivo original, a DPS mínima com serie=1 é recusada pela libxml2 (facet 'pattern').",
+        "O pacote de produção restrita de 20/10/2026 (nfse-nacional/1.01-20261020-prodrest) substituiu o padrão por '[0-9]{1,4}|[0-8][0-9]{4}', sem âncoras."
+      ],
+      "decidedOn": "2026-11-11",
+      "status": "Provisória: confirmar com o primeiro envio aceito na produção e retirar quando o pacote de produção for substituído."
+    }
+  ]
+}

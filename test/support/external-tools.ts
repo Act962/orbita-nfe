@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 /**
- * Ferramentas externas usadas SOMENTE nos testes de spike, com material de teste.
+ * Ferramentas externas usadas SOMENTE em testes, com material de teste.
  * (Em produção é proibido passar segredos por processos externos — docs/architecture/13.)
  */
 export function hasDocker(): boolean {
@@ -16,7 +16,7 @@ export function hasOpenssl(): boolean {
 }
 
 export function withTempDir<T>(fn: (dir: string) => T): T {
-  const dir = mkdtempSync(join(tmpdir(), 'orbita-spike-'));
+  const dir = mkdtempSync(join(tmpdir(), 'orbita-test-'));
   try {
     return fn(dir);
   } finally {
@@ -25,11 +25,16 @@ export function withTempDir<T>(fn: (dir: string) => T): T {
 }
 
 /** Verifica a assinatura com xmlsec1 (implementação independente, libxml2 + OpenSSL). */
-export function xmlsec1Verify(signedXml: string, caPem: string, idAttr: { element: string; namespace: string }): { ok: boolean; output: string } {
+/** `caPem`: um certificado por item (o xmlsec1 lê só o primeiro de cada arquivo). */
+export function xmlsec1Verify(signedXml: string, caPem: string | readonly string[], idAttr: { element: string; namespace: string }): { ok: boolean; output: string } {
   return withTempDir((dir) => {
     writeFileSync(join(dir, 'signed.xml'), signedXml);
-    writeFileSync(join(dir, 'ca.pem'), caPem);
-    const script = `apk add -q xmlsec >/dev/null 2>&1 && xmlsec1 --verify --trusted-pem /w/ca.pem --id-attr:Id ${idAttr.namespace}:${idAttr.element} /w/signed.xml`;
+    const cas = typeof caPem === 'string' ? [caPem] : caPem;
+    cas.forEach((pem, i) => {
+      writeFileSync(join(dir, `ca${i}.pem`), pem);
+    });
+    const trusted = cas.map((_, i) => `--trusted-pem /w/ca${i}.pem`).join(' ');
+    const script = `apk add -q xmlsec >/dev/null 2>&1 && xmlsec1 --verify ${trusted} --id-attr:Id ${idAttr.namespace}:${idAttr.element} /w/signed.xml`;
     const result = spawnSync('docker', ['run', '--rm', '-v', `${dir}:/w:ro`, 'alpine:3.22', 'sh', '-c', script], { encoding: 'utf8' });
     return { ok: result.status === 0, output: `${result.stdout}${result.stderr}` };
   });
