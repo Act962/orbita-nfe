@@ -28,11 +28,28 @@ import {
 import { companyRepository, establishmentRepository, registerCompanyRoutes, CompanyService, companyUnitOfWork } from '../modules/company/public.js';
 import {
   FiscalSettingsService,
+  documentSeriesRepository,
   fiscalSettingsUnitOfWork,
+  productionEnablementRepository,
   registerFiscalSettingsRoutes,
+  requireAllocated,
   type EstablishmentDirectory,
   type EstablishmentProfiles,
 } from '../modules/fiscal-settings/public.js';
+import {
+  Reconciler,
+  ServiceInvoiceService,
+  SubmissionProcessor,
+  nfseApiUnitOfWork,
+  nfseWorkerUnitOfWork,
+  type CredentialAccess,
+  type DpsPreparer,
+  type EstablishmentReader,
+  type NfseGateway,
+  type ProcessorOptions,
+  type ProductionGate,
+  type SeriesAllocator,
+} from '../modules/nfse/public.js';
 import {
   AccessControl,
   DrizzleCredentialLookup,
@@ -82,6 +99,24 @@ const companyLookup = (tx: Transaction): CompanyLookup => ({
 });
 
 const auditFor = (tx: Transaction) => companyAuditTrail(tx, { newId: uuidv7 });
+
+// Portas da NFS-e implementadas pelos módulos company e fiscal-settings (só pelo public.ts).
+const nfseEstablishments = (tx: Transaction): EstablishmentReader => ({
+  find: async (id) => {
+    const found = await establishmentRepository(tx).findById(id);
+    return found === undefined ? undefined : { id: found.id, cnpj: found.cnpj, municipalityCode: found.municipalityCode, status: found.status };
+  },
+});
+const nfseSeries = (tx: Transaction): SeriesAllocator => ({
+  activeSeries: async (establishmentId, environment) =>
+    (await documentSeriesRepository(tx).listByEstablishment(establishmentId))
+      .filter((s) => s.kind === 'NFSE_DPS' && s.environment === environment && s.status === 'ACTIVE')
+      .map((s) => ({ id: s.id, series: s.series })),
+  allocate: async (seriesId) => requireAllocated(await documentSeriesRepository(tx).allocateNext(seriesId)),
+});
+const nfseProduction = (tx: Transaction): ProductionGate => ({
+  isEnabled: (establishmentId) => productionEnablementRepository(tx).isEnabled(establishmentId, 'NFSE_DPS'),
+});
 /** Agendador de jobs do processo: só absorve repetição de chave na lane que ele consome (ADR-0030). */
 const schedulerFor =
   (ownLane?: JobLane) =>
@@ -110,6 +145,7 @@ export interface ApiModulesDependencies {
 
 export interface ApiModules {
   readonly company: CompanyService;
+  readonly nfse: ServiceInvoiceService;
   readonly fiscalSettings: FiscalSettingsService;
   readonly certificates: CertificateService;
   readonly webhooks: WebhookService;
@@ -143,10 +179,21 @@ export function composeApi(deps: ApiModulesDependencies): ApiModules {
     uuidv7,
     { allowPrivateTargets: deps.allowPrivateWebhookTargets },
   );
+  const nfse = new ServiceInvoiceService(
+    nfseApiUnitOfWork(transactions, {
+      establishmentsFor: nfseEstablishments,
+      seriesFor: nfseSeries,
+      productionFor: nfseProduction,
+      auditFor,
+      jobsFor: apiJobs,
+    }),
+    uuidv7,
+  );
   const rateLimiter = new RateLimiter(deps.rateLimit);
 
   return {
     company,
+    nfse,
     fiscalSettings,
     certificates,
     webhooks,
@@ -178,11 +225,21 @@ export interface FiscalWorkerDependencies {
   readonly certificateKeks: readonly KeyObject[];
   /** ACs raiz confiáveis (bundle ICP-Brasil versionado). */
   readonly trustStore: TrustStore;
+  /**
+   * Emissão de NFS-e (ADR-0032). Sem isto, as filas `nfse.*` ficam sem handler. Nesta etapa o
+   * gateway disponível é o simulador, e a configuração o recusa em produção.
+   */
+  readonly nfse?: { readonly gateway: NfseGateway; readonly preparer: DpsPreparer; readonly options?: ProcessorOptions };
   readonly now?: () => Date;
 }
 
 /** Composition root do worker-fiscal (validação e uso de certificados). */
-export function composeFiscalWorker(deps: FiscalWorkerDependencies): { vault: CertificateVault; handlers: Partial<Record<QueueName, JobHandler>> } {
+export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
+  vault: CertificateVault;
+  processor?: SubmissionProcessor;
+  reconciler?: Reconciler;
+  handlers: Partial<Record<QueueName, JobHandler>>;
+} {
   const transactions = new CompanyTransactions(deps.db);
   const vault = new CertificateVault(
     certificateWorkerUnitOfWork(transactions, {
@@ -196,14 +253,34 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): { vault: Ce
     deps.trustStore,
     deps.now,
   );
-  return {
-    vault,
-    handlers: {
-      'certificates.validate': async (job) => {
-        await vault.validate(payloadId(job, 'companyId'), payloadId(job, 'certificateId'), systemContext('worker-fiscal', job));
-      },
+  const handlers: Partial<Record<QueueName, JobHandler>> = {
+    'certificates.validate': async (job) => {
+      await vault.validate(payloadId(job, 'companyId'), payloadId(job, 'certificateId'), systemContext('worker-fiscal', job));
     },
   };
+  if (deps.nfse === undefined) return { vault, handlers };
+
+  const credentials: CredentialAccess = {
+    withCredential: (companyId, establishmentId, work) =>
+      vault.withCertificate(companyId, establishmentId, (certificate) => work({ privateKey: certificate.privateKey, certificatePem: certificate.certificatePem })),
+  };
+  const nfseUow = nfseWorkerUnitOfWork(transactions, {
+    productionFor: nfseProduction,
+    auditFor,
+    jobsFor: schedulerFor('fiscal'),
+    outboxFor: outboxWith(schedulerFor('fiscal')),
+  });
+  const processor = new SubmissionProcessor(nfseUow, credentials, deps.nfse.preparer, deps.nfse.gateway, uuidv7, deps.now, deps.nfse.options);
+  const reconciler = new Reconciler(nfseUow, credentials, deps.nfse.gateway, deps.now, deps.nfse.options?.reconciliation);
+  handlers['nfse.process'] = async (job) => {
+    const result = await processor.process(payloadId(job, 'companyId'), payloadId(job, 'invoiceId'), systemContext('worker-fiscal', job));
+    // Falha local numa retransmissão: o job tenta de novo com backoff (nunca FAILED depois de um envio).
+    if (result.kind === 'DEFERRED') throw new Error(`NFSE_PROCESSING_DEFERRED:${result.code}`);
+  };
+  handlers['nfse.reconcile'] = async (job) => {
+    await reconciler.reconcile(payloadId(job, 'companyId'), payloadId(job, 'invoiceId'), systemContext('worker-fiscal', job));
+  };
+  return { vault, processor, reconciler, handlers };
 }
 
 export interface GeneralWorkerDependencies {

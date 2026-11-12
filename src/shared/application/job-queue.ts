@@ -62,6 +62,25 @@ export const QUEUES = {
     timeoutSeconds: 60,
     priority: 1,
   },
+  /**
+   * Transmissão de uma NFS-e com write-ahead (ADR-0022, ADR-0032). Também é a recuperação de
+   * queda: o job volta quando a concessão vence e o handler aplica a tabela do doc 12 §2.
+   */
+  'nfse.process': {
+    lane: 'fiscal',
+    maxAttempts: 20,
+    backoff: { baseSeconds: 30, maxSeconds: 1800, jitter: 0.2 },
+    timeoutSeconds: 180,
+    priority: 20,
+  },
+  /** Uma consulta de reconciliação de NFS-e em UNKNOWN; a próxima é um job novo com runAt. */
+  'nfse.reconcile': {
+    lane: 'fiscal',
+    maxAttempts: 20,
+    backoff: { baseSeconds: 60, maxSeconds: 3600, jitter: 0.2 },
+    timeoutSeconds: 120,
+    priority: 15,
+  },
   /** Distribui um evento do outbox às assinaturas de webhook interessadas. */
   'webhooks.fanout': {
     lane: 'general',

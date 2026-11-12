@@ -97,7 +97,7 @@ Motivos de rejeição de certificado (campo `rejectionReason`, não é erro HTTP
   - `certificate.activated`, `certificate.rejected` (com `data.reason`) e `certificate.revoked`;
   - `certificate.expiring` (30, 15, 7 e 1 dia antes; `data.thresholdDays`, `data.daysRemaining`) e `certificate.expired` (semana 7);
   - `webhook.test`, que só sai pelo endpoint de teste.
-  - Previstos: `service_invoice.*` (Fase 2a).
+  - `service_invoice.status_changed` (ADR-0032): `data.status` = `AUTHORIZED`, `REJECTED` (`data.rejectionCode`), `FAILED` (`data.failureCode`) ou `UNKNOWN`, que significa **em verificação, não reemita**. As rotas de emissão chegam com o contrato da DPS.
 - **Corpo:** `{ id, type, occurredAt, companyId, subject: { type, id }, data }`. Só identificadores e status, nunca XML ou dados pessoais.
 - **Headers (Standard Webhooks):**
   - `webhook-id` = `id` do evento, igual em todas as tentativas e reenvios: o consumidor deduplica por ele;

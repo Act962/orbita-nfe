@@ -24,6 +24,17 @@ let companyId: string;
 let root: string;
 const clock = { now: new Date() };
 
+/*
+ * Datas relativas ao dia real: o bucket com Object Lock recusa "reter até" no passado, então o
+ * relógio do teste não pode ficar preso numa data fixa (o teste quebrou em 2026-11-12 por isso).
+ * D0 = hoje (UTC); D1 = amanhã.
+ */
+const DAY_MS = 86_400_000;
+const today = new Date(Math.floor(Date.now() / DAY_MS) * DAY_MS);
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+const D0 = isoDay(today);
+const D1 = isoDay(new Date(today.getTime() + DAY_MS));
+
 const storage = () => inject('objectStorage');
 
 function worker() {
@@ -87,7 +98,7 @@ describe('âncora da cadeia da empresa', () => {
     // A empresa ganha mais registros (estabelecimento) antes da âncora.
     await createEstablishment(t.app, key, companyId, cnpjOf(root));
 
-    clock.now = new Date('2026-11-11T10:00:00Z');
+    clock.now = new Date(`${D0}T10:00:00Z`);
     await runJob('audit.anchor-company', { companyId });
 
     const latest = await store.latest({ kind: 'COMPANY', companyId });
@@ -97,13 +108,13 @@ describe('âncora da cadeia da empresa', () => {
     expect(latest).toMatchObject({ sequence: verification.ok ? verification.head?.sequence : -1, hashHex: verification.ok ? verification.head?.hashHex : '' });
     expect(latest?.retainUntil).not.toBeNull();
 
-    const next = (await anchorJobs(companyId)).filter((j) => j.singleton_key === `${companyId}:2026-11-12`);
+    const next = (await anchorJobs(companyId)).filter((j) => j.singleton_key === `${companyId}:${D1}`);
     expect(next).toHaveLength(1);
-    expect(new Date(next[0]?.run_at ?? 0).toISOString()).toBe('2026-11-12T06:00:00.000Z');
+    expect(new Date(next[0]?.run_at ?? 0).toISOString()).toBe(`${D1}T06:00:00.000Z`);
 
     // Repetir o job (ex.: concessão vencida) não duplica o agendamento do dia seguinte.
     await runJob('audit.anchor-company', { companyId });
-    expect((await anchorJobs(companyId)).filter((j) => j.singleton_key === `${companyId}:2026-11-12`)).toHaveLength(1);
+    expect((await anchorJobs(companyId)).filter((j) => j.singleton_key === `${companyId}:${D1}`)).toHaveLength(1);
   });
 
   it('reescrita completa da cadeia com hashes recalculados: a verificação interna passa, a âncora pega', async () => {
@@ -155,10 +166,10 @@ describe('âncora da cadeia da empresa', () => {
 
 describe('âncora da plataforma e privilégios', () => {
   it('a inicialização garante a âncora diária da plataforma uma vez só; a execução grava', async () => {
-    clock.now = new Date('2026-11-11T07:00:00Z');
+    clock.now = new Date(`${D0}T07:00:00Z`);
     await worker().ensureRecurringJobs();
     await worker().ensureRecurringJobs();
-    expect(await anchorJobs('platform:2026-11-12')).toHaveLength(1);
+    expect(await anchorJobs(`platform:${D1}`)).toHaveLength(1);
 
     // A cadeia da plataforma tem registros (aplicações e credenciais criadas pelos testes).
     await runJob('audit.anchor-platform', {});

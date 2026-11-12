@@ -26,6 +26,12 @@ export const COMPANY_AUDIT_ACTIONS = [
   'webhook_delivery.redelivered',
   'production_enablement.granted',
   'production_enablement.revoked',
+  'service_invoice.accepted',
+  'service_invoice.authorized',
+  'service_invoice.rejected',
+  'service_invoice.failed',
+  'service_invoice.unknown',
+  'service_invoice.retransmission_scheduled',
 ] as const;
 export type CompanyAuditAction = (typeof COMPANY_AUDIT_ACTIONS)[number];
 

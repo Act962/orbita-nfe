@@ -72,23 +72,23 @@
 <div class="grid">
   <div class="card kpi">
     <div class="label">Fase atual</div>
-    <div class="value">Fim da Fase 1</div>
-    <div class="note">Código concluído; falta o deploy real</div>
+    <div class="value">2a · NFS-e Nacional</div>
+    <div class="note">Etapa 1 da emissão concluída</div>
   </div>
   <div class="card kpi">
-    <div class="label">Próxima fase</div>
-    <div class="value">2a · NFS-e Nacional</div>
-    <div class="note">Parte técnica pode começar já</div>
+    <div class="label">Próxima etapa</div>
+    <div class="value">Contrato da DPS</div>
+    <div class="note">Rota de emissão na API + XML real</div>
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">464 ✓</div>
+    <div class="value">515 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
     <div class="label">Deploy em produção</div>
-    <div class="value"><span class="tag block">Bloqueado</span></div>
-    <div class="note">Falta VPS, domínio e buckets S3</div>
+    <div class="value"><span class="tag todo">Adiado</span></div>
+    <div class="note">Por decisão sua; pronto para quando houver VPS</div>
   </div>
 </div>
 
@@ -101,13 +101,13 @@
   </div>
   <div class="phase">
     <div class="id">1</div>
-    <div><h3>Fundação · 5–7 semanas</h3><p>API, banco com isolamento por empresa, certificados, auditoria, filas, webhooks, backup, imagens de deploy.</p><div class="bar"><span style="width:92%"></span></div></div>
-    <span class="tag doing">Falta deploy</span>
+    <div><h3>Fundação · 5–7 semanas</h3><p>API, banco com isolamento por empresa, certificados, auditoria, filas, webhooks, backup, imagens de deploy. Deploy adiado.</p><div class="bar"><span style="width:100%"></span></div></div>
+    <span class="tag done">Código pronto</span>
   </div>
   <div class="phase">
     <div class="id">2a</div>
-    <div><h3>NFS-e Nacional (Simples, Teresina) · 8–12 semanas</h3><p>Emissão pela SEFIN Nacional: DPS, assinatura, envio, consulta, cancelamento, piloto.</p><div class="bar"><span style="width:5%"></span></div></div>
-    <span class="tag todo">Próxima</span>
+    <div><h3>NFS-e Nacional (Simples, Teresina) · 8–12 semanas</h3><p>Emissão pela SEFIN Nacional: DPS, assinatura, envio, consulta, cancelamento, piloto.</p><div class="bar"><span style="width:25%"></span></div></div>
+    <span class="tag doing">Em andamento</span>
   </div>
   <div class="phase">
     <div class="id">2b</div>
@@ -148,7 +148,21 @@
     <li><span class="tag done">Pronto</span><div>Âncora externa da auditoria, documentação para agentes (<code>/llms.txt</code>, OpenAPI)</div></li>
     <li><span class="tag done">Pronto</span><div>XSD oficial da NFS-e, assinatura XML e envio com certificado (mTLS)<small>Achado: o XSD oficial de produção recusa qualquer série; tratado com errata registrada.</small></div></li>
     <li><span class="tag done">Pronto</span><div>Backup contínuo do banco com exercício de restauração aprovado</div></li>
-    <li><span class="tag block">Bloqueado</span><div>Deploy real no Coolify<small>Depende da VPS, do domínio e do provedor S3.</small></div></li>
+    <li><span class="tag todo">Adiado</span><div>Deploy real no Coolify<small>Adiado por decisão sua; depende da VPS, do domínio e do provedor S3.</small></div></li>
+  </ul>
+</div>
+
+<h2>Fase 2a · andamento</h2>
+<div class="card">
+  <ul class="check">
+    <li><span class="tag done">Pronto</span><div>Estados da nota, inclusive “indeterminado” (UNKNOWN), travados também no banco</div></li>
+    <li><span class="tag done">Pronto</span><div>Aceite sem duplicidade: a mesma requisição repetida, até 50 vezes em paralelo, gera uma nota só</div></li>
+    <li><span class="tag done">Pronto</span><div>Registro de cada tentativa antes do envio e recuperação automática se o processo cair</div></li>
+    <li><span class="tag done">Pronto</span><div>Reconciliação: consulta o órgão antes de reenviar; reenvio só com prova dupla e com o mesmo XML</div></li>
+    <li><span class="tag done">Pronto</span><div>Simulador do órgão com falhas (queda de conexão, demora, recusa) para testar tudo sem emitir</div></li>
+    <li><span class="tag doing">Próximo</span><div>Rota de emissão na API e montagem do XML real da DPS a partir do pedido</div></li>
+    <li><span class="tag doing">Próximo</span><div>Resolução manual auditada de nota “indeterminada” e alertas por tempo</div></li>
+    <li><span class="tag block">Você</span><div>Envio real à produção restrita (precisa do CNPJ e do certificado A1)</div></li>
   </ul>
 </div>
 
@@ -171,12 +185,12 @@
     <h2>Próximos passos (desenvolvimento)</h2>
     <div class="card">
       <ol>
-        <li>Modelo da NFS-e com os estados da nota, inclusive “indeterminado”</li>
-        <li>Registro de cada tentativa antes do envio</li>
-        <li>Reconciliação: consultar o órgão antes de qualquer reenvio</li>
-        <li>Simulador do órgão com falhas, e fluxo completo de teste</li>
-        <li>Rotas de emissão na API (ambiente pela chave)</li>
+        <li>Rota de emissão na API (ambiente pela chave)</li>
+        <li>Montagem do XML da DPS, validação no XSD oficial e assinatura</li>
+        <li>Resolução manual de nota “indeterminada” e alertas</li>
+        <li>Consulta, cancelamento e substituição</li>
         <li>Envio real à produção restrita (precisa do A1)</li>
+        <li>Piloto controlado em produção</li>
       </ol>
     </div>
   </div>
@@ -184,7 +198,7 @@
     <h2>Pendências com você</h2>
     <div class="card">
       <ul class="check">
-        <li><span class="tag block">Deploy</span><div>VPS, domínio e provedor S3 (+ LGPD)</div></li>
+        <li><span class="tag todo">Deploy</span><div>VPS, domínio e provedor S3 (+ LGPD) — adiado</div></li>
         <li><span class="tag block">Fase 2a</span><div>CNPJ real + certificado A1 para a produção restrita</div></li>
         <li><span class="tag block">Fase 2a</span><div>Enquadramento da empresa-piloto com o contador</div></li>
         <li><span class="tag doing">Fase 2a</span><div>Perguntas à SEMF de Teresina</div></li>
@@ -203,6 +217,7 @@
     <li><span class="tag doing">Médio</span><div>Algoritmo de assinatura da SEFIN só documentado pela DSF (R-31)</div></li>
     <li><span class="tag doing">Médio</span><div>Uma VPS só: depende de backup e restauração testados (R-17)</div></li>
     <li><span class="tag todo">Baixo</span><div>Errata no XSD oficial de produção a confirmar no primeiro envio (R-36)</div></li>
+    <li><span class="tag todo">Baixo</span><div>Resolução manual de nota “indeterminada” ainda não existe (R-37)</div></li>
   </ul>
 </div>
 
@@ -210,7 +225,8 @@
 <div class="card">
   <ul class="check">
     <li><span class="tag done">Enviado</span><div><code>295b55c</code> Semana 7: habilitação de produção, dryRun, âncora da auditoria e deploy</div></li>
-    <li><span class="tag done">Enviado</span><div>Encerramento da Fase 1: spikes promovidos, errata do XSD, este painel</div></li>
+    <li><span class="tag done">Enviado</span><div><code>27e5c88</code> Encerramento da Fase 1: spikes promovidos, errata do XSD, este painel</div></li>
+    <li><span class="tag done">Enviado</span><div>Fase 2a, etapa 1: núcleo da emissão de NFS-e e correção do teste com data fixa</div></li>
   </ul>
 </div>
 

@@ -1,0 +1,204 @@
+import type { KeyObject } from 'node:crypto';
+import type { AuditTrail } from '../../../shared/application/audit.js';
+import type { JobScheduler } from '../../../shared/application/job-queue.js';
+import type { EventOutbox } from '../../../shared/application/outbox.js';
+import type { AttemptState, ServiceInvoiceStatus } from '../domain/service-invoice.js';
+
+export type FiscalEnvironment = 'PRODUCTION' | 'HOMOLOGATION';
+
+export interface ServiceInvoice {
+  readonly id: string;
+  readonly companyId: string;
+  readonly establishmentId: string;
+  readonly clientApplicationId: string;
+  readonly environment: FiscalEnvironment;
+  readonly seriesId: string;
+  readonly series: string;
+  readonly number: number;
+  readonly dpsId: string;
+  readonly idempotencyKey: string;
+  readonly requestHash: string;
+  readonly externalReference: string | null;
+  readonly payload: Readonly<Record<string, unknown>>;
+  readonly status: ServiceInvoiceStatus;
+  readonly leaseUntil: Date | null;
+  readonly signedDpsSha256: string | null;
+  readonly layoutPackage: string | null;
+  readonly nfseAccessKey: string | null;
+  readonly authorizedAt: Date | null;
+  readonly rejectionCode: string | null;
+  readonly rejectionMessage: string | null;
+  readonly failureCode: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+export type NewServiceInvoice = Pick<
+  ServiceInvoice,
+  | 'id'
+  | 'companyId'
+  | 'establishmentId'
+  | 'clientApplicationId'
+  | 'environment'
+  | 'seriesId'
+  | 'series'
+  | 'number'
+  | 'dpsId'
+  | 'idempotencyKey'
+  | 'requestHash'
+  | 'externalReference'
+  | 'payload'
+>;
+
+export type AttemptOutcome = 'AUTHORIZED' | 'REJECTED' | 'NOT_SENT' | 'UNKNOWN' | 'ALREADY_EXISTS' | 'RECOVERED_NOT_SENT' | 'RECOVERED_UNKNOWN';
+
+export interface TransmissionAttempt {
+  readonly id: string;
+  readonly invoiceId: string;
+  readonly seq: number;
+  readonly state: AttemptState;
+  readonly payloadSha256: string;
+  readonly preparedAt: Date;
+  readonly sendingAt: Date | null;
+  readonly closedAt: Date | null;
+  readonly outcome: AttemptOutcome | null;
+  readonly outcomeCode: string | null;
+  readonly lookups: number;
+  readonly firstNotFoundAt: Date | null;
+  readonly consecutiveLookupErrors: number;
+}
+
+// ------------------------------------------------------------------ portas de outros módulos
+
+export interface IssuerEstablishment {
+  readonly id: string;
+  readonly cnpj: string;
+  readonly municipalityCode: string;
+  readonly status: 'ACTIVE' | 'INACTIVE';
+}
+
+export interface EstablishmentReader {
+  find(establishmentId: string): Promise<IssuerEstablishment | undefined>;
+}
+
+export interface ActiveSeries {
+  readonly id: string;
+  readonly series: string;
+}
+
+export interface SeriesAllocator {
+  /** Séries ATIVAS de DPS do estabelecimento no ambiente. */
+  activeSeries(establishmentId: string, environment: FiscalEnvironment): Promise<readonly ActiveSeries[]>;
+  /** Número na transação corrente (ADR-0008): rollback devolve o número. */
+  allocate(seriesId: string): Promise<number>;
+}
+
+export interface ProductionGate {
+  isEnabled(establishmentId: string): Promise<boolean>;
+}
+
+// ------------------------------------------------------------------ repositórios
+
+export interface ServiceInvoiceRepository {
+  findById(id: string): Promise<ServiceInvoice | undefined>;
+  findByIdempotencyKey(clientApplicationId: string, key: string): Promise<ServiceInvoice | undefined>;
+  /** Documento com a referência ainda "ocupada" (não REJECTED/FAILED). */
+  findActiveByExternalReference(clientApplicationId: string, reference: string): Promise<ServiceInvoice | undefined>;
+  insert(invoice: NewServiceInvoice): Promise<ServiceInvoice>;
+}
+
+export interface ServiceInvoiceStatusChange {
+  readonly leaseUntil?: Date | null;
+  readonly signedDps?: { readonly xml: string; readonly sha256: string; readonly layoutPackage: string };
+  readonly authorization?: { readonly accessKey: string; readonly nfseXml: string; readonly authorizedAt: Date };
+  readonly rejection?: { readonly code: string; readonly message: string };
+  readonly failureCode?: string;
+}
+
+export interface ServiceInvoiceWorkerRepository {
+  findById(id: string): Promise<ServiceInvoice | undefined>;
+  /** XML assinado gravado (o mesmo em toda retransmissão). */
+  signedDps(id: string): Promise<string | undefined>;
+  /** Compare-and-set: muda o estado só se ainda for `from`. Devolve se mudou. */
+  changeStatus(id: string, from: ServiceInvoiceStatus, to: ServiceInvoiceStatus, change?: ServiceInvoiceStatusChange): Promise<boolean>;
+  /** Grava a DPS assinada (uma única vez) sem mudar o estado. */
+  storeSignedDps(id: string, signed: NonNullable<ServiceInvoiceStatusChange['signedDps']>): Promise<void>;
+}
+
+export interface AttemptRepository {
+  /** Tentativa aberta (PREPARED ou SENDING), se houver. */
+  open(invoiceId: string): Promise<TransmissionAttempt | undefined>;
+  last(invoiceId: string): Promise<TransmissionAttempt | undefined>;
+  /** Alguma tentativa chegou a SENDING? (então FAILED fica proibido) */
+  anySent(invoiceId: string): Promise<boolean>;
+  insert(attempt: { id: string; companyId: string; invoiceId: string; seq: number; payloadSha256: string }): Promise<TransmissionAttempt>;
+  markSending(attemptId: string, at: Date): Promise<void>;
+  close(attemptId: string, outcome: AttemptOutcome, outcomeCode: string | null, at: Date): Promise<void>;
+  recordLookup(attemptId: string, state: { firstNotFoundAt: Date | null; consecutiveLookupErrors: number }): Promise<void>;
+}
+
+export interface NfseApiRepositories {
+  readonly invoices: ServiceInvoiceRepository;
+  readonly establishments: EstablishmentReader;
+  readonly series: SeriesAllocator;
+  readonly production: ProductionGate;
+  readonly audit: AuditTrail;
+  readonly jobs: JobScheduler;
+}
+
+export interface NfseWorkerRepositories {
+  readonly invoices: ServiceInvoiceWorkerRepository;
+  readonly attempts: AttemptRepository;
+  readonly production: ProductionGate;
+  readonly audit: AuditTrail;
+  readonly jobs: JobScheduler;
+  readonly events: EventOutbox;
+}
+
+// ------------------------------------------------------------------ autorizador e preparação
+
+/** Material do certificado do estabelecimento, só dentro de `withCredential` (worker-fiscal). */
+export interface IssuerCredential {
+  readonly privateKey: KeyObject;
+  readonly certificatePem: string;
+}
+
+export interface CredentialAccess {
+  /** Lança `BusinessRuleError` (CERTIFICATE_NOT_AVAILABLE, CERTIFICATE_EXPIRED) antes de qualquer envio. */
+  withCredential<T>(companyId: string, establishmentId: string, work: (credential: IssuerCredential) => Promise<T>): Promise<T>;
+}
+
+export interface GatewayContext {
+  readonly environment: FiscalEnvironment;
+  readonly credential: IssuerCredential;
+}
+
+/** Resultado do envio (ADR-0029). Timeout, reset, 5xx e resposta ilegível são sempre UNKNOWN. */
+export type SubmissionOutcome =
+  | { readonly kind: 'AUTHORIZED'; readonly accessKey: string; readonly nfseXml: string }
+  | { readonly kind: 'REJECTED'; readonly code: string; readonly message: string }
+  /** O autorizador já tem esta DPS (ex.: E0014): não é rejeição, leva à reconciliação imediata. */
+  | { readonly kind: 'ALREADY_EXISTS' }
+  /** Provado que nada saiu (fase connect). */
+  | { readonly kind: 'NOT_SENT'; readonly errorCode: string }
+  | { readonly kind: 'UNKNOWN'; readonly errorCode: string };
+
+export type LookupOutcome =
+  | { readonly kind: 'FOUND'; readonly accessKey: string; readonly nfseXml: string }
+  | { readonly kind: 'NOT_FOUND' }
+  | { readonly kind: 'ERROR'; readonly errorCode: string };
+
+export interface NfseGateway {
+  submit(signedDps: string, context: GatewayContext): Promise<SubmissionOutcome>;
+  findByDpsId(dpsId: string, context: GatewayContext): Promise<LookupOutcome>;
+}
+
+export type PreparationResult =
+  | { readonly ok: true; readonly signedXml: string; readonly layoutPackage: string }
+  /** Falha local (L3/L4): nada foi transmitido → FAILED. `code` é estável; nada do conteúdo. */
+  | { readonly ok: false; readonly code: string };
+
+/** Monta a DPS a partir do documento aceito, valida no XSD (L4) e assina. */
+export interface DpsPreparer {
+  prepare(invoice: ServiceInvoice, credential: IssuerCredential): Promise<PreparationResult>;
+}

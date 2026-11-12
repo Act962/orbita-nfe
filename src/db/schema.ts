@@ -10,3 +10,4 @@ export * from '../modules/certificates/infrastructure/persistence/schema.js';
 export * from '../modules/webhooks/infrastructure/persistence/schema.js';
 export * from '../shared/infrastructure/queue/schema.js';
 export * from '../shared/infrastructure/outbox/schema.js';
+export * from '../modules/nfse/infrastructure/persistence/schema.js';

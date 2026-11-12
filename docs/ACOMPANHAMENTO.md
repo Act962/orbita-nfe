@@ -1,11 +1,11 @@
 # Acompanhamento do projeto
 
-Última atualização: 2026-11-11
+Última atualização: 2026-11-12
 
 ## Status geral
 Painel resumido para acompanhamento: [status.html](status.html) (abrir no navegador; atualizado a cada etapa).
 
-**Fase 1 — Fundação em andamento** (iniciada em 2026-11-09 após aprovação da arquitetura consolidada e do ADR-0023).
+**Fase 1 — Fundação concluída no código** (deploy real adiado por decisão do responsável). **Fase 2a — NFS-e Nacional em andamento** desde 2026-11-12, começando pela parte técnica que não depende de decisão fiscal.
 
 ## Fase 1 — progresso
 ### Concluído (semana 1–2 do plano)
@@ -69,6 +69,44 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - [x] Documentação pública lida e comparada ([doc 17](architecture/17-referencia-nfe-io.md)): 10 aprimoramentos (B1–B10) distribuídos no roadmap; [ADR-0027](adr/0027-convencoes-cadastro-fiscal-referencia-nfe-io.md) **aceito** em 2026-11-10.
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
+
+### Fase 2a, etapa 1 — núcleo da emissão de NFS-e (2026-11-12)
+Decisões: [ADR-0032](adr/0032-nucleo-emissao-nfse.md). Fecha o "fluxo completo com documento fake" que faltava no gate da Fase 1.
+- [x] **Módulo `nfse`:**
+  - máquina de estados (`PENDING`, `PROCESSING`, `AUTHORIZED`, `REJECTED`, `FAILED`, `UNKNOWN`), conferida no domínio **e** por trigger no banco;
+  - Id da DPS pela regra escrita no XSD oficial (`TSIdDPS`).
+- [x] **Aceite idempotente** (`ServiceInvoiceService.accept`):
+  - `Idempotency-Key` com hash do pedido, mais a restrição UNIQUE e a releitura na corrida;
+  - `externalReference` ocupada até falha definitiva;
+  - série do ambiente da credencial e trava de produção (PROD-001);
+  - número e job `nfse.process` no mesmo commit.
+- [x] **Envio com write-ahead** (`SubmissionProcessor`):
+  - `PREPARED` → `SENDING`, com commit antes da rede, e depois o resultado;
+  - a DPS assinada é gravada uma vez e reenviada byte a byte;
+  - `NOT_SENT` volta a `PENDING` com backoff;
+  - `UNKNOWN` e duplicidade agendam a reconciliação.
+- [x] **Recuperação de queda sem varredura entre empresas:** o job volta quando a concessão vence; `PREPARED` volta a `PENDING`, `SENDING` vai para `UNKNOWN`.
+- [x] **Reconciliação** (`Reconciler`):
+  - espera mínima de 2 min;
+  - retransmissão só depois da 2ª resposta "não encontrado" espaçada (5 min);
+  - erro de consulta: backoff de 1, 2, 5, 10, 30 e 60 min, para sempre. Nunca `FAILED`.
+- [x] **Simulador do autorizador** (`SimulatedNfseGateway`): autoriza, rejeita, não envia, processa e derruba, perde antes de processar, consulta atrasada e erro de consulta; conta as recepções.
+- [x] **Banco** (migrations 0011 e 0012):
+  - `service_invoices` e `service_invoice_attempts` com RLS e FKs compostas;
+  - grants por coluna: a API só insere o pedido; o worker-fiscal só mexe no processamento;
+  - triggers: transições, imutabilidade, DPS assinada gravada uma vez, `FAILED` proibido depois de envio, ninguém apaga.
+- [x] Fila `nfse.process` e `nfse.reconcile` (lane fiscal); evento `service_invoice.status_changed`; 6 ações de auditoria novas.
+- [x] Testes (total do projeto: **515**): 31 unitários (estados, Id da DPS, reconciliação) + 20 de integração com os testes obrigatórios do doc 12 §9:
+  - queda em cada ponto;
+  - "processa e derruba" resolvido por consulta, com uma única recepção;
+  - consistência eventual;
+  - retransmissão byte a byte;
+  - autorizador fora do ar por horas sem nunca chegar a `FAILED`;
+  - 50 requisições paralelas com a mesma chave geram um único documento.
+- [x] **Correção de teste com data fixa:** o teste da âncora da auditoria prendia o relógio em 11/11/2026 com retenção de 1 dia. A partir de 12/11 o "reter até" ficou no passado e o S3 recusou, o que derrubou o CI do commit `27e5c88`. As datas agora são relativas ao dia real. O código da âncora não tinha defeito.
+- [ ] Próxima etapa:
+  - contrato da DPS na API (`POST /v1/service-invoices`) e preparador real (XML a partir do contrato, XSD oficial e assinatura);
+  - resolução manual de `UNKNOWN` (doc 12 §7, R-37).
 
 ### Encerramento da Fase 1 — código concluído (2026-11-11)
 - [x] **Spikes 01 a 03 promovidos a código definitivo** em `src/shared/infrastructure/` (ADR-0014, seção "Implementação definitiva"):
@@ -196,11 +234,8 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 5. ~~Semana 6: fila, outbox, validação de certificado pela fila, webhooks, rate limit, operação das filas~~ ✔ (o write-ahead e o reconciliador foram para a Fase 2a)
 6. ~~Semana 7: backup WAL, âncora externa da auditoria, habilitação de produção, OpenAPI estável + `llms.txt`, changelog, `dryRun`, avisos de vencimento~~ ✔ (deploy real aguardando VPS, domínio e buckets)
 7. ~~Encerramento da Fase 1: promoção e remoção dos spikes, remoção do pg-boss~~ ✔ (deploy real aguardando infraestrutura)
-8. Fase 2a, parte técnica que não depende de decisão fiscal:
-   - agregado `ServiceInvoice` com a máquina de estados e `UNKNOWN`;
-   - write-ahead de tentativas e reconciliador;
-   - simulador do autorizador com modos de falha;
-   - fluxo completo com documento fake (gate da Fase 1).
+8. ~~Fase 2a, etapa 1: núcleo da emissão (estados, write-ahead, reconciliação, simulador, fluxo completo com documento fake)~~ ✔ (ADR-0032)
+9. Fase 2a, etapa 2: contrato da DPS na API, preparador real (XML + XSD + assinatura) e resolução manual de `UNKNOWN`.
 
    A parte fiscal (regras L3, adapter SEFIN real) espera os pré-requisitos do roadmap: CNPJ e A1 reais, contador e gate fiscal 1.
 
@@ -233,6 +268,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-10 | Piloto em Teresina pela SEFIN Nacional (Res. CGSN 191/2026); adapter municipal DSF na Fase 2b conforme demanda | 0017 (revisado) |
 | 2026-11-10 | Canal de NFS-e decidido pela data de competência, por tabela versionada com fonte | 0028 |
 | 2026-11-10 | Cliente único do padrão nacional com perfil de endpoint; reconciliação por Id da DPS antes de reenviar | 0029 |
+| 2026-11-12 | Núcleo da emissão de NFS-e: recuperação de queda pela própria fila (sem varredura entre empresas), DPS assinada uma vez, reconciliação por função pura | 0032 |
 
 ## Pendente de decisão do responsável
 1. ~~Aprovação final da arquitetura consolidada~~ — aprovada em 2026-11-09.
@@ -247,7 +283,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 6. ~~Aprovar o [ADR-0027](adr/0027-convencoes-cadastro-fiscal-referencia-nfe-io.md) (cadastro fiscal, certificados e documentação inspirados na NFE.io)~~ — aprovado em 2026-11-10.
 
 ## Riscos ativos principais
-R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente · R-30 enquadramento `regApTribSN` da empresa-piloto · R-33 Swagger da SEFIN só com certificado · R-34 corrente de âncora · R-35 Coolify não exercitado · R-36 errata do XSD de produção da NFS-e. Ver [riscos.md](riscos.md).
+R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente · R-30 enquadramento `regApTribSN` da empresa-piloto · R-33 Swagger da SEFIN só com certificado · R-34 corrente de âncora · R-35 Coolify não exercitado · R-36 errata do XSD de produção da NFS-e · R-37 resolução manual de `UNKNOWN` pendente. Ver [riscos.md](riscos.md).
 
 ## Código temporário / dívidas registradas
 | Item | Finalidade | Remoção |
@@ -265,7 +301,9 @@ R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS �
 | `withCertificate` sem cache com TTL | O uso real (assinatura/mTLS) chega na Fase 2a | Junto com a assinatura XML |
 | Comando de re-embrulho das DEKs (rotação da KEK) | O banco e o opener já aceitam; falta o comando | Antes da primeira rotação (runbook kek-certificados §3) |
 | Escrita da trilha serializada por empresa (trava da cabeça) | Simplicidade e ordem total; volume atual baixo | Reavaliar com carga real de emissão |
-| Write-ahead de tentativas e reconciliador de `UNKNOWN` (ADR-0022, doc 12) | Sem transmissor ainda (reescopo da semana 6) | Fase 2a, com o adapter SEFIN |
+| DPS assinada guardada só no banco (`service_invoices.signed_dps`) | O arquivo fiscal em S3 (ADR-0010) depende do provedor | Copiar para o bucket `fiscal-archive` quando ele existir |
+| Resolução manual de `UNKNOWN` e alertas por idade (15 min / 2 h / 24 h) | Fora da etapa 1 (R-37) | Fase 2a, antes do piloto em produção |
+| Worker-fiscal de produção sem as filas `nfse.*` ligadas | Não há preparador real nem adapter SEFIN | Etapa 2 (preparador) e adapter SEFIN (com o A1) |
 | Rate limit em memória por réplica da API | Uma réplica hoje (ADR-0020) | Redis ou tabela quando houver mais de uma réplica |
 | Fila por polling (sem LISTEN/NOTIFY) | Simplicidade; 1 s de latência basta | Reavaliar no teste de carga (Fase 5) |
 | Endpoints HTTP de operação (`/ops/v1`) substituídos pela CLI `npm run ops` | Menor superfície; o papel da API não lê a fila (ADR-0030) | Reavaliar se surgir painel de operação |

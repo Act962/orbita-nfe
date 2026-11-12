@@ -8,6 +8,8 @@ export const INTEGRATION_EVENT_TYPES = [
   'certificate.revoked',
   'certificate.expiring',
   'certificate.expired',
+  /** Mudança visível de estado da NFS-e: AUTHORIZED, REJECTED, FAILED ou UNKNOWN ("em verificação, não reemita"). */
+  'service_invoice.status_changed',
   /** Evento de teste disparado pelo cliente para conferir a assinatura de webhook. */
   'webhook.test',
 ] as const;

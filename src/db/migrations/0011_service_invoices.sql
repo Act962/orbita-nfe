@@ -1,0 +1,67 @@
+CREATE TABLE "service_invoice_attempts" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"company_id" uuid NOT NULL,
+	"invoice_id" uuid NOT NULL,
+	"seq" integer NOT NULL,
+	"state" text DEFAULT 'PREPARED' NOT NULL,
+	"payload_sha256" char(64) NOT NULL,
+	"prepared_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"sending_at" timestamp with time zone,
+	"closed_at" timestamp with time zone,
+	"outcome" text,
+	"outcome_code" text,
+	"lookups" integer DEFAULT 0 NOT NULL,
+	"first_not_found_at" timestamp with time zone,
+	"consecutive_lookup_errors" integer DEFAULT 0 NOT NULL,
+	CONSTRAINT "uq_service_invoice_attempts_seq" UNIQUE("invoice_id","seq"),
+	CONSTRAINT "ck_service_invoice_attempts_state" CHECK ("service_invoice_attempts"."state" in ('PREPARED', 'SENDING', 'CLOSED')),
+	CONSTRAINT "ck_service_invoice_attempts_outcome" CHECK ("service_invoice_attempts"."outcome" is null or "service_invoice_attempts"."outcome" in ('AUTHORIZED', 'REJECTED', 'NOT_SENT', 'UNKNOWN', 'ALREADY_EXISTS', 'RECOVERED_NOT_SENT', 'RECOVERED_UNKNOWN')),
+	CONSTRAINT "ck_service_invoice_attempts_closed" CHECK (("service_invoice_attempts"."state" = 'CLOSED') = ("service_invoice_attempts"."outcome" is not null)),
+	CONSTRAINT "ck_service_invoice_attempts_sending" CHECK ("service_invoice_attempts"."state" = 'PREPARED' or "service_invoice_attempts"."sending_at" is not null or "service_invoice_attempts"."outcome" = 'RECOVERED_NOT_SENT')
+);
+--> statement-breakpoint
+CREATE TABLE "service_invoices" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"company_id" uuid NOT NULL,
+	"establishment_id" uuid NOT NULL,
+	"client_application_id" uuid NOT NULL,
+	"environment" text NOT NULL,
+	"series_id" uuid NOT NULL,
+	"series" varchar(5) NOT NULL,
+	"number" bigint NOT NULL,
+	"dps_id" varchar(45) NOT NULL,
+	"idempotency_key" text NOT NULL,
+	"request_hash" char(64) NOT NULL,
+	"external_reference" text,
+	"payload" jsonb NOT NULL,
+	"status" text DEFAULT 'PENDING' NOT NULL,
+	"lease_until" timestamp with time zone,
+	"signed_dps" text,
+	"signed_dps_sha256" char(64),
+	"layout_package" text,
+	"nfse_access_key" varchar(50),
+	"nfse_xml" text,
+	"authorized_at" timestamp with time zone,
+	"rejection_code" text,
+	"rejection_message" text,
+	"failure_code" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "uq_service_invoices_company_id" UNIQUE("company_id","id"),
+	CONSTRAINT "uq_service_invoices_dps_id" UNIQUE("dps_id"),
+	CONSTRAINT "uq_service_invoices_series_number" UNIQUE("series_id","number"),
+	CONSTRAINT "uq_service_invoices_idempotency" UNIQUE("company_id","client_application_id","idempotency_key"),
+	CONSTRAINT "ck_service_invoices_status" CHECK ("service_invoices"."status" in ('PENDING', 'PROCESSING', 'AUTHORIZED', 'REJECTED', 'FAILED', 'UNKNOWN')),
+	CONSTRAINT "ck_service_invoices_environment" CHECK ("service_invoices"."environment" in ('PRODUCTION', 'HOMOLOGATION')),
+	CONSTRAINT "ck_service_invoices_dps_id" CHECK ("service_invoices"."dps_id" ~ '^DPS[0-9]{7}(1[0-9]{14}|2[0-9A-Z]{14})[0-9]{20}$'),
+	CONSTRAINT "ck_service_invoices_number" CHECK ("service_invoices"."number" between 1 and 999999999999999),
+	CONSTRAINT "ck_service_invoices_idempotency_key" CHECK (length("service_invoices"."idempotency_key") between 1 and 255),
+	CONSTRAINT "ck_service_invoices_external_reference" CHECK ("service_invoices"."external_reference" is null or length("service_invoices"."external_reference") between 1 and 255),
+	CONSTRAINT "ck_service_invoices_signed" CHECK (("service_invoices"."signed_dps" is null) = ("service_invoices"."signed_dps_sha256" is null)),
+	CONSTRAINT "ck_service_invoices_authorized" CHECK ("service_invoices"."status" <> 'AUTHORIZED' or "service_invoices"."nfse_access_key" is not null)
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_service_invoice_attempts_open" ON "service_invoice_attempts" USING btree ("invoice_id") WHERE "service_invoice_attempts"."state" <> 'CLOSED';--> statement-breakpoint
+CREATE INDEX "ix_service_invoice_attempts_company" ON "service_invoice_attempts" USING btree ("company_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_service_invoices_external_reference" ON "service_invoices" USING btree ("company_id","client_application_id","external_reference") WHERE "service_invoices"."external_reference" is not null and "service_invoices"."status" not in ('REJECTED', 'FAILED');--> statement-breakpoint
+CREATE INDEX "ix_service_invoices_company_created" ON "service_invoices" USING btree ("company_id","created_at");

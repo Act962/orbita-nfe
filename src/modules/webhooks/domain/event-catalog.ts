@@ -29,6 +29,12 @@ export const EVENT_CATALOG: readonly EventTypeDescription[] = [
     description: 'O certificado ativo venceu: a emissão do estabelecimento falha antes do envio até um novo certificado ser validado.',
     subscribable: true,
   },
+  {
+    type: 'service_invoice.status_changed',
+    description:
+      'A NFS-e mudou de estado. `data.status`: AUTHORIZED (autorizada), REJECTED (rejeitada pelo autorizador, `data.rejectionCode`), FAILED (falha local antes de qualquer envio, `data.failureCode`) ou UNKNOWN (em verificação junto ao autorizador: NÃO reemita; o motor consulta e resolve).',
+    subscribable: true,
+  },
   { type: 'webhook.test', description: 'Evento de teste disparado pelo endpoint de teste da assinatura.', subscribable: false },
 ];
 

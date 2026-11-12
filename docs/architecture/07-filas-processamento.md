@@ -26,10 +26,14 @@ Filas implementadas (catálogo fechado em `job-queue.ts`):
 | `certificates.expiry-notice` | general (`fiscal_general`) | 8 | 1 min → 1 h | 30 s |
 | `audit.anchor-company` | general (`fiscal_general`) | 24 | 5 min → 1 h | 60 s |
 | `audit.anchor-platform` | general (`fiscal_general`) | 24 | 5 min → 1 h | 60 s |
+| `nfse.process` | fiscal (`fiscal_worker`) | 20 | 30 s → 30 min | 180 s |
+| `nfse.reconcile` | fiscal (`fiscal_worker`) | 20 (falha do processo; o calendário de consultas é o do doc 12) | 1 min → 1 h | 120 s |
 
 Jobs agendados (semana 7):
 - **`certificates.expiry-notice`:** a ativação do certificado (worker-fiscal) agenda um job por limiar: 30, 15, 7 e 1 dia antes do vencimento, mais o próprio vencimento. Na hora, o worker-general decide qual aviso vale e registra em `certificate_expiry_notices`, para não repetir. Não há varredura entre empresas.
 - **`audit.anchor-*`:** recorrentes diários às 06:00 UTC (ADR-0031). Cada execução agenda a do dia seguinte antes de gravar, com chave singleton `<cadeia>:<dia>`.
+- **`nfse.process`** (ADR-0032): o aceite agenda com a chave `<id>`. Os reenvios usam chaves próprias: `<id>:resend:<tentativa>` depois de `NOT_SENT`, com backoff, e `<id>:retransmit:<tentativa>` depois da prova de inexistência. A recuperação de queda é a própria fila: o job volta quando a concessão vence.
+- **`nfse.reconcile`** (ADR-0032): uma consulta por execução. A próxima é um job novo com `runAt` e a chave `<id>:lookup:<tentativa>:<consulta>`. Erro de consulta nunca leva a `FAILED`.
 
 Filas previstas:
 
