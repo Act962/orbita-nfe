@@ -52,6 +52,8 @@ const toInvoice = (row: InvoiceRow): ServiceInvoice => ({
   requestHash: row.requestHash,
   externalReference: row.externalReference,
   payload: row.payload as Record<string, unknown>,
+  routingChannel: row.routingChannel,
+  routingTableVersion: row.routingTableVersion,
   status: row.status as ServiceInvoiceStatus,
   leaseUntil: row.leaseUntil,
   signedDpsSha256: row.signedDpsSha256,
@@ -96,6 +98,8 @@ const invoiceColumns = {
   requestHash: serviceInvoices.requestHash,
   externalReference: serviceInvoices.externalReference,
   payload: serviceInvoices.payload,
+  routingChannel: serviceInvoices.routingChannel,
+  routingTableVersion: serviceInvoices.routingTableVersion,
   status: serviceInvoices.status,
   leaseUntil: serviceInvoices.leaseUntil,
   signedDpsSha256: serviceInvoices.signedDpsSha256,
@@ -144,10 +148,10 @@ export function serviceInvoiceRepository(tx: Transaction): ServiceInvoiceReposit
       // SQL explícito: a API só tem INSERT nas colunas do pedido (estado e datas ficam no padrão).
       await tx.execute(sql`
         insert into service_invoices (id, company_id, establishment_id, client_application_id, environment, series_id, series, number,
-          dps_id, idempotency_key, request_hash, external_reference, payload)
+          dps_id, idempotency_key, request_hash, external_reference, payload, routing_channel, routing_table_version)
         values (${invoice.id}, ${invoice.companyId}, ${invoice.establishmentId}, ${invoice.clientApplicationId}, ${invoice.environment},
           ${invoice.seriesId}, ${invoice.series}, ${invoice.number}, ${invoice.dpsId}, ${invoice.idempotencyKey}, ${invoice.requestHash},
-          ${invoice.externalReference}, ${JSON.stringify(invoice.payload)}::jsonb)`);
+          ${invoice.externalReference}, ${JSON.stringify(invoice.payload)}::jsonb, ${invoice.routingChannel}, ${invoice.routingTableVersion})`);
       const found = await selectInvoice(tx, eq(serviceInvoices.id, invoice.id));
       if (found === undefined) throw new Error('INSERT sem linha');
       return found;

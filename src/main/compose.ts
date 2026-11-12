@@ -57,6 +57,7 @@ import {
   type ProcessorOptions,
   type ProductionGate,
   type SeriesAllocator,
+  type RoutingTable,
   type UnknownAlertSink,
 } from '../modules/nfse/public.js';
 import {
@@ -153,6 +154,8 @@ export interface ApiModulesDependencies {
   readonly allowPrivateWebhookTargets: boolean;
   /** XSD oficiais (hash conferido na carga): pré-validação da DPS no aceite (ADR-0033). */
   readonly schemaCatalog: FiscalSchemaCatalog;
+  /** Tabela de roteamento da NFS-e (ADR-0028), validada na carga. */
+  readonly nfseRouting: RoutingTable;
 }
 
 export interface ApiModules {
@@ -200,6 +203,7 @@ export function composeApi(deps: ApiModulesDependencies): ApiModules {
       jobsFor: apiJobs,
     }),
     uuidv7,
+    deps.nfseRouting,
     new XmlDpsValidator(deps.schemaCatalog),
   );
   const rateLimiter = new RateLimiter(deps.rateLimit);

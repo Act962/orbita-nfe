@@ -22,6 +22,9 @@ export const serviceInvoices = pgTable(
     externalReference: text('external_reference'),
     /** Dados da DPS enviados pelo cliente (contrato da próxima etapa). Imutável. */
     payload: jsonb('payload').notNull(),
+    /** Canal escolhido na aceitação e versão da tabela usada (ADR-0028 item 3). Imutáveis. */
+    routingChannel: text('routing_channel'),
+    routingTableVersion: text('routing_table_version'),
     status: text('status').notNull().default('PENDING'),
     /** Concessão do processamento: só a recuperação mexe num PROCESSING com concessão vencida. */
     leaseUntil: timestamp('lease_until', { withTimezone: true }),

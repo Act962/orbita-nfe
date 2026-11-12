@@ -23,6 +23,9 @@ export interface ServiceInvoice {
   readonly requestHash: string;
   readonly externalReference: string | null;
   readonly payload: Readonly<Record<string, unknown>>;
+  /** Canal e versão da tabela de roteamento gravados na aceitação (ADR-0028). */
+  readonly routingChannel: string | null;
+  readonly routingTableVersion: string | null;
   readonly status: ServiceInvoiceStatus;
   readonly leaseUntil: Date | null;
   readonly signedDpsSha256: string | null;
@@ -51,6 +54,8 @@ export type NewServiceInvoice = Pick<
   | 'requestHash'
   | 'externalReference'
   | 'payload'
+  | 'routingChannel'
+  | 'routingTableVersion'
 >;
 
 export type AttemptOutcome = 'AUTHORIZED' | 'REJECTED' | 'NOT_SENT' | 'UNKNOWN' | 'ALREADY_EXISTS' | 'RECOVERED_NOT_SENT' | 'RECOVERED_UNKNOWN';

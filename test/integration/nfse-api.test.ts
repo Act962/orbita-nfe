@@ -173,3 +173,39 @@ describe('POST /v1/service-invoices → worker → GET', () => {
     expect(problemCode(await get(id, await live.key(['nfse:read'], 'live')))).toBe('SERVICE_INVOICE_NOT_FOUND');
   });
 });
+
+describe('roteamento pela competência (ADR-0028)', () => {
+  const invoiceRow = (idempotencyKey: string) =>
+    new CompanyTransactions(t.api.db).run(companyId, async (tx) => {
+      const rows = await tx.execute<{ routing_channel: string | null; routing_table_version: string | null }>(
+        sql`select routing_channel, routing_table_version from service_invoices where idempotency_key = ${idempotencyKey}`,
+      );
+      return rows.rows[0];
+    });
+
+  it('ME/EPP no sublimite, competência ≥ 11/2026 em Teresina: aceita e grava o canal e a versão da tabela', async () => {
+    const res = await post({ establishmentId, ...sampleDpsData() }, 'rota-ok');
+    expect(res.statusCode).toBe(202);
+    expect(await invoiceRow('rota-ok')).toEqual({ routing_channel: 'NATIONAL_SEFIN', routing_table_version: 'nfse-routing/2026-11-10' });
+    // O canal gravado não muda depois (identidade imutável, trigger).
+    const id = res.json<{ id: string }>().id;
+    await expect(
+      new CompanyTransactions(worker.db).run(companyId, (tx) => tx.execute(sql`update service_invoices set routing_channel = 'MUNICIPAL_TERESINA_DSF' where id = ${id}`)),
+    ).rejects.toThrow();
+  });
+
+  it.each([
+    ['competência anterior a 11/2026 (emissor municipal)', { competenceDate: '2026-10-31' }, 'ROUTE_CHANNEL_NOT_SUPPORTED'],
+    ['não optante em Teresina (emissor municipal)', { provider: { simplesNacionalOption: '1', specialTaxRegime: '0' } }, 'ROUTE_CHANNEL_NOT_SUPPORTED'],
+    ['ME/EPP fora do sublimite (linha a confirmar)', { provider: { simplesNacionalOption: '3', simplesNacionalRegime: '2', specialTaxRegime: '0' } }, 'ROUTE_PENDING_CONFIRMATION'],
+    ['ME/EPP sem o regime informado', { provider: { simplesNacionalOption: '3', specialTaxRegime: '0' } }, 'ROUTE_REGIME_REQUIRED'],
+    ['MEI com competência anterior em Teresina (regras conflitantes)', { competenceDate: '2026-10-31', provider: { simplesNacionalOption: '2', specialTaxRegime: '0' } }, 'ROUTE_AMBIGUOUS'],
+  ])('%s → 422 NFSE_CHANNEL_NOT_AVAILABLE (%s), sem numerar', async (_name, overrides, reason) => {
+    const idempotencyKey = `rota-${reason}-${String(Object.keys(overrides).length)}-${_name.length}`;
+    const res = await post({ establishmentId, ...sampleDpsData(overrides) }, idempotencyKey);
+    expect(res.statusCode).toBe(422);
+    expect(problemCode(res)).toBe('NFSE_CHANNEL_NOT_AVAILABLE');
+    expect(JSON.stringify(res.json())).toContain(reason);
+    expect(await invoiceRow(idempotencyKey)).toBeUndefined();
+  });
+});

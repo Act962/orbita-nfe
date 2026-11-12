@@ -3,6 +3,7 @@ import { BusinessRuleError, ConflictError, ForbiddenError, InternalError, NotFou
 import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-of-work.js';
 import type { DpsData } from '../domain/dps.js';
 import { buildDpsId } from '../domain/dps-id.js';
+import { route, SUPPORTED_CHANNELS, type RoutingTable } from '../domain/routing.js';
 import type { DpsValidator, FiscalEnvironment, NfseApiRepositories, ServiceInvoice } from './ports.js';
 
 export interface AcceptServiceInvoice {
@@ -41,6 +42,8 @@ export class ServiceInvoiceService {
   constructor(
     private readonly uow: UnitOfWork<NfseApiRepositories>,
     private readonly newId: IdGenerator,
+    /** Tabela de roteamento vigente (ADR-0028). */
+    private readonly routing: RoutingTable,
     /** Sem validador (testes do núcleo), o aceite não pré-valida no XSD. */
     private readonly validator?: DpsValidator,
   ) {}
@@ -94,6 +97,9 @@ export class ServiceInvoiceService {
     if (establishment === undefined) throw new NotFoundError('ESTABLISHMENT_NOT_FOUND', 'Estabelecimento não encontrado.');
     if (establishment.status !== 'ACTIVE') throw new BusinessRuleError('ESTABLISHMENT_INACTIVE', 'O estabelecimento está inativo.');
 
+    // Canal pela competência (ADR-0028), antes de numerar: sem canal, nada é consumido.
+    const channel = this.channelFor(establishment.municipalityCode, input.dps);
+
     if (input.environment === 'PRODUCTION' && !(await r.production.isEnabled(establishment.id))) {
       throw new ForbiddenError('PRODUCTION_NOT_ENABLED', 'A NFS-e não está habilitada para produção neste estabelecimento (PROD-001).');
     }
@@ -135,6 +141,8 @@ export class ServiceInvoiceService {
       requestHash: input.requestHash,
       externalReference: input.externalReference,
       payload: input.dps as unknown as Readonly<Record<string, unknown>>,
+      routingChannel: channel,
+      routingTableVersion: this.routing.version,
     });
     await r.audit.record(context, {
       action: 'service_invoice.accepted',
@@ -145,6 +153,8 @@ export class ServiceInvoiceService {
         series: invoice.series,
         number: invoice.number,
         dpsId: invoice.dpsId,
+        routingChannel: channel,
+        routingTableVersion: this.routing.version,
         clientApplicationId: clientApplicationOf(context) ?? null,
       },
     });
@@ -156,7 +166,49 @@ export class ServiceInvoiceService {
     });
     return { invoice, replayed: false };
   }
+
+  /**
+   * Aplica a tabela de roteamento. Recusa (422) com a explicação em `issues`: sem linha, linha
+   * "a confirmar", linhas conflitantes ou canal ainda sem adapter. Nunca um canal padrão.
+   */
+  private channelFor(municipalityCode: string, dps: DpsData): string {
+    const decision = route(this.routing, {
+      municipalityCode,
+      simplesNacionalOption: dps.provider.simplesNacionalOption,
+      simplesNacionalRegime: dps.provider.simplesNacionalRegime,
+      competenceDate: dps.competenceDate,
+    });
+    const refuse = (code: string, message: string, field?: string): never => {
+      throw new BusinessRuleError(CHANNEL_NOT_AVAILABLE, 'Não há canal de emissão disponível para esta NFS-e.', [
+        { code, message, ...(field === undefined ? {} : { field }) },
+      ]);
+    };
+    switch (decision.kind) {
+      case 'ROUTED':
+        if (!SUPPORTED_CHANNELS.includes(decision.channel)) {
+          return refuse(
+            'ROUTE_CHANNEL_NOT_SUPPORTED',
+            `O canal desta nota é ${decision.channel} (por exemplo, competência anterior a 11/2026 ou prestador não optante em Teresina), ainda não suportado. Emita pelo emissor municipal.`,
+          );
+        }
+        return decision.channel;
+      case 'TO_CONFIRM':
+        return refuse(
+          'ROUTE_PENDING_CONFIRMATION',
+          'O canal para este enquadramento ainda depende de confirmação oficial (ADR-0028, linha "a confirmar"). Confirme com o contador.',
+          'provider.simplesNacionalRegime',
+        );
+      case 'AMBIGUOUS':
+        return refuse('ROUTE_AMBIGUOUS', `A tabela de roteamento tem regras conflitantes para este caso (${decision.rows.join(', ')}). Nenhum canal é escolhido sem confirmação.`);
+      case 'NO_ROUTE':
+        return decision.regimeWouldMatter
+          ? refuse('ROUTE_REGIME_REQUIRED', 'Informe o regime de apuração do Simples (simplesNacionalRegime): o canal depende dele.', 'provider.simplesNacionalRegime')
+          : refuse('ROUTE_NOT_FOUND', 'Nenhuma regra de roteamento cobre este município, enquadramento e competência.');
+    }
+  }
 }
+
+const CHANNEL_NOT_AVAILABLE = 'NFSE_CHANNEL_NOT_AVAILABLE';
 
 function replay(existing: ServiceInvoice, input: AcceptServiceInvoice): AcceptResult {
   if (existing.requestHash !== input.requestHash) {

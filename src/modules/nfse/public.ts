@@ -9,6 +9,8 @@ export { UnknownEscalator, type EscalationResult } from './application/unknown-e
 export { XmlNfseVerifier } from './infrastructure/dps/xml-nfse-verifier.js';
 export { nfseDeskReader, nfseDeskUnitOfWork } from './infrastructure/persistence/resolution-repositories.js';
 export type { EscalationLevel } from './domain/unknown-escalation.js';
+export { route, SUPPORTED_CHANNELS, type RoutingChannel, type RoutingDecision, type RoutingTable } from './domain/routing.js';
+export { loadRoutingTable, RoutingTableError } from './infrastructure/routing/routing-table.js';
 export type {
   ActiveSeries,
   CredentialAccess,

@@ -59,7 +59,8 @@ export const MINIMAL_DPS_BY_PACKAGE: Record<string, (o?: DpsFixtureOptions) => s
 export function sampleDpsData(overrides: Record<string, unknown> = {}) {
   return {
     competenceDate: '2026-11-11',
-    provider: { simplesNacionalOption: '3', specialTaxRegime: '0' },
+    // regApTribSN 1: o roteamento (ADR-0028) exige o regime de ME/EPP. Valor fictício, como os demais.
+    provider: { simplesNacionalOption: '3', simplesNacionalRegime: '1', specialTaxRegime: '0' },
     service: { municipalityCode: MUNICIPIO_FICTICIO, nationalTaxCode: '010101', description: 'Servico ficticio de teste' },
     values: {
       serviceAmount: '100.00',

@@ -19,7 +19,7 @@ Arquivos:
 | `externalReference` | — | — | não | Referência do cliente (ADR-0026) |
 | `competenceDate` | `dCompet` | TSData | sim | AAAA-MM-DD |
 | `provider.simplesNacionalOption` | `prest/regTrib/opSimpNac` | TSOpSimpNac (1, 2, 3) | sim | 1 Não optante; 2 MEI; 3 ME/EPP |
-| `provider.simplesNacionalRegime` | `prest/regTrib/regApTribSN` | TSRegimeApuracaoSimpNac (1, 2, 3) | não | ME/EPP |
+| `provider.simplesNacionalRegime` | `prest/regTrib/regApTribSN` | TSRegimeApuracaoSimpNac (1, 2, 3) | não no XSD; **sim para ME/EPP** pelo roteamento (ADR-0028) | Sem ele, a ME/EPP é recusada com `ROUTE_REGIME_REQUIRED` |
 | `provider.specialTaxRegime` | `prest/regTrib/regEspTrib` | TSRegEspTrib (0–6, 9) | sim | |
 | `provider.municipalRegistration` | `prest/IM` | TSInscMun | não | |
 | `taker.document` | `toma/CNPJ` ou `toma/CPF` | TSCNPJ / TSCPF | se houver tomador | NIF e cNaoNIF ainda fora (v2) |

@@ -1,0 +1,64 @@
+{
+  "version": "nfse-routing/2026-11-10",
+  "decision": "ADR-0028",
+  "approvedOn": "2026-11-10",
+  "notes": [
+    "Transcrição da tabela do ADR-0028 item 5, aprovada pelo responsável em 2026-11-10. Linha nova ou mudança exige revisão do ADR e registro da fonte em docs/fiscal/fontes-oficiais.md.",
+    "municipality: código IBGE do município do ESTABELECIMENTO emitente; \"*\" = qualquer.",
+    "simplesNacionalOption / simplesNacionalRegime: valores de opSimpNac / regApTribSN (TSOpSimpNac / TSRegimeApuracaoSimpNac) informados pelo cliente; null = qualquer.",
+    "competenceFrom é inclusivo e competenceBefore é exclusivo (AAAA-MM-DD da dCompet); null = sem limite.",
+    "Sem linha aplicável, ou com linhas de canais diferentes, o documento é recusado: não há canal padrão nem precedência implícita."
+  ],
+  "rows": [
+    {
+      "id": "MEI-NACIONAL",
+      "municipality": "*",
+      "simplesNacionalOption": ["2"],
+      "simplesNacionalRegime": null,
+      "competenceFrom": null,
+      "competenceBefore": null,
+      "channel": "NATIONAL_SEFIN",
+      "source": "Resoluções CGSN do MEI (texto ainda a registrar em fontes-oficiais); regra E0039 do Anexo I de produção restrita de 20/10/2026"
+    },
+    {
+      "id": "MEEPP-SUBLIMITE-NACIONAL",
+      "municipality": "*",
+      "simplesNacionalOption": ["3"],
+      "simplesNacionalRegime": ["1"],
+      "competenceFrom": "2026-11-01",
+      "competenceBefore": null,
+      "channel": "NATIONAL_SEFIN",
+      "source": "Res. CGSN 191/2026; notícia do Portal NFS-e de 29/10/2026; regra E0039 do Anexo I de produção restrita de 20/10/2026"
+    },
+    {
+      "id": "TERESINA-MEEPP-FORA-SUBLIMITE",
+      "municipality": "2211001",
+      "simplesNacionalOption": ["3"],
+      "simplesNacionalRegime": ["2", "3"],
+      "competenceFrom": "2026-11-01",
+      "competenceBefore": null,
+      "channel": "TO_CONFIRM",
+      "source": "A confirmar: a E0039 não tem exceção textual para regApTribSN 2 ou 3; pendente com a SEMF e o contador (R-30)"
+    },
+    {
+      "id": "TERESINA-COMPETENCIA-ANTERIOR",
+      "municipality": "2211001",
+      "simplesNacionalOption": null,
+      "simplesNacionalRegime": null,
+      "competenceFrom": null,
+      "competenceBefore": "2026-11-01",
+      "channel": "MUNICIPAL_TERESINA_DSF",
+      "source": "Notícia do Portal NFS-e de 29/10/2026"
+    },
+    {
+      "id": "TERESINA-NAO-OPTANTE",
+      "municipality": "2211001",
+      "simplesNacionalOption": ["1"],
+      "simplesNacionalRegime": null,
+      "competenceFrom": null,
+      "competenceBefore": null,
+      "channel": "MUNICIPAL_TERESINA_DSF",
+      "source": "Portaria SEMF 20/2026, art. 1º"
+    }
+  ]
+}

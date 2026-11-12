@@ -8,6 +8,14 @@ last_updated: 2026-11-12
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
 
+## 2026-11-12 — v1 (Fase 2a, etapa 4)
+
+**Adicionado**
+
+- Roteamento da NFS-e pela competência (ADR-0028). `POST /v1/service-invoices` pode responder `422 NFSE_CHANNEL_NOT_AVAILABLE`, antes de numerar, com o motivo em `issues[].code` (`ROUTE_CHANNEL_NOT_SUPPORTED`, `ROUTE_PENDING_CONFIRMATION`, `ROUTE_REGIME_REQUIRED`, `ROUTE_AMBIGUOUS`, `ROUTE_NOT_FOUND`).
+
+**Migração:** para ME/EPP (`opSimpNac` 3), informe `provider.simplesNacionalRegime`. Sem ele, o pedido é recusado com `ROUTE_REGIME_REQUIRED`.
+
 ## 2026-11-12 — v1 (Fase 2a, etapa 2)
 
 **Adicionado**

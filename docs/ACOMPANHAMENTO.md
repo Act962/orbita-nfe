@@ -70,6 +70,28 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Fase 2a, etapa 4 — roteamento da NFS-e pela competência (2026-11-12)
+Decisão: ADR-0028 (aprovado em 2026-11-10), seção "Implementação".
+- [x] **Tabela versionada como dado:** `resources/fiscal/routing/nfse-routing-2026-11-10.json`.
+  - As 5 linhas do ADR, cada uma com a fonte.
+  - Validada na subida: fonte obrigatória, canais do catálogo, ids únicos.
+- [x] **Aplicada no aceite, antes de numerar:**
+  - entradas: município do estabelecimento, `opSimpNac`, `regApTribSN` e competência;
+  - o canal e a versão da tabela ficam gravados na nota, imutáveis por trigger (migrations 0015 e 0016).
+- [x] **Sem canal padrão nem precedência:** sem linha, linha "a confirmar", linhas conflitantes ou canal municipal (ainda sem adapter) dão `422 NFSE_CHANNEL_NOT_AVAILABLE`, com o motivo.
+- [x] **Achado (R-39):** MEI em Teresina com competência anterior a 11/2026 casa duas linhas de canais diferentes. O motor recusa com `ROUTE_AMBIGUOUS`; **precisa de confirmação** da SEMF ou do contador.
+- [x] **Contrato:** `regApTribSN` passa a ser exigido para ME/EPP (sem ele, `ROUTE_REGIME_REQUIRED`).
+- [x] **Testes:**
+  - cada linha da tabela;
+  - conflito, ausência de regime e carga inválida;
+  - ponta a ponta HTTP com os 5 motivos de recusa, sem numerar;
+  - canal gravado imutável.
+- [ ] Próximas etapas:
+  - regras L2/L3 catalogadas com fonte;
+  - consulta, cancelamento e substituição;
+  - contrato v2;
+  - adapter da SEFIN (com o A1).
+
 ### Fase 2a, etapa 3 — resolução manual de UNKNOWN e alertas (2026-11-12)
 Decisões: [ADR-0034](adr/0034-resolucao-manual-unknown.md). Runbook: [nfse-unknown](runbooks/nfse-unknown.md).
 - [x] **O operador pede; o worker-fiscal decide.**
@@ -299,7 +321,8 @@ Decisões: [ADR-0032](adr/0032-nucleo-emissao-nfse.md). Fecha o "fluxo completo 
 8. ~~Fase 2a, etapa 1: núcleo da emissão (estados, write-ahead, reconciliação, simulador, fluxo completo com documento fake)~~ ✔ (ADR-0032)
 9. ~~Fase 2a, etapa 2: contrato da DPS na API e preparador real (XML + XSD + assinatura)~~ ✔ (ADR-0033)
 10. ~~Fase 2a, etapa 3: resolução manual de `UNKNOWN` e alertas~~ ✔ (ADR-0034)
-11. Fase 2a, etapa 4: roteamento Teresina (ADR-0028) e regras L2/L3 com fonte.
+11. ~~Fase 2a, etapa 4: roteamento Teresina (ADR-0028)~~ ✔
+12. Fase 2a, etapa 5: regras L2/L3 com fonte; consulta, cancelamento e substituição.
 
    A parte fiscal (regras L3, adapter SEFIN real) espera os pré-requisitos do roadmap: CNPJ e A1 reais, contador e gate fiscal 1.
 
@@ -332,6 +355,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-10 | Piloto em Teresina pela SEFIN Nacional (Res. CGSN 191/2026); adapter municipal DSF na Fase 2b conforme demanda | 0017 (revisado) |
 | 2026-11-10 | Canal de NFS-e decidido pela data de competência, por tabela versionada com fonte | 0028 |
 | 2026-11-10 | Cliente único do padrão nacional com perfil de endpoint; reconciliação por Id da DPS antes de reenviar | 0029 |
+| 2026-11-12 | Roteamento implementado como dado versionado; município = do estabelecimento; conflito entre linhas recusa (sem precedência implícita) | 0028 |
 | 2026-11-12 | Resolução manual de `UNKNOWN`: o operador pede, o worker-fiscal confere o XML oficial e decide; `NOT_ISSUED` retransmite o mesmo XML; alertas por idade com um job por nota | 0034 |
 | 2026-11-12 | Contrato v1 da DPS (um campo por elemento do XSD, valores do cliente), perfil de leiaute por pacote, pré-validação no aceite | 0033 |
 | 2026-11-12 | Núcleo da emissão de NFS-e: recuperação de queda pela própria fila (sem varredura entre empresas), DPS assinada uma vez, reconciliação por função pura | 0032 |
@@ -349,7 +373,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 6. ~~Aprovar o [ADR-0027](adr/0027-convencoes-cadastro-fiscal-referencia-nfe-io.md) (cadastro fiscal, certificados e documentação inspirados na NFE.io)~~ — aprovado em 2026-11-10.
 
 ## Riscos ativos principais
-R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente · R-30 enquadramento `regApTribSN` da empresa-piloto · R-33 Swagger da SEFIN só com certificado · R-34 corrente de âncora · R-35 Coolify não exercitado · R-36 errata do XSD de produção da NFS-e · R-37 assinatura da SEFIN na resolução manual · R-38 fuso do `dhEmi`. Ver [riscos.md](riscos.md).
+R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente · R-30 enquadramento `regApTribSN` da empresa-piloto · R-33 Swagger da SEFIN só com certificado · R-34 corrente de âncora · R-35 Coolify não exercitado · R-36 errata do XSD de produção da NFS-e · R-37 assinatura da SEFIN na resolução manual · R-39 MEI retroativo em Teresina sem precedência na tabela · R-38 fuso do `dhEmi`. Ver [riscos.md](riscos.md).
 
 ## Código temporário / dívidas registradas
 | Item | Finalidade | Remoção |
