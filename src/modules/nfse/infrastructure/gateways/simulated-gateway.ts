@@ -1,13 +1,15 @@
 import { createHash } from 'node:crypto';
-import type { LookupOutcome, NfseGateway, SubmissionOutcome } from '../../application/ports.js';
+import type { EventLookupOutcome, EventOutcome, LookupOutcome, NfseGateway, SubmissionOutcome } from '../../application/ports.js';
 
 /**
  * SIMULADOR do autorizador da NFS-e (ADR-0032 item 8). Não fala com nenhum órgão: guarda em
  * memória as DPS "recebidas" e responde conforme o modo programado. Serve para testes e
  * desenvolvimento; a configuração recusa o simulador em produção.
  *
- * A chave de acesso e o XML devolvidos são FICTÍCIOS (marcados como simulação) e não seguem o
- * leiaute oficial da NFS-e.
+ * A chave de acesso e os XML devolvidos são FICTÍCIOS e não seguem o leiaute oficial. A chave tem
+ * 50 dígitos e passa nos padrões dos dois pacotes (TSChaveNFSe e, na produção restrita,
+ * TSIdPedRegEvt, que exige 1 ou 2 na 9ª posição), mas começa com "0000000", que não é código IBGE
+ * de município: nunca se confunde com uma chave real.
  */
 export type SubmitMode =
   /** Recebe e autoriza. */
@@ -28,7 +30,18 @@ export type LookupMode =
   | 'NOT_YET_VISIBLE'
   | 'ERROR';
 
+/** Respostas programáveis do registro de evento (mesmos casos do envio). */
+export type EventMode = 'REGISTER' | 'REJECT' | 'NOT_SENT' | 'PROCESS_THEN_DROP' | 'DROP_BEFORE_PROCESSING';
+
 export class SimulatedNfseGateway implements NfseGateway {
+  private readonly events = new Map<string, string>();
+  private eventModes: EventMode[] = [];
+  private eventLookupModes: LookupMode[] = [];
+  /** Quantas vezes cada evento (chave:tipo) chegou ao "autorizador". */
+  readonly eventsReceived = new Map<string, number>();
+  readonly eventPayloadHashes = new Map<string, string[]>();
+  eventSubmits = 0;
+  eventLookups = 0;
   private readonly authorized = new Map<string, { accessKey: string; nfseXml: string }>();
   private submitModes: SubmitMode[] = [];
   private lookupModes: LookupMode[] = [];
@@ -50,6 +63,42 @@ export class SimulatedNfseGateway implements NfseGateway {
   onLookup(...modes: LookupMode[]): this {
     this.lookupModes.push(...modes);
     return this;
+  }
+
+  onEvent(...modes: EventMode[]): this {
+    this.eventModes.push(...modes);
+    return this;
+  }
+
+  onEventLookup(...modes: LookupMode[]): this {
+    this.eventLookupModes.push(...modes);
+    return this;
+  }
+
+  registerEvent(accessKey: string, signedEvent: string): Promise<EventOutcome> {
+    this.eventSubmits++;
+    const mode = this.eventModes.shift() ?? 'REGISTER';
+    if (mode === 'NOT_SENT') return Promise.resolve({ kind: 'NOT_SENT', errorCode: 'ECONNREFUSED' });
+    if (mode === 'DROP_BEFORE_PROCESSING') return Promise.resolve({ kind: 'UNKNOWN', errorCode: 'UND_ERR_HEADERS_TIMEOUT' });
+    const type = /<e(\d{6})>/.exec(signedEvent)?.[1] ?? 'desconhecido';
+    const key = `${accessKey}:${type}`;
+    this.eventsReceived.set(key, (this.eventsReceived.get(key) ?? 0) + 1);
+    this.eventPayloadHashes.set(key, [...(this.eventPayloadHashes.get(key) ?? []), createHash('sha256').update(signedEvent).digest('hex')]);
+    if (this.events.has(key)) return Promise.resolve({ kind: 'ALREADY_EXISTS' });
+    if (mode === 'REJECT') return Promise.resolve({ kind: 'REJECTED', ...this.rejection });
+    const eventXml = `<EventoSimulado chave="${accessKey}" tipo="${type}"/>`;
+    this.events.set(key, eventXml);
+    if (mode === 'PROCESS_THEN_DROP') return Promise.resolve({ kind: 'UNKNOWN', errorCode: 'ECONNRESET' });
+    return Promise.resolve({ kind: 'REGISTERED', eventXml });
+  }
+
+  findEvent(accessKey: string, eventType: string): Promise<EventLookupOutcome> {
+    this.eventLookups++;
+    const mode = this.eventLookupModes.shift() ?? 'TRUTHFUL';
+    if (mode === 'ERROR') return Promise.resolve({ kind: 'ERROR', errorCode: 'UND_ERR_CONNECT_TIMEOUT' });
+    const found = this.events.get(`${accessKey}:${eventType}`);
+    if (mode === 'NOT_YET_VISIBLE' || found === undefined) return Promise.resolve({ kind: 'NOT_FOUND' });
+    return Promise.resolve({ kind: 'FOUND', eventXml: found });
   }
 
   rejectWith(code: string, message: string): this {
@@ -84,7 +133,8 @@ export class SimulatedNfseGateway implements NfseGateway {
   }
 
   private authorize(dpsId: string): { accessKey: string; nfseXml: string } {
-    const accessKey = `SIM${createHash('sha256').update(dpsId).digest('hex').slice(0, 47).toUpperCase()}`;
+    const digits = BigInt(`0x${createHash('sha256').update(dpsId).digest('hex')}`).toString().padStart(41, '0').slice(0, 41);
+    const accessKey = `000000022${digits}`;
     const authorization = { accessKey, nfseXml: `<NFSeSimulada dps="${dpsId}" chave="${accessKey}"/>` };
     this.authorized.set(dpsId, authorization);
     return authorization;

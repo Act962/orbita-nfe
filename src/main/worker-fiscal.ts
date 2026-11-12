@@ -1,5 +1,5 @@
 import { loadPrivateKek, X509TrustStore } from '../modules/certificates/public.js';
-import { SimulatedNfseGateway, XmlDpsPreparer, XmlNfseVerifier, type UnknownAlertSink } from '../modules/nfse/public.js';
+import { SimulatedNfseGateway, XmlCancellationPreparer, XmlDpsPreparer, XmlNfseVerifier, type UnknownAlertSink } from '../modules/nfse/public.js';
 import { createDatabase } from '../shared/infrastructure/database/database.js';
 import { createLogger } from '../shared/infrastructure/logging/logger.js';
 import { composeFiscalWorker } from './compose.js';
@@ -36,6 +36,7 @@ const nfse =
         preparer: new XmlDpsPreparer(schemas, `orbita-nfe-${config.APP_VERSION}`),
         verifier: new XmlNfseVerifier(schemas),
         alerts,
+        cancellationPreparer: new XmlCancellationPreparer(schemas, `orbita-nfe-${config.APP_VERSION}`),
       };
 if (nfse !== undefined) logger.warn('NFS-e com autorizador SIMULADO (NFSE_GATEWAY=simulator): nada é enviado a órgão nenhum');
 

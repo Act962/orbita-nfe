@@ -9,7 +9,7 @@ import { err, ok, type Result } from '../../../shared/domain/result.js';
  *
  * As mesmas transições são conferidas por trigger no banco (migration de segurança do nfse).
  */
-export const SERVICE_INVOICE_STATUSES = ['PENDING', 'PROCESSING', 'AUTHORIZED', 'REJECTED', 'FAILED', 'UNKNOWN'] as const;
+export const SERVICE_INVOICE_STATUSES = ['PENDING', 'PROCESSING', 'AUTHORIZED', 'REJECTED', 'FAILED', 'UNKNOWN', 'CANCELLED'] as const;
 export type ServiceInvoiceStatus = (typeof SERVICE_INVOICE_STATUSES)[number];
 
 const TRANSITIONS: Readonly<Record<ServiceInvoiceStatus, readonly ServiceInvoiceStatus[]>> = {
@@ -18,7 +18,9 @@ const TRANSITIONS: Readonly<Record<ServiceInvoiceStatus, readonly ServiceInvoice
   PROCESSING: ['AUTHORIZED', 'REJECTED', 'UNKNOWN', 'PENDING', 'FAILED'],
   // PENDING: a consulta provou a inexistência (duas vezes) e o MESMO XML será retransmitido.
   UNKNOWN: ['AUTHORIZED', 'PENDING'],
-  AUTHORIZED: [],
+  // CANCELLED: evento de cancelamento registrado no autorizador (ADR-0035).
+  AUTHORIZED: ['CANCELLED'],
+  CANCELLED: [],
   REJECTED: [],
   FAILED: [],
 };

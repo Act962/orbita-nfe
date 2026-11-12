@@ -30,6 +30,8 @@ Filas implementadas (catálogo fechado em `job-queue.ts`):
 | `nfse.reconcile` | fiscal (`fiscal_worker`) | 20 (falha do processo; o calendário de consultas é o do doc 12) | 1 min → 1 h | 120 s |
 | `nfse.resolve` | fiscal (`fiscal_worker`); só esta fila o `fiscal_admin` enfileira | 10 | 30 s → 15 min | 60 s |
 | `nfse.escalate` | fiscal (`fiscal_worker`) | 5 | 1 min → 15 min | 30 s |
+| `nfse.cancel` | fiscal (`fiscal_worker`) | 20 | 30 s → 30 min | 180 s |
+| `nfse.cancel-reconcile` | fiscal (`fiscal_worker`) | 20 | 1 min → 1 h | 120 s |
 
 Jobs agendados (semana 7):
 - **`certificates.expiry-notice`:** a ativação do certificado (worker-fiscal) agenda um job por limiar: 30, 15, 7 e 1 dia antes do vencimento, mais o próprio vencimento. Na hora, o worker-general decide qual aviso vale e registra em `certificate_expiry_notices`, para não repetir. Não há varredura entre empresas.
@@ -37,6 +39,11 @@ Jobs agendados (semana 7):
 - **`nfse.process`** (ADR-0032): o aceite agenda com a chave `<id>`. Os reenvios usam chaves próprias: `<id>:resend:<tentativa>` depois de `NOT_SENT`, com backoff, e `<id>:retransmit:<tentativa>` depois da prova de inexistência. A recuperação de queda é a própria fila: o job volta quando a concessão vence.
 - **`nfse.reconcile`** (ADR-0032): uma consulta por execução. A próxima é um job novo com `runAt` e a chave `<id>:lookup:<tentativa>:<consulta>`. Erro de consulta nunca leva a `FAILED`.
 - **`nfse.resolve`** (ADR-0034): aplica um pedido de resolução manual. O operador enfileira pela CLI `ops`, com a chave `<pedido>`. Se o pedido for `NOT_ISSUED`, a retransmissão usa `nfse.process` com a chave `<id>:manual:<pedido>`.
+- **`nfse.cancel`** (ADR-0035): envio do pedido de cancelamento.
+  - O pedido agenda com a chave `<cancelamento>`.
+  - Os reenvios usam `<cancelamento>:resend:<envios>` depois de `NOT_SENT` e `<cancelamento>:retransmit:<envios>` depois da prova de inexistência.
+  - A recuperação de queda é a própria fila: o job volta quando a concessão vence.
+- **`nfse.cancel-reconcile`** (ADR-0035): uma consulta do evento por execução, com a mesma política da `nfse.reconcile`. A chave é `<cancelamento>:lookup:<envios>:<consulta>`.
 - **`nfse.escalate`** (ADR-0034, doc 12 §6): alerta de `UNKNOWN` pela idade.
   - A entrada em `UNKNOWN` agenda a verificação de +15 min.
   - Cada execução alerta e agenda a próxima (2 h, 24 h, depois a cada 24 h), com a chave `<id>:escalate:<tentativa>:<horário>`.

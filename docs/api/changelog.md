@@ -8,6 +8,19 @@ last_updated: 2026-11-12
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
 
+## 2026-11-12 — v1 (Fase 2a, etapa 5)
+
+**Adicionado**
+
+- `POST /v1/service-invoices/{id}/cancellation` (escopo `nfse:cancel`): cancelamento pelo evento e101101.
+  - O corpo é `{ reasonCode, reasonText }`, com os valores e limites do XSD.
+  - A resposta é `202`; a repetição devolve `200`.
+- `GET /v1/service-invoices/{id}/cancellation` (escopo `nfse:read`).
+- Status `CANCELLED` na NFS-e e no webhook `service_invoice.status_changed`.
+- Webhook `service_invoice.cancellation_changed` (`REGISTERED`, `REJECTED`, `FAILED`, `UNKNOWN`).
+
+**Migração:** nenhuma. Quem trata `status` como enumeração fechada deve aceitar o valor novo `CANCELLED`.
+
 ## 2026-11-12 — v1 (Fase 2a, etapa 4)
 
 **Adicionado**

@@ -49,6 +49,10 @@ import {
   nfseDeskUnitOfWork,
   nfseWorkerUnitOfWork,
   registerNfseRoutes,
+  CancellationProcessor,
+  CancellationReconciler,
+  CancellationService,
+  type CancellationPreparer,
   type CredentialAccess,
   type DpsPreparer,
   type EstablishmentReader,
@@ -161,6 +165,7 @@ export interface ApiModulesDependencies {
 export interface ApiModules {
   readonly company: CompanyService;
   readonly nfse: ServiceInvoiceService;
+  readonly nfseCancellations: CancellationService;
   readonly fiscalSettings: FiscalSettingsService;
   readonly certificates: CertificateService;
   readonly webhooks: WebhookService;
@@ -194,14 +199,16 @@ export function composeApi(deps: ApiModulesDependencies): ApiModules {
     uuidv7,
     { allowPrivateTargets: deps.allowPrivateWebhookTargets },
   );
+  const nfseApiUow = nfseApiUnitOfWork(transactions, {
+    establishmentsFor: nfseEstablishments,
+    seriesFor: nfseSeries,
+    productionFor: nfseProduction,
+    auditFor,
+    jobsFor: apiJobs,
+  });
+  const nfseCancellations = new CancellationService(nfseApiUow, uuidv7);
   const nfse = new ServiceInvoiceService(
-    nfseApiUnitOfWork(transactions, {
-      establishmentsFor: nfseEstablishments,
-      seriesFor: nfseSeries,
-      productionFor: nfseProduction,
-      auditFor,
-      jobsFor: apiJobs,
-    }),
+    nfseApiUow,
     uuidv7,
     deps.nfseRouting,
     new XmlDpsValidator(deps.schemaCatalog),
@@ -211,6 +218,7 @@ export function composeApi(deps: ApiModulesDependencies): ApiModules {
   return {
     company,
     nfse,
+    nfseCancellations,
     fiscalSettings,
     certificates,
     webhooks,
@@ -222,7 +230,7 @@ export function composeApi(deps: ApiModulesDependencies): ApiModules {
       registerFiscalSettingsRoutes(app, fiscalSettings);
       registerCertificateRoutes(app, certificates);
       registerWebhookRoutes(app, webhooks);
-      registerNfseRoutes(app, nfse);
+      registerNfseRoutes(app, nfse, nfseCancellations);
     },
   };
 }
@@ -254,6 +262,8 @@ export interface FiscalWorkerDependencies {
     readonly verifier: NfseDocumentVerifier;
     /** Alertas de UNKNOWN pela idade (doc 12 §6). */
     readonly alerts: UnknownAlertSink;
+    /** Monta, assina e valida o pedido de cancelamento (ADR-0035). */
+    readonly cancellationPreparer: CancellationPreparer;
     readonly options?: ProcessorOptions;
   };
   readonly now?: () => Date;
@@ -266,6 +276,8 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
   reconciler?: Reconciler;
   resolutions?: ResolutionApplier;
   escalator?: UnknownEscalator;
+  cancellations?: CancellationProcessor;
+  cancellationReconciler?: CancellationReconciler;
   handlers: Partial<Record<QueueName, JobHandler>>;
 } {
   const transactions = new CompanyTransactions(deps.db);
@@ -316,7 +328,16 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
   handlers['nfse.escalate'] = async (job) => {
     await escalator.escalate(payloadId(job, 'companyId'), payloadId(job, 'invoiceId'), systemContext('worker-fiscal', job));
   };
-  return { vault, processor, reconciler, resolutions, escalator, handlers };
+  const cancellations = new CancellationProcessor(nfseUow, credentials, deps.nfse.cancellationPreparer, deps.nfse.gateway, deps.now);
+  const cancellationReconciler = new CancellationReconciler(nfseUow, credentials, deps.nfse.gateway, deps.now, deps.nfse.options?.reconciliation);
+  handlers['nfse.cancel'] = async (job) => {
+    const result = await cancellations.process(payloadId(job, 'companyId'), payloadId(job, 'cancellationId'), systemContext('worker-fiscal', job));
+    if (result.kind === 'DEFERRED') throw new Error(`NFSE_CANCELLATION_DEFERRED:${result.code}`);
+  };
+  handlers['nfse.cancel-reconcile'] = async (job) => {
+    await cancellationReconciler.reconcile(payloadId(job, 'companyId'), payloadId(job, 'cancellationId'), systemContext('worker-fiscal', job));
+  };
+  return { vault, processor, reconciler, resolutions, escalator, cancellations, cancellationReconciler, handlers };
 }
 
 export interface GeneralWorkerDependencies {

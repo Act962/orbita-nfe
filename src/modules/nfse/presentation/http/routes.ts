@@ -4,8 +4,10 @@ import type { HttpApp } from '../../../../shared/presentation/http/http-app.js';
 import { withIssueFields } from '../../../../shared/presentation/http/issue-fields.js';
 import { ProblemSchema, commonErrorResponses } from '../../../../shared/presentation/http/problem.js';
 import { auditContextOf, authErrorResponses, callerOf, companyIdOf, CompanyHeaders } from '../../../../shared/presentation/http/request-context.js';
+import type { CancellationService } from '../../application/cancellation.js';
 import type { ServiceInvoiceService } from '../../application/service-invoice-service.js';
-import type { ServiceInvoice } from '../../application/ports.js';
+import type { ServiceInvoice, ServiceInvoiceCancellation } from '../../application/ports.js';
+import { CANCELLATION_REASON_CODES, CANCELLATION_STATES, REASON_TEXT_MAX, REASON_TEXT_MIN } from '../../domain/cancellation.js';
 import {
   ISSQN_RETENTIONS,
   ISSQN_TAXATIONS,
@@ -115,7 +117,7 @@ const ServiceInvoiceResponse = z
     status: z.enum(SERVICE_INVOICE_STATUSES).meta({
       description:
         'PENDING/PROCESSING: em andamento. AUTHORIZED: autorizada. REJECTED: rejeitada pelo autorizador. FAILED: falha local antes de qualquer envio. ' +
-        'UNKNOWN: em verificação junto ao autorizador — NÃO reemita; o motor consulta e resolve.',
+        'UNKNOWN: em verificação junto ao autorizador — NÃO reemita; o motor consulta e resolve. CANCELLED: cancelamento registrado no autorizador.',
     }),
     environment: z.enum(['PRODUCTION', 'HOMOLOGATION']),
     establishmentId: z.uuid(),
@@ -161,7 +163,125 @@ function canonical(value: unknown): string {
     .join(',')}}`;
 }
 
-export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService): void {
+const CancellationBody = z
+  .object({
+    reasonCode: z.enum(CANCELLATION_REASON_CODES).meta({ description: 'cMotivo (TSCodJustCanc): 1 Erro na Emissão; 2 Serviço não Prestado; 9 Outros. Escolha do contribuinte.' }),
+    reasonText: z
+      .string()
+      .min(REASON_TEXT_MIN)
+      .max(REASON_TEXT_MAX)
+      .regex(XSD_STRING)
+      .meta({ description: 'xMotivo (TSMotivo): de 15 a 255 caracteres, sem espaços nas pontas.' }),
+  })
+  .strict();
+
+const CancellationResponse = z
+  .object({
+    id: z.uuid(),
+    serviceInvoiceId: z.uuid(),
+    status: z.enum(CANCELLATION_STATES).meta({
+      description:
+        'PENDING/PROCESSING: em andamento. REGISTERED: cancelada (a nota fica CANCELLED). REJECTED: recusado pelo autorizador; a nota continua autorizada. ' +
+        'FAILED: falha local antes de qualquer envio. UNKNOWN: em verificação — NÃO peça de novo; o motor consulta e resolve.',
+    }),
+    reasonCode: z.enum(CANCELLATION_REASON_CODES),
+    reasonText: z.string(),
+    rejection: z.object({ code: z.string(), message: z.string() }).nullable(),
+    failureCode: z.string().nullable(),
+    registeredAt: z.iso.datetime().nullable(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .meta({ id: 'ServiceInvoiceCancellation' });
+
+const cancellationJson = (c: ServiceInvoiceCancellation): z.infer<typeof CancellationResponse> => ({
+  id: c.id,
+  serviceInvoiceId: c.invoiceId,
+  status: c.state,
+  reasonCode: c.reasonCode,
+  reasonText: c.reasonText,
+  rejection: c.state === 'REJECTED' ? { code: c.outcomeCode ?? '', message: c.rejectionMessage ?? '' } : null,
+  failureCode: c.failureCode,
+  registeredAt: c.registeredAt?.toISOString() ?? null,
+  createdAt: c.createdAt.toISOString(),
+  updatedAt: c.updatedAt.toISOString(),
+});
+
+export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService, cancellations: CancellationService): void {
+  app.post(
+    '/v1/service-invoices/:id/cancellation',
+    {
+      config: { auth: { scope: 'nfse:cancel', company: true } },
+      schema: {
+        tags: [TAG],
+        summary: 'Cancelar NFS-e',
+        description:
+          'Pede o cancelamento (evento e101101) de uma NFS-e AUTHORIZED. Devolve 202 com status PENDING; o registro é assíncrono (GET da cancelação ou webhook `service_invoice.cancellation_changed`). ' +
+          'Repetir o mesmo corpo devolve 200 com o mesmo pedido. O motivo é do contribuinte. O prazo é o do município: se vencido, o autorizador rejeita.',
+        security: [{ apiKey: [] }],
+        headers: CompanyHeaders,
+        params: z.object({ id: z.uuid() }),
+        body: CancellationBody,
+        response: {
+          200: CancellationResponse.describe('Repetição: o pedido já existente.'),
+          202: CancellationResponse,
+          ...commonErrorResponses,
+          ...authErrorResponses,
+          404: ProblemSchema.describe('SERVICE_INVOICE_NOT_FOUND (inexistente, de outra aplicação ou de outro ambiente).'),
+          409: ProblemSchema.describe('CANCELLATION_ALREADY_REQUESTED: já há pedido ativo com outro motivo.'),
+          422: ProblemSchema.describe('SERVICE_INVOICE_NOT_AUTHORIZED ou NFSE_CHANNEL_NOT_AVAILABLE.'),
+        },
+      },
+    },
+    async (request, reply) => {
+      const caller = callerOf(request);
+      const environment = caller.environment === 'live' ? 'PRODUCTION' : 'HOMOLOGATION';
+      const result = await withIssueFields('body', () =>
+        cancellations.request(
+          {
+            companyId: companyIdOf(request),
+            clientApplicationId: caller.clientApplicationId,
+            environment,
+            invoiceId: request.params.id,
+            reasonCode: request.body.reasonCode,
+            reasonText: request.body.reasonText,
+          },
+          auditContextOf(request),
+        ),
+      );
+      return reply
+        .status(result.replayed ? 200 : 202)
+        .header('location', `/v1/service-invoices/${request.params.id}/cancellation`)
+        .send(cancellationJson(result.cancellation));
+    },
+  );
+
+  app.get(
+    '/v1/service-invoices/:id/cancellation',
+    {
+      config: { auth: { scope: 'nfse:read', company: true } },
+      schema: {
+        tags: [TAG],
+        summary: 'Consultar o cancelamento de uma NFS-e',
+        description: 'O pedido de cancelamento mais recente da nota.',
+        security: [{ apiKey: [] }],
+        headers: CompanyHeaders,
+        params: z.object({ id: z.uuid() }),
+        response: {
+          200: CancellationResponse,
+          ...commonErrorResponses,
+          ...authErrorResponses,
+          404: ProblemSchema.describe('SERVICE_INVOICE_NOT_FOUND ou CANCELLATION_NOT_FOUND.'),
+        },
+      },
+    },
+    async (request) => {
+      const caller = callerOf(request);
+      const environment = caller.environment === 'live' ? 'PRODUCTION' : 'HOMOLOGATION';
+      return cancellationJson(await cancellations.get(companyIdOf(request), caller.clientApplicationId, environment, request.params.id));
+    },
+  );
+
   app.post(
     '/v1/service-invoices',
     {

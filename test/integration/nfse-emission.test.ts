@@ -16,7 +16,12 @@ import {
   type SubmissionProcessor,
   type UnknownAlertSink,
   type UnknownEscalator,
+  XmlCancellationPreparer,
+  type CancellationProcessor,
+  type CancellationReconciler,
 } from '../../src/modules/nfse/public.js';
+import { FiscalSchemaCatalog } from '../../src/shared/infrastructure/xml/fiscal-schema-catalog.js';
+import { resolve } from 'node:path';
 import { ApplicationError } from '../../src/shared/application/errors.js';
 import type { AuditContext } from '../../src/shared/application/audit.js';
 import { CompanyTransactions, type DatabaseHandle } from '../../src/shared/infrastructure/database/database.js';
@@ -82,6 +87,12 @@ class HangingGateway implements NfseGateway {
   findByDpsId(): Promise<never> {
     return new Promise(() => undefined);
   }
+  registerEvent(): Promise<never> {
+    return new Promise(() => undefined);
+  }
+  findEvent(): Promise<never> {
+    return new Promise(() => undefined);
+  }
 }
 
 /** Verificador de teste do XML oficial (o real é testado contra o XSD em xml-nfse-verifier.test.ts). */
@@ -109,19 +120,21 @@ let processor: SubmissionProcessor;
 let reconciler: Reconciler;
 let resolutions: ResolutionApplier;
 let escalator: UnknownEscalator;
+let cancellations: CancellationProcessor;
+let cancellationReconciler: CancellationReconciler;
+const catalog = FiscalSchemaCatalog.load(resolve(import.meta.dirname, '../../resources/fiscal/schemas'));
 
 function buildWorker(g: NfseGateway = gateway) {
   const composed = composeFiscalWorker({
     db: worker.db,
     certificateKeks: [testCertificateKek().privateKey],
     trustStore: X509TrustStore.fromPem(pki.trustBundlePem),
-    nfse: { gateway: g, preparer, verifier, alerts },
+    nfse: { gateway: g, preparer, verifier, alerts, cancellationPreparer: new XmlCancellationPreparer(catalog, 'orbita-nfe-teste', now) },
     now,
   });
-  if (composed.processor === undefined || composed.reconciler === undefined || composed.resolutions === undefined || composed.escalator === undefined) {
-    throw new Error('nfse não composto');
-  }
-  return { ...composed, processor: composed.processor, reconciler: composed.reconciler, resolutions: composed.resolutions, escalator: composed.escalator };
+  const { processor: p, reconciler: rc, resolutions: rs, escalator: e, cancellations: c, cancellationReconciler: cr } = composed;
+  if (p === undefined || rc === undefined || rs === undefined || e === undefined || c === undefined || cr === undefined) throw new Error('nfse não composto');
+  return { ...composed, processor: p, reconciler: rc, resolutions: rs, escalator: e, cancellations: c, cancellationReconciler: cr };
 }
 
 async function activateCertificate(establishment: string, cnpj: string): Promise<void> {
@@ -218,7 +231,7 @@ beforeEach(() => {
   preparer = new FakePreparer();
   verifier = new FakeVerifier();
   alerts = new RecordingAlerts();
-  ({ processor, reconciler, resolutions, escalator } = buildWorker());
+  ({ processor, reconciler, resolutions, escalator, cancellations, cancellationReconciler } = buildWorker());
 });
 
 describe('aceite', () => {
@@ -276,7 +289,7 @@ describe('transmissão (write-ahead)', () => {
     expect(await processor.process(companyId, invoice.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'AUTHORIZED' });
     const s = await state(invoice.id);
     expect(s).toMatchObject({ status: 'AUTHORIZED', events: ['AUTHORIZED'], attempts: [{ seq: 1, state: 'CLOSED', outcome: 'AUTHORIZED' }] });
-    expect(s.nfse_access_key).toMatch(/^SIM/);
+    expect(s.nfse_access_key).toMatch(/^000000022\d{41}$/);
     expect(gateway.received.get(invoice.dpsId)).toBe(1);
     // Rodar o job de novo não transmite outra vez.
     expect(await processor.process(companyId, invoice.id, WORKER)).toMatchObject({ kind: 'SKIPPED', reason: 'NOT_PENDING' });
@@ -629,6 +642,132 @@ describe('resolução manual de UNKNOWN (doc 12 §7, ADR-0034)', () => {
     const asWorker = new CompanyTransactions(worker.db);
     await expect(asWorker.run(companyId, (tx) => tx.execute(sql`update service_invoice_resolutions set state = 'REFUSED', result_code = 'X' where id = ${request.id}`))).rejects.toThrow();
     await expect(asWorker.run(companyId, (tx) => tx.execute(sql`update service_invoice_resolutions set reason = 'outra justificativa qualquer' where id = ${request.id}`))).rejects.toThrow();
+  });
+});
+
+const CANCEL_REASON = { reasonCode: '2', reasonText: 'Serviço não foi prestado ao tomador' } as const;
+
+async function authorizedInvoice() {
+  const { invoice } = await accept();
+  expect(await processor.process(companyId, invoice.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'AUTHORIZED' });
+  return invoice;
+}
+
+function requestCancellation(invoiceId: string, reason: { reasonCode: '1' | '2' | '9'; reasonText: string } = CANCEL_REASON) {
+  return t.modules.nfseCancellations.request({ companyId, clientApplicationId: app.id, environment: 'HOMOLOGATION', invoiceId, ...reason }, API);
+}
+
+async function cancellationState(id: string) {
+  return new CompanyTransactions(worker.db).run(companyId, async (tx) => {
+    const rows = await tx.execute<{ state: string; attempts: number; signed_sha256: string | null; outcome_code: string | null; sending_at: Date | null }>(
+      sql`select state, attempts, signed_sha256, outcome_code, sending_at from service_invoice_cancellations where id = ${id}`,
+    );
+    return rows.rows[0];
+  });
+}
+
+async function cancelEvents(invoiceId: string) {
+  return new CompanyTransactions(t.api.db).run(companyId, async (tx) => {
+    const rows = await tx.execute<{ data: { status: string } }>(
+      sql`select data from outbox_events where subject_id = ${invoiceId} and type = 'service_invoice.cancellation_changed' order by occurred_at`,
+    );
+    return rows.rows.map((r) => r.data.status);
+  });
+}
+
+describe('cancelamento (ADR-0035)', () => {
+  it('caminho feliz: PENDING → PROCESSING → REGISTERED; nota AUTHORIZED → CANCELLED; webhooks CANCELLED e REGISTERED', async () => {
+    const invoice = await authorizedInvoice();
+    const { cancellation, replayed } = await requestCancellation(invoice.id);
+    expect(replayed).toBe(false);
+    expect(await jobs(invoice.id, 'nfse.cancel')).toEqual([]); // o job leva cancellationId
+    expect(await cancellations.process(companyId, cancellation.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'REGISTERED' });
+    expect(await state(invoice.id)).toMatchObject({ status: 'CANCELLED', events: ['AUTHORIZED', 'CANCELLED'] });
+    expect(await cancelEvents(invoice.id)).toEqual(['REGISTERED']);
+    expect(await cancellationState(cancellation.id)).toMatchObject({ state: 'REGISTERED', attempts: 1 });
+    expect(gateway.eventSubmits).toBe(1);
+  });
+
+  it('repetição: mesmo motivo devolve o mesmo pedido; outro motivo → CANCELLATION_ALREADY_REQUESTED; nota não autorizada → recusa', async () => {
+    const invoice = await authorizedInvoice();
+    const first = await requestCancellation(invoice.id);
+    const again = await requestCancellation(invoice.id);
+    expect(again).toMatchObject({ replayed: true, cancellation: { id: first.cancellation.id } });
+    expect(await rejectionCode(requestCancellation(invoice.id, { reasonCode: '9', reasonText: 'Outro motivo qualquer para o pedido' }))).toBe('CANCELLATION_ALREADY_REQUESTED');
+
+    const { invoice: pending } = await accept();
+    expect(await rejectionCode(requestCancellation(pending.id))).toBe('SERVICE_INVOICE_NOT_AUTHORIZED');
+  });
+
+  it('rejeitado pelo autorizador → REJECTED com o código; nota continua AUTHORIZED; novo pedido é aceito', async () => {
+    const invoice = await authorizedInvoice();
+    gateway.onEvent('REJECT').rejectWith('E0050', 'Prazo de cancelamento expirado (simulado).');
+    const { cancellation } = await requestCancellation(invoice.id);
+    expect(await cancellations.process(companyId, cancellation.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'REJECTED' });
+    expect(await cancellationState(cancellation.id)).toMatchObject({ state: 'REJECTED', outcome_code: 'E0050' });
+    expect((await state(invoice.id)).status).toBe('AUTHORIZED');
+    expect(await cancelEvents(invoice.id)).toEqual(['REJECTED']);
+    expect((await requestCancellation(invoice.id, { reasonCode: '9', reasonText: 'Novo pedido com outro motivo' })).replayed).toBe(false);
+  });
+
+  it('"processa e derruba" → UNKNOWN → consulta do evento → REGISTERED, sem novo envio', async () => {
+    const invoice = await authorizedInvoice();
+    gateway.onEvent('PROCESS_THEN_DROP');
+    const { cancellation } = await requestCancellation(invoice.id);
+    expect(await cancellations.process(companyId, cancellation.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'UNKNOWN' });
+    expect((await state(invoice.id)).status).toBe('AUTHORIZED');
+    expect((await cancellationReconciler.reconcile(companyId, cancellation.id, WORKER)).kind).toBe('WAITING');
+    advance(2 * MIN);
+    expect(await cancellationReconciler.reconcile(companyId, cancellation.id, WORKER)).toEqual({ kind: 'REGISTERED' });
+    expect((await state(invoice.id)).status).toBe('CANCELLED');
+    expect(await cancelEvents(invoice.id)).toEqual(['UNKNOWN', 'REGISTERED']);
+    expect(gateway.eventSubmits).toBe(1);
+  });
+
+  it('inexistência provada duas vezes → retransmite o MESMO pedido assinado, byte a byte', async () => {
+    const invoice = await authorizedInvoice();
+    gateway.onEvent('DROP_BEFORE_PROCESSING');
+    const { cancellation } = await requestCancellation(invoice.id);
+    await cancellations.process(companyId, cancellation.id, WORKER);
+    const firstHash = (await cancellationState(cancellation.id))?.signed_sha256;
+    advance(2 * MIN);
+    expect(await cancellationReconciler.reconcile(companyId, cancellation.id, WORKER)).toMatchObject({ kind: 'CONSULT_AGAIN', lookup: 'NOT_FOUND' });
+    advance(5 * MIN);
+    expect(await cancellationReconciler.reconcile(companyId, cancellation.id, WORKER)).toEqual({ kind: 'RETRANSMISSION_SCHEDULED' });
+    advance(1 * MIN); // o relógio andou: um pedido remontado teria outro dhEvento
+    expect(await cancellations.process(companyId, cancellation.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'REGISTERED' });
+    const key = `${invoice.nfseAccessKey ?? (await state(invoice.id)).nfse_access_key}:101101`;
+    expect(gateway.eventPayloadHashes.get(key)).toEqual([firstHash]);
+    expect(await cancellationState(cancellation.id)).toMatchObject({ state: 'REGISTERED', attempts: 2, signed_sha256: firstHash });
+  });
+
+  it('queda depois do envio → UNKNOWN (nunca FAILED); NOT_SENT → volta a PENDING com novo job', async () => {
+    const invoice = await authorizedInvoice();
+    const { cancellation } = await requestCancellation(invoice.id);
+    const hung = buildWorker(new HangingGateway());
+    void hung.cancellations.process(companyId, cancellation.id, WORKER);
+    await waitFor(async () => (await cancellationState(cancellation.id))?.sending_at != null);
+    advance(10 * MIN);
+    expect(await cancellations.process(companyId, cancellation.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'UNKNOWN' });
+    expect(await cancellationState(cancellation.id)).toMatchObject({ state: 'UNKNOWN', outcome_code: 'RECOVERED_UNKNOWN' });
+    await expect(
+      new CompanyTransactions(worker.db).run(companyId, (tx) => tx.execute(sql`update service_invoice_cancellations set state = 'FAILED' where id = ${cancellation.id}`)),
+    ).rejects.toThrow();
+
+    const other = await authorizedInvoice();
+    gateway.onEvent('NOT_SENT');
+    const second = await requestCancellation(other.id);
+    expect(await cancellations.process(companyId, second.cancellation.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'NOT_SENT' });
+    expect(await cancellationState(second.cancellation.id)).toMatchObject({ state: 'PENDING', sending_at: null });
+  });
+
+  it('a API não muda o estado do cancelamento nem lê o XML assinado; ninguém apaga', async () => {
+    const invoice = await authorizedInvoice();
+    const { cancellation } = await requestCancellation(invoice.id);
+    const asApi = new CompanyTransactions(t.api.db);
+    await expect(asApi.run(companyId, (tx) => tx.execute(sql`update service_invoice_cancellations set state = 'REGISTERED' where id = ${cancellation.id}`))).rejects.toThrow();
+    await expect(asApi.run(companyId, (tx) => tx.execute(sql`select signed_xml from service_invoice_cancellations where id = ${cancellation.id}`))).rejects.toThrow();
+    await expect(new CompanyTransactions(worker.db).run(companyId, (tx) => tx.execute(sql`delete from service_invoice_cancellations where id = ${cancellation.id}`))).rejects.toThrow();
   });
 });
 

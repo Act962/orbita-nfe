@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { composeFiscalWorker } from '../../src/main/compose.js';
 import { X509TrustStore } from '../../src/modules/certificates/public.js';
-import { SimulatedNfseGateway, XmlDpsPreparer, XmlNfseVerifier } from '../../src/modules/nfse/public.js';
+import { SimulatedNfseGateway, XmlCancellationPreparer, XmlDpsPreparer, XmlNfseVerifier } from '../../src/modules/nfse/public.js';
 import type { AuditContext } from '../../src/shared/application/audit.js';
 import { CompanyTransactions, type DatabaseHandle } from '../../src/shared/infrastructure/database/database.js';
 import { FiscalSchemaCatalog } from '../../src/shared/infrastructure/xml/fiscal-schema-catalog.js';
@@ -47,10 +47,10 @@ function fiscalWorker() {
     db: worker.db,
     certificateKeks: [testCertificateKek().privateKey],
     trustStore: X509TrustStore.fromPem(pki.trustBundlePem),
-    nfse: { gateway, preparer: new XmlDpsPreparer(catalog, 'orbita-nfe-teste'), verifier: new XmlNfseVerifier(catalog), alerts: { raise: () => undefined } },
+    nfse: { gateway, preparer: new XmlDpsPreparer(catalog, 'orbita-nfe-teste'), verifier: new XmlNfseVerifier(catalog), alerts: { raise: () => undefined }, cancellationPreparer: new XmlCancellationPreparer(catalog, 'orbita-nfe-teste') },
   });
-  if (composed.processor === undefined) throw new Error('nfse não composto');
-  return { vault: composed.vault, processor: composed.processor };
+  if (composed.processor === undefined || composed.cancellations === undefined) throw new Error('nfse não composto');
+  return { vault: composed.vault, processor: composed.processor, cancellations: composed.cancellations };
 }
 
 beforeAll(async () => {
@@ -59,7 +59,7 @@ beforeAll(async () => {
   pki = createTestIcpPki();
   catalog = FiscalSchemaCatalog.load(ROOT);
   const app = await createClientApp(t.admin, 'nfse-api');
-  key = await app.key(['companies:create', 'companies:manage', 'fiscal-settings:manage', 'certificates:manage', 'nfse:issue', 'nfse:read']);
+  key = await app.key(['companies:create', 'companies:manage', 'fiscal-settings:manage', 'certificates:manage', 'nfse:issue', 'nfse:read', 'nfse:cancel']);
   const company = await createCompany(t.app, key);
   companyId = company.id;
   root = company.root;
@@ -103,7 +103,7 @@ describe('POST /v1/service-invoices → worker → GET', () => {
 
     const after = await get(accepted.id);
     expect(after.statusCode).toBe(200);
-    expect(after.json<{ status: string; accessKey: string | null }>()).toMatchObject({ status: 'AUTHORIZED', accessKey: expect.stringMatching(/^SIM/) as unknown });
+    expect(after.json<{ status: string; accessKey: string | null }>()).toMatchObject({ status: 'AUTHORIZED', accessKey: expect.stringMatching(/^000000022\d{41}$/) as unknown });
     expect(gateway.received.get(accepted.dpsId)).toBe(1);
 
     // O XML transmitido: leiaute da produção restrita, válido no XSD oficial e com assinatura que confere.
@@ -207,5 +207,49 @@ describe('roteamento pela competência (ADR-0028)', () => {
     expect(problemCode(res)).toBe('NFSE_CHANNEL_NOT_AVAILABLE');
     expect(JSON.stringify(res.json())).toContain(reason);
     expect(await invoiceRow(idempotencyKey)).toBeUndefined();
+  });
+});
+
+describe('cancelamento pela API (ADR-0035)', () => {
+  const cancel = (id: string, body: Record<string, unknown>) =>
+    t.app.inject({ method: 'POST', url: `/v1/service-invoices/${id}/cancellation`, headers: bearer(key, companyId), payload: body });
+  const getCancellation = (id: string) => t.app.inject({ method: 'GET', url: `/v1/service-invoices/${id}/cancellation`, headers: bearer(key, companyId) });
+  const reason = { reasonCode: '1', reasonText: 'Erro na emissão: valor digitado errado' };
+
+  it('nota autorizada → 202 PENDING → worker assina e valida o pedido real → REGISTERED; nota CANCELLED', async () => {
+    const issued = await post({ establishmentId, ...sampleDpsData() }, 'cancel-e2e-1');
+    const id = issued.json<{ id: string }>().id;
+    const w = fiscalWorker();
+    await w.processor.process(companyId, id, WORKER);
+
+    const res = await cancel(id, reason);
+    expect(res.statusCode).toBe(202);
+    expect(res.headers.location).toBe(`/v1/service-invoices/${id}/cancellation`);
+    const cancellationId = res.json<{ id: string; status: string }>().id;
+    expect(res.json<{ status: string }>().status).toBe('PENDING');
+    expect((await cancel(id, reason)).statusCode).toBe(200);
+
+    expect(await w.cancellations.process(companyId, cancellationId, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'REGISTERED' });
+    expect((await getCancellation(id)).json()).toMatchObject({ id: cancellationId, status: 'REGISTERED', reasonCode: '1' });
+    expect((await get(id)).json()).toMatchObject({ status: 'CANCELLED' });
+
+    // O pedido transmitido é o XML real, assinado pelo certificado do prestador.
+    const signed = await new CompanyTransactions(worker.db).run(companyId, (tx) =>
+      tx.execute<{ signed_xml: string }>(sql`select signed_xml from service_invoice_cancellations where id = ${cancellationId}`),
+    );
+    expect(signed.rows[0]?.signed_xml).toContain('<e101101><xDesc>Cancelamento de NFS-e</xDesc>');
+  });
+
+  it('motivo fora de TSCodJustCanc/TSMotivo → 400; nota não autorizada → 422; outra aplicação → 404', async () => {
+    const issued = await post({ establishmentId, ...sampleDpsData() }, 'cancel-e2e-2');
+    const id = issued.json<{ id: string }>().id;
+    expect((await cancel(id, { reasonCode: '3', reasonText: reason.reasonText })).statusCode).toBe(400);
+    expect((await cancel(id, { reasonCode: '1', reasonText: 'curto' })).statusCode).toBe(400);
+    const pending = await cancel(id, reason);
+    expect(pending.statusCode).toBe(422);
+    expect(problemCode(pending)).toBe('SERVICE_INVOICE_NOT_AUTHORIZED');
+    const other = await t.app.inject({ method: 'POST', url: `/v1/service-invoices/${id}/cancellation`, headers: bearer(otherAppKey, companyId), payload: reason });
+    expect([403, 404]).toContain(other.statusCode);
+    expect(problemCode(await getCancellation(id))).toBe('CANCELLATION_NOT_FOUND');
   });
 });

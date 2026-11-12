@@ -106,6 +106,12 @@ const CASES: Record<string, MatrixCase> = {
     expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),
   },
   'GET /v1/service-invoices/:id': { expectCrossCompany: expectNotFound('SERVICE_INVOICE_NOT_FOUND') },
+  'POST /v1/service-invoices/:id/cancellation': {
+    // B tenta cancelar a nota de A.
+    payload: () => ({ reasonCode: '1', reasonText: 'Tentativa de cancelar nota de outra empresa' }),
+    expectCrossCompany: expectNotFound('SERVICE_INVOICE_NOT_FOUND'),
+  },
+  'GET /v1/service-invoices/:id/cancellation': { expectCrossCompany: expectNotFound('SERVICE_INVOICE_NOT_FOUND') },
   'POST /v1/webhook-subscriptions': {
     payload: () => ({ url: 'http://127.0.0.1:9/matriz', eventTypes: ['certificate.activated'] }),
     expectCrossCompany: (res, { a }) => {

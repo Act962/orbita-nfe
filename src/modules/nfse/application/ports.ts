@@ -3,6 +3,7 @@ import type { AuditTrail } from '../../../shared/application/audit.js';
 import type { JobScheduler } from '../../../shared/application/job-queue.js';
 import type { EventOutbox } from '../../../shared/application/outbox.js';
 import type { DpsData } from '../domain/dps.js';
+import type { CancellationReasonCode, CancellationState } from '../domain/cancellation.js';
 import type { ResolutionOutcome, ResolutionState } from '../domain/manual-resolution.js';
 import type { AttemptState, ServiceInvoiceStatus } from '../domain/service-invoice.js';
 import type { EscalationLevel } from '../domain/unknown-escalation.js';
@@ -145,6 +146,70 @@ export interface AttemptRepository {
   recordLookup(attemptId: string, state: { firstNotFoundAt: Date | null; consecutiveLookupErrors: number }): Promise<void>;
 }
 
+// ------------------------------------------------------------------ cancelamento (ADR-0035)
+
+export interface ServiceInvoiceCancellation {
+  readonly id: string;
+  readonly companyId: string;
+  readonly invoiceId: string;
+  readonly clientApplicationId: string;
+  readonly requestHash: string;
+  readonly reasonCode: CancellationReasonCode;
+  readonly reasonText: string;
+  readonly state: CancellationState;
+  readonly leaseUntil: Date | null;
+  readonly signedSha256: string | null;
+  /** Envio em curso ou último envio: base da reconciliação e prova de "pode ter saído". */
+  readonly sendingAt: Date | null;
+  readonly attempts: number;
+  readonly lookups: number;
+  readonly firstNotFoundAt: Date | null;
+  readonly consecutiveLookupErrors: number;
+  /** Último resultado do autorizador (código de transporte, rejeição ou ALREADY_EXISTS). */
+  readonly outcomeCode: string | null;
+  readonly rejectionMessage: string | null;
+  readonly registeredAt: Date | null;
+  readonly failureCode: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+export type NewCancellation = Pick<ServiceInvoiceCancellation, 'id' | 'companyId' | 'invoiceId' | 'clientApplicationId' | 'requestHash' | 'reasonCode' | 'reasonText'>;
+
+/** API: pedido e consulta. */
+export interface CancellationRequestRepository {
+  /** Pedido que ainda ocupa a nota (não REJECTED/FAILED). */
+  findActive(invoiceId: string): Promise<ServiceInvoiceCancellation | undefined>;
+  /** Pedido mais recente da nota, em qualquer estado. */
+  findLatest(invoiceId: string): Promise<ServiceInvoiceCancellation | undefined>;
+  insert(cancellation: NewCancellation): Promise<ServiceInvoiceCancellation>;
+}
+
+export interface CancellationChange {
+  readonly leaseUntil?: Date | null;
+  /** Zera a marca de envio no início de um processamento (a recuperação lê esta marca). */
+  readonly clearSending?: true;
+  readonly outcomeCode?: string | null;
+  readonly rejectionMessage?: string;
+  readonly eventXml?: string;
+  readonly registeredAt?: Date;
+  readonly failureCode?: string;
+  /** Recomeço da reconciliação depois de uma retransmissão. */
+  readonly resetLookups?: true;
+}
+
+/** worker-fiscal. */
+export interface CancellationRepository {
+  find(id: string): Promise<ServiceInvoiceCancellation | undefined>;
+  signedXml(id: string): Promise<string | undefined>;
+  /** Compare-and-set a partir de `from`. */
+  changeState(id: string, from: CancellationState, to: CancellationState, change?: CancellationChange): Promise<boolean>;
+  storeSigned(id: string, signed: { readonly xml: string; readonly sha256: string; readonly layoutPackage: string }): Promise<void>;
+  /** Commit ANTES da rede: a partir daqui o pedido pode ter saído. */
+  markSending(id: string, at: Date): Promise<void>;
+  recordLookup(id: string, state: { firstNotFoundAt: Date | null; consecutiveLookupErrors: number }): Promise<void>;
+}
+
 // ------------------------------------------------------------------ resolução manual (ADR-0034)
 
 export interface ServiceInvoiceResolution {
@@ -244,6 +309,7 @@ export interface UnknownAlertSink {
 
 export interface NfseApiRepositories {
   readonly invoices: ServiceInvoiceRepository;
+  readonly cancellations: CancellationRequestRepository;
   readonly establishments: EstablishmentReader;
   readonly series: SeriesAllocator;
   readonly production: ProductionGate;
@@ -255,6 +321,7 @@ export interface NfseWorkerRepositories {
   readonly invoices: ServiceInvoiceWorkerRepository;
   readonly attempts: AttemptRepository;
   readonly resolutions: ResolutionRepository;
+  readonly cancellations: CancellationRepository;
   readonly production: ProductionGate;
   readonly audit: AuditTrail;
   readonly jobs: JobScheduler;
@@ -294,9 +361,31 @@ export type LookupOutcome =
   | { readonly kind: 'NOT_FOUND' }
   | { readonly kind: 'ERROR'; readonly errorCode: string };
 
+/** Resultado do registro de evento. Mesma regra: sem prova de não envio, é UNKNOWN. */
+export type EventOutcome =
+  | { readonly kind: 'REGISTERED'; readonly eventXml: string }
+  | { readonly kind: 'REJECTED'; readonly code: string; readonly message: string }
+  /** O autorizador já tem este evento para a nota: leva à consulta imediata. */
+  | { readonly kind: 'ALREADY_EXISTS' }
+  | { readonly kind: 'NOT_SENT'; readonly errorCode: string }
+  | { readonly kind: 'UNKNOWN'; readonly errorCode: string };
+
+export type EventLookupOutcome =
+  | { readonly kind: 'FOUND'; readonly eventXml: string }
+  | { readonly kind: 'NOT_FOUND' }
+  | { readonly kind: 'ERROR'; readonly errorCode: string };
+
 export interface NfseGateway {
   submit(signedDps: string, context: GatewayContext): Promise<SubmissionOutcome>;
   findByDpsId(dpsId: string, context: GatewayContext): Promise<LookupOutcome>;
+  /** Pedido de registro de evento assinado (`pedRegEvento`) para a nota `accessKey`. */
+  registerEvent(accessKey: string, signedEvent: string, context: GatewayContext): Promise<EventOutcome>;
+  findEvent(accessKey: string, eventType: string, context: GatewayContext): Promise<EventLookupOutcome>;
+}
+
+/** Monta o pedido de cancelamento, assina e valida no XSD (`pedRegEvento_v1.01.xsd`). */
+export interface CancellationPreparer {
+  prepare(cancellation: ServiceInvoiceCancellation, invoice: ServiceInvoice, credential: IssuerCredential): Promise<PreparationResult>;
 }
 
 export type PreparationResult =

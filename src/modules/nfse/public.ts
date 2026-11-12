@@ -4,6 +4,18 @@
 export { ServiceInvoiceService, type AcceptServiceInvoice, type AcceptResult } from './application/service-invoice-service.js';
 export { SubmissionProcessor, DEFAULT_PROCESSOR_OPTIONS, type ProcessResult, type ProcessorOptions } from './application/submission-processor.js';
 export { Reconciler, type ReconcileResult } from './application/reconciler.js';
+export {
+  CancellationProcessor,
+  CancellationReconciler,
+  CancellationService,
+  DEFAULT_CANCELLATION_OPTIONS,
+  type CancellationOptions,
+  type CancellationProcessResult,
+  type CancellationReconcileResult,
+  type CancellationRequestResult,
+} from './application/cancellation.js';
+export { XmlCancellationPreparer, buildCancellationXml } from './infrastructure/events/cancellation-xml.js';
+export { CANCELLATION_REASON_CODES, type CancellationState } from './domain/cancellation.js';
 export { ManualResolutionDesk, ResolutionApplier, type ApplyResult, type ResolutionRequest } from './application/manual-resolution.js';
 export { UnknownEscalator, type EscalationResult } from './application/unknown-escalator.js';
 export { XmlNfseVerifier } from './infrastructure/dps/xml-nfse-verifier.js';
@@ -13,6 +25,7 @@ export { route, SUPPORTED_CHANNELS, type RoutingChannel, type RoutingDecision, t
 export { loadRoutingTable, RoutingTableError } from './infrastructure/routing/routing-table.js';
 export type {
   ActiveSeries,
+  CancellationPreparer,
   CredentialAccess,
   DpsPreparer,
   EstablishmentReader,
@@ -20,6 +33,7 @@ export type {
   NfseDocumentVerifier,
   NfseGateway,
   NfseVerification,
+  ServiceInvoiceCancellation,
   ServiceInvoiceResolution,
   UnknownAlertSink,
   UnknownInvoiceSummary,

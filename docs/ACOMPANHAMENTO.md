@@ -70,6 +70,33 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Fase 2a, etapa 5 — cancelamento de NFS-e (2026-11-12)
+Decisão: [ADR-0035](adr/0035-cancelamento-nfse.md).
+- [x] **API:**
+  - `POST /v1/service-invoices/{id}/cancellation` (`nfse:cancel`), com o motivo do cliente (TSCodJustCanc e TSMotivo);
+  - `GET` do pedido;
+  - status `CANCELLED` na nota;
+  - webhook `service_invoice.cancellation_changed`.
+- [x] **Pedido real `pedRegEvento`/`e101101`:** montado, assinado em `infPedReg` e validado no XSD do ambiente, nos dois pacotes.
+- [x] **Mesma disciplina da emissão:**
+  - write-ahead (`sending_at` com commit antes da rede);
+  - queda com envio vai para `UNKNOWN`;
+  - consulta do evento antes de retransmitir **os mesmos bytes**;
+  - `FAILED` só sem nenhum envio (trigger);
+  - nota `AUTHORIZED → CANCELLED` na mesma transação do registro.
+- [x] **Achado (R-40):** os dois pacotes divergem no formato da chave e do Id do pedido, e a produção restrita é inconsistente consigo mesma (CNPJ alfanumérico). O motor não escolhe: o XSD do pacote decide e, se falhar, a falha é local, antes do envio.
+- [x] **Simulador:** eventos com os mesmos modos de falha; a chave fictícia passa nos padrões dos dois pacotes.
+- [x] **Testes:**
+  - XML nos dois XSD, escape, assinatura e a divergência entre pacotes;
+  - integração: caminho feliz, repetição, rejeição, "processa e derruba", retransmissão byte a byte, queda, `NOT_SENT` e privilégios;
+  - ponta a ponta HTTP;
+  - matriz de isolamento com as 2 rotas novas.
+- [ ] Próximas etapas:
+  - substituição (DPS com `subst`, restrições da E0061);
+  - regras L2/L3 com fonte;
+  - contrato v2;
+  - adapter da SEFIN (com o A1).
+
 ### Fase 2a, etapa 4 — roteamento da NFS-e pela competência (2026-11-12)
 Decisão: ADR-0028 (aprovado em 2026-11-10), seção "Implementação".
 - [x] **Tabela versionada como dado:** `resources/fiscal/routing/nfse-routing-2026-11-10.json`.
@@ -322,7 +349,8 @@ Decisões: [ADR-0032](adr/0032-nucleo-emissao-nfse.md). Fecha o "fluxo completo 
 9. ~~Fase 2a, etapa 2: contrato da DPS na API e preparador real (XML + XSD + assinatura)~~ ✔ (ADR-0033)
 10. ~~Fase 2a, etapa 3: resolução manual de `UNKNOWN` e alertas~~ ✔ (ADR-0034)
 11. ~~Fase 2a, etapa 4: roteamento Teresina (ADR-0028)~~ ✔
-12. Fase 2a, etapa 5: regras L2/L3 com fonte; consulta, cancelamento e substituição.
+12. ~~Fase 2a, etapa 5: cancelamento~~ ✔ (ADR-0035)
+13. Fase 2a, etapa 6: substituição e regras L2/L3 com fonte.
 
    A parte fiscal (regras L3, adapter SEFIN real) espera os pré-requisitos do roadmap: CNPJ e A1 reais, contador e gate fiscal 1.
 
@@ -355,6 +383,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-10 | Piloto em Teresina pela SEFIN Nacional (Res. CGSN 191/2026); adapter municipal DSF na Fase 2b conforme demanda | 0017 (revisado) |
 | 2026-11-10 | Canal de NFS-e decidido pela data de competência, por tabela versionada com fonte | 0028 |
 | 2026-11-10 | Cliente único do padrão nacional com perfil de endpoint; reconciliação por Id da DPS antes de reenviar | 0029 |
+| 2026-11-12 | Cancelamento assíncrono com write-ahead e UNKNOWN; um pedido ativo por nota; nota cancelada continua ocupando a referência externa | 0035 |
 | 2026-11-12 | Roteamento implementado como dado versionado; município = do estabelecimento; conflito entre linhas recusa (sem precedência implícita) | 0028 |
 | 2026-11-12 | Resolução manual de `UNKNOWN`: o operador pede, o worker-fiscal confere o XML oficial e decide; `NOT_ISSUED` retransmite o mesmo XML; alertas por idade com um job por nota | 0034 |
 | 2026-11-12 | Contrato v1 da DPS (um campo por elemento do XSD, valores do cliente), perfil de leiaute por pacote, pré-validação no aceite | 0033 |
@@ -373,7 +402,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 6. ~~Aprovar o [ADR-0027](adr/0027-convencoes-cadastro-fiscal-referencia-nfe-io.md) (cadastro fiscal, certificados e documentação inspirados na NFE.io)~~ — aprovado em 2026-11-10.
 
 ## Riscos ativos principais
-R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente · R-30 enquadramento `regApTribSN` da empresa-piloto · R-33 Swagger da SEFIN só com certificado · R-34 corrente de âncora · R-35 Coolify não exercitado · R-36 errata do XSD de produção da NFS-e · R-37 assinatura da SEFIN na resolução manual · R-39 MEI retroativo em Teresina sem precedência na tabela · R-38 fuso do `dhEmi`. Ver [riscos.md](riscos.md).
+R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente · R-30 enquadramento `regApTribSN` da empresa-piloto · R-33 Swagger da SEFIN só com certificado · R-34 corrente de âncora · R-35 Coolify não exercitado · R-36 errata do XSD de produção da NFS-e · R-37 assinatura da SEFIN na resolução manual · R-39 MEI retroativo em Teresina sem precedência na tabela · R-40 formato do Id do evento e da chave entre pacotes · R-38 fuso do `dhEmi`. Ver [riscos.md](riscos.md).
 
 ## Código temporário / dívidas registradas
 | Item | Finalidade | Remoção |

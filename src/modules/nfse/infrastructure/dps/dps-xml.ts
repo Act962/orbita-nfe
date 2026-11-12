@@ -100,12 +100,12 @@ export function buildDpsXml(input: DpsXmlInput): string {
 }
 
 /** Elemento folha: o valor é SEMPRE escapado (nunca vira marcação). */
-function el(name: string, value: string): string {
+export function el(name: string, value: string): string {
   return `<${name}>${text(value)}</${name}>`;
 }
 
 /** Grupo: o conteúdo já foi montado por el()/group(). */
-function group(name: string, content: string): string {
+export function group(name: string, content: string): string {
   return `<${name}>${content}</${name}>`;
 }
 
@@ -118,6 +118,6 @@ function text(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function attr(value: string): string {
+export function attr(value: string): string {
   return text(value).replace(/"/g, '&quot;');
 }

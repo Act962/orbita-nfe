@@ -51,7 +51,7 @@ export const serviceInvoices = pgTable(
     uniqueIndex('uq_service_invoices_external_reference')
       .on(t.companyId, t.clientApplicationId, t.externalReference)
       .where(sql`${t.externalReference} is not null and ${t.status} not in ('REJECTED', 'FAILED')`),
-    check('ck_service_invoices_status', sql`${t.status} in ('PENDING', 'PROCESSING', 'AUTHORIZED', 'REJECTED', 'FAILED', 'UNKNOWN')`),
+    check('ck_service_invoices_status', sql`${t.status} in ('PENDING', 'PROCESSING', 'AUTHORIZED', 'REJECTED', 'FAILED', 'UNKNOWN', 'CANCELLED')`),
     check('ck_service_invoices_environment', sql`${t.environment} in ('PRODUCTION', 'HOMOLOGATION')`),
     check('ck_service_invoices_dps_id', sql`${t.dpsId} ~ '^DPS[0-9]{7}(1[0-9]{14}|2[0-9A-Z]{14})[0-9]{20}$'`),
     check('ck_service_invoices_number', sql`${t.number} between 1 and 999999999999999`),
@@ -96,6 +96,54 @@ export const serviceInvoiceAttempts = pgTable(
     check('ck_service_invoice_attempts_closed', sql`(${t.state} = 'CLOSED') = (${t.outcome} is not null)`),
     check('ck_service_invoice_attempts_sending', sql`${t.state} = 'PREPARED' or ${t.sendingAt} is not null or ${t.outcome} = 'RECOVERED_NOT_SENT'`),
     index('ix_service_invoice_attempts_company').on(t.companyId),
+  ],
+);
+
+/**
+ * Cancelamento de NFS-e (evento e101101, ADR-0035), com write-ahead no próprio registro:
+ * `sending_at` é gravado com commit antes de cada envio e zerado no início de cada processamento.
+ */
+export const serviceInvoiceCancellations = pgTable(
+  'service_invoice_cancellations',
+  {
+    id: uuid('id').primaryKey(),
+    companyId: uuid('company_id').notNull(),
+    invoiceId: uuid('invoice_id').notNull(),
+    clientApplicationId: uuid('client_application_id').notNull(),
+    requestHash: char('request_hash', { length: 64 }).notNull(),
+    /** TSCodJustCanc (1, 2, 9) e TSMotivo (15 a 255): informados pelo cliente. */
+    reasonCode: text('reason_code').notNull(),
+    reasonText: text('reason_text').notNull(),
+    state: text('state').notNull().default('PENDING'),
+    leaseUntil: timestamp('lease_until', { withTimezone: true }),
+    /** Pedido assinado: gravado uma vez; toda retransmissão usa estes bytes. */
+    signedXml: text('signed_xml'),
+    signedSha256: char('signed_sha256', { length: 64 }),
+    layoutPackage: text('layout_package'),
+    sendingAt: timestamp('sending_at', { withTimezone: true }),
+    attempts: integer('attempts').notNull().default(0),
+    lookups: integer('lookups').notNull().default(0),
+    firstNotFoundAt: timestamp('first_not_found_at', { withTimezone: true }),
+    consecutiveLookupErrors: integer('consecutive_lookup_errors').notNull().default(0),
+    outcomeCode: text('outcome_code'),
+    rejectionMessage: text('rejection_message'),
+    /** XML do evento registrado devolvido pelo autorizador. */
+    eventXml: text('event_xml'),
+    registeredAt: timestamp('registered_at', { withTimezone: true }),
+    failureCode: text('failure_code'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('uq_service_invoice_cancellations_company_id').on(t.companyId, t.id),
+    // Um pedido ativo por nota; depois de REJECTED/FAILED, pode haver outro.
+    uniqueIndex('uq_service_invoice_cancellations_active').on(t.invoiceId).where(sql`${t.state} not in ('REJECTED', 'FAILED')`),
+    check('ck_service_invoice_cancellations_state', sql`${t.state} in ('PENDING', 'PROCESSING', 'REGISTERED', 'REJECTED', 'FAILED', 'UNKNOWN')`),
+    check('ck_service_invoice_cancellations_reason_code', sql`${t.reasonCode} in ('1', '2', '9')`),
+    check('ck_service_invoice_cancellations_reason_text', sql`char_length(${t.reasonText}) between 15 and 255`),
+    check('ck_service_invoice_cancellations_signed', sql`(${t.signedXml} is null) = (${t.signedSha256} is null)`),
+    check('ck_service_invoice_cancellations_registered', sql`${t.state} <> 'REGISTERED' or ${t.registeredAt} is not null`),
+    index('ix_service_invoice_cancellations_company').on(t.companyId),
   ],
 );
 

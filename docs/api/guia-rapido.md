@@ -156,3 +156,26 @@ Content-Type: application/json
   - `ROUTE_REGIME_REQUIRED`: informe `provider.simplesNacionalRegime`;
   - `ROUTE_AMBIGUOUS` / `ROUTE_NOT_FOUND`: caso não coberto pela tabela.
 - **Ambientes:** uma credencial `test` não enxerga notas de produção, e vice-versa.
+
+## 8. Cancelar NFS-e
+
+```http
+POST /v1/service-invoices/<id>/cancellation
+Authorization: Bearer fk_test_...
+X-Company-Id: <empresa>
+Content-Type: application/json
+
+{ "reasonCode": "1", "reasonText": "Erro na emissão: valor digitado errado" }
+```
+
+- **Escopo:** `nfse:cancel`. Só nota `AUTHORIZED`.
+- **O motivo é seu:**
+  - `reasonCode` (cMotivo): `1` Erro na Emissão, `2` Serviço não Prestado ou `9` Outros;
+  - `reasonText` (xMotivo): de 15 a 255 caracteres.
+- **Resposta `202`** com `status: PENDING`. Acompanhe por `GET /v1/service-invoices/<id>/cancellation` ou pelo webhook `service_invoice.cancellation_changed`. Repetir o mesmo corpo devolve `200` com o mesmo pedido.
+- **Status:**
+  - `REGISTERED`: cancelada; a nota passa a `CANCELLED`;
+  - `REJECTED`: recusado pelo autorizador (por exemplo, prazo do município), com `rejection.code`; a nota continua autorizada e você pode pedir de novo;
+  - `FAILED`: falha local antes de qualquer envio;
+  - `UNKNOWN`: **em verificação. Não peça de novo.** O motor consulta o autorizador e resolve.
+- **Referência externa:** uma nota cancelada continua ocupando a `externalReference`. Para reemitir a mesma venda, use uma referência nova.

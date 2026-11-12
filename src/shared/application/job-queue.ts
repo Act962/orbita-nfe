@@ -92,6 +92,22 @@ export const QUEUES = {
     timeoutSeconds: 60,
     priority: 15,
   },
+  /** Envio do pedido de cancelamento (evento e101101, ADR-0035), com write-ahead e recuperação de queda. */
+  'nfse.cancel': {
+    lane: 'fiscal',
+    maxAttempts: 20,
+    backoff: { baseSeconds: 30, maxSeconds: 1800, jitter: 0.2 },
+    timeoutSeconds: 180,
+    priority: 18,
+  },
+  /** Uma consulta do evento de cancelamento em UNKNOWN; a próxima é um job novo com runAt. */
+  'nfse.cancel-reconcile': {
+    lane: 'fiscal',
+    maxAttempts: 20,
+    backoff: { baseSeconds: 60, maxSeconds: 3600, jitter: 0.2 },
+    timeoutSeconds: 120,
+    priority: 14,
+  },
   /** Alerta de NFS-e em UNKNOWN pela idade (doc 12 §6); a próxima verificação é um job novo. */
   'nfse.escalate': {
     lane: 'fiscal',

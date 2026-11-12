@@ -13,6 +13,7 @@ describe('máquina de estados da NFS-e', () => {
     ['PROCESSING', 'PENDING'],
     ['UNKNOWN', 'AUTHORIZED'],
     ['UNKNOWN', 'PENDING'],
+    ['AUTHORIZED', 'CANCELLED'],
   ] as const)('%s → %s é permitida', (from, to) => {
     expect(transition(from, to)).toEqual({ ok: true, value: to });
   });
@@ -24,6 +25,8 @@ describe('máquina de estados da NFS-e', () => {
     ['AUTHORIZED', 'PENDING'],
     ['REJECTED', 'PENDING'],
     ['FAILED', 'PENDING'],
+    ['UNKNOWN', 'CANCELLED'],
+    ['CANCELLED', 'AUTHORIZED'],
   ] as const)('%s → %s é proibida', (from, to) => {
     expect(transition(from, to)).toEqual({ ok: false, error: { code: 'INVALID_TRANSITION', from, to } });
   });
@@ -33,7 +36,7 @@ describe('máquina de estados da NFS-e', () => {
   });
 
   it('estados finais e reutilização da referência externa', () => {
-    expect(SERVICE_INVOICE_STATUSES.filter(isFinal)).toEqual(['AUTHORIZED', 'REJECTED', 'FAILED']);
+    expect(SERVICE_INVOICE_STATUSES.filter(isFinal)).toEqual(['REJECTED', 'FAILED', 'CANCELLED']);
     expect(SERVICE_INVOICE_STATUSES.filter(releasesExternalReference)).toEqual(['REJECTED', 'FAILED']);
   });
 

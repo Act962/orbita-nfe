@@ -32,7 +32,13 @@ export const EVENT_CATALOG: readonly EventTypeDescription[] = [
   {
     type: 'service_invoice.status_changed',
     description:
-      'A NFS-e mudou de estado. `data.status`: AUTHORIZED (autorizada), REJECTED (rejeitada pelo autorizador, `data.rejectionCode`), FAILED (falha local antes de qualquer envio, `data.failureCode`) ou UNKNOWN (em verificação junto ao autorizador: NÃO reemita; o motor consulta e resolve).',
+      'A NFS-e mudou de estado. `data.status`: AUTHORIZED (autorizada), REJECTED (rejeitada pelo autorizador, `data.rejectionCode`), FAILED (falha local antes de qualquer envio, `data.failureCode`), UNKNOWN (em verificação junto ao autorizador: NÃO reemita; o motor consulta e resolve) ou CANCELLED (cancelamento registrado, `data.cancellationId`).',
+    subscribable: true,
+  },
+  {
+    type: 'service_invoice.cancellation_changed',
+    description:
+      'O pedido de cancelamento mudou de estado. `data.status`: REGISTERED (cancelada), REJECTED (recusado pelo autorizador, `data.rejectionCode`; a nota continua autorizada), FAILED (falha local antes de qualquer envio, `data.failureCode`) ou UNKNOWN (em verificação: NÃO peça de novo; o motor consulta e resolve).',
     subscribable: true,
   },
   { type: 'webhook.test', description: 'Evento de teste disparado pelo endpoint de teste da assinatura.', subscribable: false },

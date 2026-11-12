@@ -235,7 +235,8 @@ export class SubmissionProcessor {
   }
 }
 
-const AUDIT_BY_STATUS: Record<'AUTHORIZED' | 'REJECTED' | 'FAILED' | 'UNKNOWN', CompanyAuditAction> = {
+const AUDIT_BY_STATUS: Record<'AUTHORIZED' | 'REJECTED' | 'FAILED' | 'UNKNOWN' | 'CANCELLED', CompanyAuditAction> = {
+  CANCELLED: 'service_invoice.cancelled',
   AUTHORIZED: 'service_invoice.authorized',
   REJECTED: 'service_invoice.rejected',
   FAILED: 'service_invoice.failed',
@@ -246,7 +247,7 @@ const AUDIT_BY_STATUS: Record<'AUTHORIZED' | 'REJECTED' | 'FAILED' | 'UNKNOWN', 
 export async function publishStatus(
   r: Pick<NfseWorkerRepositories, 'audit' | 'events'>,
   invoice: ServiceInvoice,
-  status: 'AUTHORIZED' | 'REJECTED' | 'FAILED' | 'UNKNOWN',
+  status: 'AUTHORIZED' | 'REJECTED' | 'FAILED' | 'UNKNOWN' | 'CANCELLED',
   context: AuditContext,
   extra: Readonly<Record<string, string>> = {},
 ): Promise<void> {

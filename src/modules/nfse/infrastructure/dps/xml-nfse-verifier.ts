@@ -13,7 +13,8 @@ const ROOT_SCHEMA = 'NFSe_v1.01.xsd';
  *
  * Estrutura conferida contra o XSD oficial (`NFSe_v1.01.xsd`, tipo TCNFSe) do MESMO pacote em
  * que a DPS foi validada e assinada (`layout_package` do documento):
- * - `infNFSe/@Id` = "NFS" + 50 dígitos (TSIdNFSe) → a chave de acesso são os 50 dígitos (TSChaveNFSe);
+ * - `infNFSe/@Id` = "NFS" + 50 posições (TSIdNFSe; a produção restrita aceita letras no CNPJ) → a
+ *   chave de acesso são as 50 posições (TSChaveNFSe). O padrão exato é o do XSD do pacote;
  * - `infNFSe/DPS/infDPS/@Id` igual ao Id da DPS deste documento;
  * - `infDPS/tpAmb` igual ao ambiente do documento (TSTipoAmbiente);
  * - `infNFSe/dhProc` (TSDateTimeUTC) vira a data da autorização;
@@ -58,7 +59,7 @@ export class XmlNfseVerifier implements NfseDocumentVerifier {
     const infDps = dps === undefined ? undefined : child(dps, NFSE_NS, 'infDPS');
     const id = inf?.getAttribute('Id') ?? '';
     const processedAt = new Date(textOf(inf, 'dhProc'));
-    if (inf === undefined || dps === undefined || infDps === undefined || !/^NFS[0-9]{50}$/.test(id) || Number.isNaN(processedAt.getTime())) {
+    if (inf === undefined || dps === undefined || infDps === undefined || !/^NFS[0-9A-Z]{50}$/.test(id) || Number.isNaN(processedAt.getTime())) {
       return fail('NFSE_SCHEMA_INVALID');
     }
     if (infDps.getAttribute('Id') !== expected.dpsId) return fail('NFSE_DPS_MISMATCH');
