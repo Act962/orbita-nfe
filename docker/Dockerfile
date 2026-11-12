@@ -19,6 +19,8 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/src/db/migrations ./dist/db/migrations
 # Guias em Markdown servidos em /guides/ e indexados em /llms.txt (ADR-0027 item 8).
 COPY docs/api ./docs/api
+# XSD oficiais versionados (ADR-0013): conferidos por SHA-256 na subida da API e do worker-fiscal.
+COPY resources/fiscal ./resources/fiscal
 # Usuário sem privilégios; o filesystem pode ser montado read-only pelo Coolify.
 USER node
 EXPOSE 3000

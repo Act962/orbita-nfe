@@ -1,7 +1,7 @@
 ---
 title: Guia rápido
 status: current
-last_updated: 2026-11-11
+last_updated: 2026-11-12
 ---
 
 # Guia rápido
@@ -111,3 +111,43 @@ POST /v1/establishments/{id}/certificates
 - A API devolve só metadados: titular, validade e thumbprint. Chave privada e senha nunca saem do cofre.
 - A troca de certificado tem sobreposição: o anterior só sai quando o novo é validado.
 - Antes do vencimento chegam os avisos `certificate.expiring`, a 30, 15, 7 e 1 dia.
+
+## 7. Emitir NFS-e
+
+Pré-requisitos no estabelecimento:
+- série de DPS ativa no ambiente da credencial (`kind: NFSE_DPS`);
+- certificado A1 ativo;
+- em produção, a habilitação da modalidade.
+
+```http
+POST /v1/service-invoices
+Authorization: Bearer fk_test_...
+X-Company-Id: <empresa>
+Idempotency-Key: pedido-123-tentativa-1
+Content-Type: application/json
+
+{
+  "establishmentId": "<estabelecimento>",
+  "externalReference": "pedido-123",
+  "competenceDate": "2026-11-12",
+  "provider": { "simplesNacionalOption": "3", "specialTaxRegime": "0" },
+  "taker": { "document": { "type": "CNPJ", "value": "<CNPJ do tomador>" }, "name": "<nome>" },
+  "service": { "municipalityCode": "2211001", "nationalTaxCode": "<cTribNac>", "description": "<descrição>" },
+  "values": {
+    "serviceAmount": "1500.00",
+    "issqn": { "taxation": "1", "retention": "1", "rate": "<alíquota>" },
+    "approximateTaxes": { "kind": "AMOUNTS", "federal": "0.00", "state": "0.00", "municipal": "0.00" }
+  }
+}
+```
+
+- **Os valores fiscais são seus** (ou do seu contador): opção do Simples, regime, códigos, alíquota, retenção e totais aproximados. A API só confere se cada um existe no XSD oficial. A tabela de campos está no contrato v1 da DPS.
+- **Resposta `202`** com `status: PENDING` e `Location`. A transmissão é assíncrona: consulte `GET /v1/service-invoices/{id}` ou assine o webhook `service_invoice.status_changed`.
+- **`Idempotency-Key` é obrigatório.** Repetir a mesma chave com o mesmo corpo devolve `200` com a mesma nota. Use uma chave nova só para uma nota nova.
+- **Status:**
+  - `AUTHORIZED`: autorizada, com `accessKey`;
+  - `REJECTED`: rejeitada pelo autorizador, com `rejection.code`;
+  - `FAILED`: falha local antes de qualquer envio, com `failureCode`;
+  - `UNKNOWN`: **em verificação. Não reemita.** O motor consulta o autorizador e resolve sozinho.
+- **Erros:** um corpo fora do contrato ou uma DPS que não passa no XSD oficial dá `400 VALIDATION_FAILED`, sem consumir número.
+- **Ambientes:** uma credencial `test` não enxerga notas de produção, e vice-versa.

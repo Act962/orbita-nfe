@@ -1,8 +1,9 @@
 import { clientApplicationOf, type AuditContext } from '../../../shared/application/audit.js';
-import { BusinessRuleError, ConflictError, ForbiddenError, InternalError, NotFoundError } from '../../../shared/application/errors.js';
+import { BusinessRuleError, ConflictError, ForbiddenError, InternalError, NotFoundError, ValidationFailedError } from '../../../shared/application/errors.js';
 import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-of-work.js';
+import type { DpsData } from '../domain/dps.js';
 import { buildDpsId } from '../domain/dps-id.js';
-import type { FiscalEnvironment, NfseApiRepositories, ServiceInvoice } from './ports.js';
+import type { DpsValidator, FiscalEnvironment, NfseApiRepositories, ServiceInvoice } from './ports.js';
 
 export interface AcceptServiceInvoice {
   readonly companyId: string;
@@ -16,7 +17,8 @@ export interface AcceptServiceInvoice {
   /** SHA-256 do pedido normalizado (ADR-0007). */
   readonly requestHash: string;
   readonly externalReference: string | null;
-  readonly payload: Readonly<Record<string, unknown>>;
+  /** Contrato v1 (ADR-0033), já validado no formato pela apresentação (L1). */
+  readonly dps: DpsData;
 }
 
 export interface AcceptResult {
@@ -39,9 +41,22 @@ export class ServiceInvoiceService {
   constructor(
     private readonly uow: UnitOfWork<NfseApiRepositories>,
     private readonly newId: IdGenerator,
+    /** Sem validador (testes do núcleo), o aceite não pré-valida no XSD. */
+    private readonly validator?: DpsValidator,
   ) {}
 
   async accept(input: AcceptServiceInvoice, context: AuditContext): Promise<AcceptResult> {
+    // Pré-validação estrutural fora da transação: o XSD leva centenas de ms e não pode segurar a
+    // trava da série. Repetição idempotente de um pedido já aceito passa por aqui de novo, sem efeito.
+    if (this.validator !== undefined) {
+      const problems = await this.validator.validate(input.environment, input.dps);
+      if (problems.length > 0) {
+        throw new ValidationFailedError(
+          problems.map((message) => ({ code: 'DPS_SCHEMA_INVALID', message })),
+          'A DPS não passa no schema oficial (XSD) do ambiente.',
+        );
+      }
+    }
     try {
       return await this.uow.inCompany(input.companyId, (r) => this.acceptIn(r, input, context));
     } catch (error) {
@@ -52,10 +67,13 @@ export class ServiceInvoiceService {
     }
   }
 
-  async get(companyId: string, clientApplicationId: string, id: string): Promise<ServiceInvoice> {
+  /**
+   * Documento de outra aplicação cliente ou de outro ambiente é tratado como inexistente: uma
+   * credencial `test` não enxerga notas de produção, e vice-versa.
+   */
+  async get(companyId: string, clientApplicationId: string, environment: FiscalEnvironment, id: string): Promise<ServiceInvoice> {
     const found = await this.uow.inCompany(companyId, (r) => r.invoices.findById(id));
-    // Documento de outra aplicação cliente da mesma empresa é tratado como inexistente.
-    if (found?.clientApplicationId !== clientApplicationId) throw notFound();
+    if (found?.clientApplicationId !== clientApplicationId || found.environment !== environment) throw notFound();
     return found;
   }
 
@@ -116,7 +134,7 @@ export class ServiceInvoiceService {
       idempotencyKey: input.idempotencyKey,
       requestHash: input.requestHash,
       externalReference: input.externalReference,
-      payload: input.payload,
+      payload: input.dps as unknown as Readonly<Record<string, unknown>>,
     });
     await r.audit.record(context, {
       action: 'service_invoice.accepted',

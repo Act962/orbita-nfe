@@ -5,6 +5,7 @@ import { createLogger } from '../shared/infrastructure/logging/logger.js';
 import { buildApp } from './app.js';
 import { composeApi } from './compose.js';
 import { loadConfig } from './config.js';
+import { loadFiscalSchemas } from './fiscal-resources.js';
 
 const config = loadConfig();
 const logger = createLogger({ level: config.LOG_LEVEL, service: 'api' });
@@ -24,6 +25,7 @@ const modules = composeApi({
   certificateKek: loadPublicKek(config.CERTIFICATE_KEK_PUBLIC_FILE),
   webhookSecretKey: loadPublicKek(config.WEBHOOK_SECRET_KEY_PUBLIC_FILE),
   allowPrivateWebhookTargets: config.WEBHOOK_ALLOW_PRIVATE_TARGETS,
+  schemaCatalog: loadFiscalSchemas(),
   rateLimit: {
     perCredential: perMinute(config.RATE_LIMIT_PER_MINUTE, config.RATE_LIMIT_BURST),
     perAddress: perMinute(config.RATE_LIMIT_ADDRESS_PER_MINUTE, config.RATE_LIMIT_ADDRESS_BURST),

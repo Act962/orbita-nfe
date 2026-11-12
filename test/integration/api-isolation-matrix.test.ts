@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { sampleDpsData } from '../support/dps-fixtures.js';
 import type { LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES } from '../../src/modules/iam/public.js';
@@ -27,6 +28,7 @@ interface Party {
   readonly subscriptionId: string;
   readonly deliveryId: string;
   readonly enablementId: string;
+  readonly invoiceId: string;
 }
 
 interface Ctx {
@@ -37,6 +39,8 @@ interface Ctx {
 interface MatrixCase {
   /** Corpo da requisição (rotas com body). */
   readonly payload?: (ctx: Ctx) => Record<string, unknown>;
+  /** Headers extras da rota (ex.: Idempotency-Key). */
+  readonly headers?: Record<string, string>;
   /** Requisição de B, na empresa B, usando ids/dados de A: o que se espera. */
   readonly expectCrossCompany: (res: LightMyRequestResponse, ctx: Ctx) => void;
 }
@@ -95,6 +99,13 @@ const CASES: Record<string, MatrixCase> = {
     payload: () => ({ reason: 'tentativa de outra empresa' }),
     expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),
   },
+  'POST /v1/service-invoices': {
+    // B tenta emitir na própria empresa usando o estabelecimento de A.
+    payload: ({ a }) => ({ establishmentId: a.establishmentId, ...sampleDpsData() }),
+    headers: { 'idempotency-key': 'matriz-isolamento' },
+    expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),
+  },
+  'GET /v1/service-invoices/:id': { expectCrossCompany: expectNotFound('SERVICE_INVOICE_NOT_FOUND') },
   'POST /v1/webhook-subscriptions': {
     payload: () => ({ url: 'http://127.0.0.1:9/matriz', eventTypes: ['certificate.activated'] }),
     expectCrossCompany: (res, { a }) => {
@@ -151,7 +162,8 @@ function fill(url: string, party: Party): string {
     .replace(':certificateId', party.certificateId)
     .replace(':subscriptionId', party.subscriptionId)
     .replace(':deliveryId', party.deliveryId)
-    .replace(':enablementId', party.enablementId);
+    .replace(':enablementId', party.enablementId)
+    .replace(':id', party.invoiceId);
 }
 
 async function setupParty(prefix: string): Promise<Party> {
@@ -186,6 +198,24 @@ async function setupParty(prefix: string): Promise<Party> {
   await new CompanyTransactions(superuser.db).run(company.id, (tx) =>
     tx.execute(sql`insert into production_enablements (id, company_id, establishment_id, kind) values (${enablementId}, ${company.id}, ${establishmentId}, 'NFCE')`),
   );
+  // NFS-e de A (credencial live → produção): série de DPS de produção e habilitação NFSE_DPS.
+  await new CompanyTransactions(superuser.db).run(company.id, (tx) =>
+    tx.execute(sql`insert into production_enablements (id, company_id, establishment_id, kind) values (${crypto.randomUUID()}, ${company.id}, ${establishmentId}, 'NFSE_DPS')`),
+  );
+  const dpsSeries = await t.app.inject({
+    method: 'POST',
+    url: `/v1/establishments/${establishmentId}/document-series`,
+    headers: bearer(key, company.id),
+    payload: { kind: 'NFSE_DPS', environment: 'PRODUCTION', series: '1' },
+  });
+  expect(dpsSeries.statusCode).toBe(201);
+  const invoice = await t.app.inject({
+    method: 'POST',
+    url: '/v1/service-invoices',
+    headers: { ...bearer(key, company.id), 'idempotency-key': `matriz-${prefix}` },
+    payload: { establishmentId, ...sampleDpsData() },
+  });
+  expect(invoice.statusCode, invoice.body).toBe(202);
   return {
     key,
     companyId: company.id,
@@ -197,6 +227,7 @@ async function setupParty(prefix: string): Promise<Party> {
     subscriptionId,
     deliveryId: delivery.json<{ id: string }>().id,
     enablementId,
+    invoiceId: invoice.json<{ id: string }>().id,
   };
 }
 
@@ -242,7 +273,7 @@ describe('Matriz de isolamento da API', () => {
       const res = await t.app.inject({
         method: route.method as 'GET',
         url: fill(route.url, ctx.a),
-        headers: bearer(ctx.b.key, ctx.a.companyId),
+        headers: { ...bearer(ctx.b.key, ctx.a.companyId), ...c?.headers },
         ...(c?.payload ? { payload: c.payload(ctx) } : {}),
       });
       expect(res.statusCode, routeKey(route)).toBe(403);
@@ -257,7 +288,7 @@ describe('Matriz de isolamento da API', () => {
       const res = await t.app.inject({
         method: route.method as 'GET',
         url: fill(route.url, ctx.a),
-        headers: bearer(ctx.b.key, ctx.b.companyId),
+        headers: { ...bearer(ctx.b.key, ctx.b.companyId), ...c.headers },
         ...(c.payload ? { payload: c.payload(ctx) } : {}),
       });
       c.expectCrossCompany(res, ctx);
@@ -272,6 +303,12 @@ describe('Matriz de isolamento da API', () => {
       url: `/v1/establishments/${ctx.a.establishmentId}/document-series`,
       headers: bearer(ctx.a.key, ctx.a.companyId),
     });
-    expect(series.json<{ items: { id: string }[] }>().items.map((s) => s.id)).toEqual([ctx.a.seriesId]);
+    const seriesIds = series.json<{ items: { id: string }[] }>().items.map((s) => s.id);
+    // A série de NF-e da matriz e a de DPS de produção da NFS-e de A; nenhuma criada por B.
+    expect(seriesIds).toContain(ctx.a.seriesId);
+    expect(seriesIds).toHaveLength(2);
+    const invoice = await t.app.inject({ method: 'GET', url: `/v1/service-invoices/${ctx.a.invoiceId}`, headers: bearer(ctx.a.key, ctx.a.companyId) });
+    expect(invoice.statusCode).toBe(200);
+    expect(invoice.json<{ status: string; establishmentId: string }>()).toMatchObject({ status: 'PENDING', establishmentId: ctx.a.establishmentId });
   });
 });

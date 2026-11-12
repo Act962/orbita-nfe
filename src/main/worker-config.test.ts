@@ -28,6 +28,13 @@ describe('separação de segredos por processo (ADR-0021)', () => {
     expect(() => loadFiscalWorkerConfig({ ...FISCAL, NODE_ENV: 'production', GENERAL_WEBHOOK_SECRET_KEY_PRIVATE_FILE: '/x' })).toThrow(/GENERAL_WEBHOOK_SECRET_KEY_PRIVATE_FILE/);
   });
 
+  it('autorizador da NFS-e: desligado por padrão; o simulador só fora de produção (ADR-0033)', () => {
+    expect(loadFiscalWorkerConfig(FISCAL).NFSE_GATEWAY).toBe('none');
+    expect(loadFiscalWorkerConfig({ ...FISCAL, NFSE_GATEWAY: 'simulator' }).NFSE_GATEWAY).toBe('simulator');
+    expect(() => loadFiscalWorkerConfig({ ...FISCAL, NODE_ENV: 'production', NFSE_GATEWAY: 'simulator' })).toThrow(/NFSE_GATEWAY/);
+    expect(() => loadFiscalWorkerConfig({ ...FISCAL, NFSE_GATEWAY: 'sefin' })).toThrow(/NFSE_GATEWAY/);
+  });
+
   it('worker-general sobe com a chave de webhooks e, em produção, recusa a KEK dos certificados', () => {
     expect(loadGeneralWorkerConfig(GENERAL).WEBHOOK_ALLOW_PRIVATE_TARGETS).toBe(false);
     expect(() => loadGeneralWorkerConfig({ ...GENERAL, CERTIFICATE_KEK_PRIVATE_FILE: '/x' })).toThrow(/CERTIFICATE_KEK_PRIVATE_FILE/);

@@ -51,3 +51,21 @@ export const MINIMAL_DPS_BY_PACKAGE: Record<string, (o?: DpsFixtureOptions) => s
   'nfse-nacional/1.01-20260209': (o) => minimalDps({ ...o, withFinNFSe: false }),
   'nfse-nacional/1.01-20261020-prodrest': (o) => minimalDps({ ...o, withFinNFSe: true }),
 };
+
+/**
+ * Contrato v1 (ADR-0033) com valores FICTÍCIOS que só respeitam os tipos do XSD. Não é
+ * enquadramento de ninguém: serve para exercitar o fluxo e o leiaute.
+ */
+export function sampleDpsData(overrides: Record<string, unknown> = {}) {
+  return {
+    competenceDate: '2026-11-11',
+    provider: { simplesNacionalOption: '3', specialTaxRegime: '0' },
+    service: { municipalityCode: MUNICIPIO_FICTICIO, nationalTaxCode: '010101', description: 'Servico ficticio de teste' },
+    values: {
+      serviceAmount: '100.00',
+      issqn: { taxation: '1', retention: '1' },
+      approximateTaxes: { kind: 'AMOUNTS', federal: '0.00', state: '0.00', municipal: '0.00' },
+    },
+    ...overrides,
+  } as const;
+}

@@ -73,16 +73,16 @@
   <div class="card kpi">
     <div class="label">Fase atual</div>
     <div class="value">2a · NFS-e Nacional</div>
-    <div class="note">Etapa 1 da emissão concluída</div>
+    <div class="note">Etapas 1 e 2 da emissão concluídas</div>
   </div>
   <div class="card kpi">
     <div class="label">Próxima etapa</div>
-    <div class="value">Contrato da DPS</div>
-    <div class="note">Rota de emissão na API + XML real</div>
+    <div class="value">Resolução manual</div>
+    <div class="note">Nota “indeterminada”, alertas e regras com fonte</div>
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">515 ✓</div>
+    <div class="value">535 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -106,7 +106,7 @@
   </div>
   <div class="phase">
     <div class="id">2a</div>
-    <div><h3>NFS-e Nacional (Simples, Teresina) · 8–12 semanas</h3><p>Emissão pela SEFIN Nacional: DPS, assinatura, envio, consulta, cancelamento, piloto.</p><div class="bar"><span style="width:25%"></span></div></div>
+    <div><h3>NFS-e Nacional (Simples, Teresina) · 8–12 semanas</h3><p>Emissão pela SEFIN Nacional: DPS, assinatura, envio, consulta, cancelamento, piloto.</p><div class="bar"><span style="width:40%"></span></div></div>
     <span class="tag doing">Em andamento</span>
   </div>
   <div class="phase">
@@ -160,7 +160,9 @@
     <li><span class="tag done">Pronto</span><div>Registro de cada tentativa antes do envio e recuperação automática se o processo cair</div></li>
     <li><span class="tag done">Pronto</span><div>Reconciliação: consulta o órgão antes de reenviar; reenvio só com prova dupla e com o mesmo XML</div></li>
     <li><span class="tag done">Pronto</span><div>Simulador do órgão com falhas (queda de conexão, demora, recusa) para testar tudo sem emitir</div></li>
-    <li><span class="tag doing">Próximo</span><div>Rota de emissão na API e montagem do XML real da DPS a partir do pedido</div></li>
+    <li><span class="tag done">Pronto</span><div>Rota de emissão na API (<code>POST /v1/service-invoices</code>) e consulta</div></li>
+    <li><span class="tag done">Pronto</span><div>XML real da DPS montado a partir do pedido, assinado e conferido no XSD oficial de cada ambiente</div></li>
+    <li><span class="tag done">Pronto</span><div>Teste de ponta a ponta: API → worker → simulador do órgão → nota autorizada</div></li>
     <li><span class="tag doing">Próximo</span><div>Resolução manual auditada de nota “indeterminada” e alertas por tempo</div></li>
     <li><span class="tag block">Você</span><div>Envio real à produção restrita (precisa do CNPJ e do certificado A1)</div></li>
   </ul>
@@ -185,9 +187,8 @@
     <h2>Próximos passos (desenvolvimento)</h2>
     <div class="card">
       <ol>
-        <li>Rota de emissão na API (ambiente pela chave)</li>
-        <li>Montagem do XML da DPS, validação no XSD oficial e assinatura</li>
         <li>Resolução manual de nota “indeterminada” e alertas</li>
+        <li>Regras fiscais catalogadas com fonte e roteamento de Teresina</li>
         <li>Consulta, cancelamento e substituição</li>
         <li>Envio real à produção restrita (precisa do A1)</li>
         <li>Piloto controlado em produção</li>
@@ -218,6 +219,7 @@
     <li><span class="tag doing">Médio</span><div>Uma VPS só: depende de backup e restauração testados (R-17)</div></li>
     <li><span class="tag todo">Baixo</span><div>Errata no XSD oficial de produção a confirmar no primeiro envio (R-36)</div></li>
     <li><span class="tag todo">Baixo</span><div>Resolução manual de nota “indeterminada” ainda não existe (R-37)</div></li>
+    <li><span class="tag todo">Baixo</span><div>Fuso do horário de emissão para empresas fora de Brasília a confirmar (R-38)</div></li>
   </ul>
 </div>
 
@@ -226,7 +228,8 @@
   <ul class="check">
     <li><span class="tag done">Enviado</span><div><code>295b55c</code> Semana 7: habilitação de produção, dryRun, âncora da auditoria e deploy</div></li>
     <li><span class="tag done">Enviado</span><div><code>27e5c88</code> Encerramento da Fase 1: spikes promovidos, errata do XSD, este painel</div></li>
-    <li><span class="tag done">Enviado</span><div>Fase 2a, etapa 1: núcleo da emissão de NFS-e e correção do teste com data fixa</div></li>
+    <li><span class="tag done">Enviado</span><div><code>24216be</code> Fase 2a, etapa 1: núcleo da emissão de NFS-e e correção do teste com data fixa (CI verde)</div></li>
+    <li><span class="tag done">Enviado</span><div>Fase 2a, etapa 2: emissão pela API com o XML real</div></li>
   </ul>
 </div>
 

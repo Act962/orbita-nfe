@@ -18,3 +18,7 @@ export type {
 } from './application/ports.js';
 export { nfseApiUnitOfWork, nfseWorkerUnitOfWork, NFSE_CONSTRAINTS } from './infrastructure/persistence/repositories.js';
 export { SimulatedNfseGateway, type LookupMode, type SubmitMode } from './infrastructure/gateways/simulated-gateway.js';
+export { XmlDpsPreparer, XmlDpsValidator, formatDhEmi } from './infrastructure/dps/xml-dps-preparer.js';
+export { buildDpsXml, LAYOUT_PROFILES } from './infrastructure/dps/dps-xml.js';
+export type { DpsData } from './domain/dps.js';
+export { registerNfseRoutes } from './presentation/http/routes.js';

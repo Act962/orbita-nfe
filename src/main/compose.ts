@@ -40,8 +40,10 @@ import {
   Reconciler,
   ServiceInvoiceService,
   SubmissionProcessor,
+  XmlDpsValidator,
   nfseApiUnitOfWork,
   nfseWorkerUnitOfWork,
+  registerNfseRoutes,
   type CredentialAccess,
   type DpsPreparer,
   type EstablishmentReader,
@@ -80,6 +82,7 @@ import { nextDailyRun, runDay } from '../shared/domain/daily-schedule.js';
 import type { BucketPolicy } from '../shared/domain/token-bucket.js';
 import { CompanyTransactions, type Database, type Transaction } from '../shared/infrastructure/database/database.js';
 import { uuidv7 } from '../shared/infrastructure/ids.js';
+import type { FiscalSchemaCatalog } from '../shared/infrastructure/xml/fiscal-schema-catalog.js';
 import { companyEventOutbox } from '../shared/infrastructure/outbox/outbox-store.js';
 import { transactionalJobScheduler } from '../shared/infrastructure/queue/postgres-queue.js';
 import { QueueAdmin } from '../shared/infrastructure/queue/queue-admin.js';
@@ -141,6 +144,8 @@ export interface ApiModulesDependencies {
   readonly rateLimit: { readonly perCredential: BucketPolicy; readonly perAddress: BucketPolicy };
   /** Só desenvolvimento e testes (a config recusa em produção). */
   readonly allowPrivateWebhookTargets: boolean;
+  /** XSD oficiais (hash conferido na carga): pré-validação da DPS no aceite (ADR-0033). */
+  readonly schemaCatalog: FiscalSchemaCatalog;
 }
 
 export interface ApiModules {
@@ -188,6 +193,7 @@ export function composeApi(deps: ApiModulesDependencies): ApiModules {
       jobsFor: apiJobs,
     }),
     uuidv7,
+    new XmlDpsValidator(deps.schemaCatalog),
   );
   const rateLimiter = new RateLimiter(deps.rateLimit);
 
@@ -205,6 +211,7 @@ export function composeApi(deps: ApiModulesDependencies): ApiModules {
       registerFiscalSettingsRoutes(app, fiscalSettings);
       registerCertificateRoutes(app, certificates);
       registerWebhookRoutes(app, webhooks);
+      registerNfseRoutes(app, nfse);
     },
   };
 }

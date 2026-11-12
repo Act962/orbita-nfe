@@ -29,6 +29,17 @@ const FiscalWorkerSchema = z
     CERTIFICATE_TRUST_BUNDLE_FILE: z.string().min(1),
     WEBHOOK_SECRET_KEY_PRIVATE_FILE: z.undefined({ error: 'a chave de webhooks não pode ser configurada no worker-fiscal' }).optional(),
     GENERAL_WEBHOOK_SECRET_KEY_PRIVATE_FILE: z.string().optional(),
+    APP_VERSION: z.string().min(1).max(12).default('0.1.0'),
+    /**
+     * Autorizador da NFS-e (ADR-0032/0033). `none`: as filas nfse.* ficam sem handler.
+     * `simulator`: autorizador SIMULADO em memória, só fora de produção. O adapter da SEFIN
+     * Nacional entra com o certificado A1 real.
+     */
+    NFSE_GATEWAY: z.enum(['none', 'simulator']).default('none'),
+  })
+  .refine((c) => !(c.NODE_ENV === 'production' && c.NFSE_GATEWAY === 'simulator'), {
+    path: ['NFSE_GATEWAY'],
+    message: 'o simulador do autorizador não pode ser usado em produção',
   })
   .refine(notInProduction('GENERAL_WEBHOOK_SECRET_KEY_PRIVATE_FILE'), {
     path: ['GENERAL_WEBHOOK_SECRET_KEY_PRIVATE_FILE'],

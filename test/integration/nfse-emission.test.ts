@@ -14,6 +14,7 @@ import {
 } from '../../src/modules/nfse/public.js';
 import type { AuditContext } from '../../src/shared/application/audit.js';
 import { CompanyTransactions, type DatabaseHandle } from '../../src/shared/infrastructure/database/database.js';
+import { sampleDpsData } from '../support/dps-fixtures.js';
 import { createTestIcpPki, type TestIcpPki } from '../support/icp-test-pki.js';
 import { bearer, cnpjOf, createClientApp, createCompany, createEstablishment, startTestApi, testCertificateKek, type ClientApp, type TestApi } from './support/api.js';
 import { connect, newId } from './support/db.js';
@@ -128,7 +129,7 @@ function accept(overrides: Partial<Parameters<TestApi['modules']['nfse']['accept
       idempotencyKey,
       requestHash: createHash('sha256').update(idempotencyKey).digest('hex'),
       externalReference: null,
-      payload: { descricao: 'Servico ficticio' },
+      dps: sampleDpsData(),
       ...overrides,
     },
     API,

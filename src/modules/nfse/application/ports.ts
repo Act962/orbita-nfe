@@ -2,6 +2,7 @@ import type { KeyObject } from 'node:crypto';
 import type { AuditTrail } from '../../../shared/application/audit.js';
 import type { JobScheduler } from '../../../shared/application/job-queue.js';
 import type { EventOutbox } from '../../../shared/application/outbox.js';
+import type { DpsData } from '../domain/dps.js';
 import type { AttemptState, ServiceInvoiceStatus } from '../domain/service-invoice.js';
 
 export type FiscalEnvironment = 'PRODUCTION' | 'HOMOLOGATION';
@@ -201,4 +202,12 @@ export type PreparationResult =
 /** Monta a DPS a partir do documento aceito, valida no XSD (L4) e assina. */
 export interface DpsPreparer {
   prepare(invoice: ServiceInvoice, credential: IssuerCredential): Promise<PreparationResult>;
+}
+
+/**
+ * Pré-validação estrutural no aceite (XSD do ambiente, identificadores provisórios). Devolve as
+ * mensagens do validador; vazio = válido. A validação que vale é a do worker (L4 com a DPS real).
+ */
+export interface DpsValidator {
+  validate(environment: FiscalEnvironment, dps: DpsData): Promise<readonly string[]>;
 }
