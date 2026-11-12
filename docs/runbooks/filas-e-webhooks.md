@@ -26,6 +26,9 @@ Gerar a chave de webhooks de produção: mesmo procedimento da KEK ([kek-certifi
 | `npm run ops -- dead [--limit 50]` | Lista os mortos (id, fila, tentativas, código de erro) |
 | `npm run ops -- retry <jobId>` | Devolve um job morto à fila com as tentativas zeradas |
 | `npm run ops -- discard <jobId> --reason "<justificativa>"` | Descarta job pendente ou morto (nunca o documento) |
+| `npm run ops -- nfse-unknown [--company <uuid>] [--older-than <min>]` | Painel das NFS-e em `UNKNOWN`, das mais antigas para as mais novas ([runbook](nfse-unknown.md)) |
+| `npm run ops -- nfse-resolve <notaId> --company <uuid> --outcome …` | Pedido auditado de resolução manual, que o worker-fiscal confere e aplica ([runbook](nfse-unknown.md)) |
+| `npm run ops -- nfse-resolution <pedidoId> --company <uuid>` | Estado do pedido (`REQUESTED`, `APPLIED` ou `REFUSED`, com o código) |
 
 `--operator <nome>` registra quem fez; o padrão é o usuário do sistema.
 
@@ -36,7 +39,7 @@ Gerar a chave de webhooks de produção: mesmo procedimento da KEK ([kek-certifi
 | Mortos em `certificates.validate` | `ops dead`: código `JOB_PAYLOAD_INVALID` (bug) ou erro de banco | Corrigir a causa e rodar `ops retry`. A CLI `npm run certificates -- validate` continua disponível para revalidar uma empresa |
 | Cliente diz que não recebe webhook | Pela API do cliente: `GET /v1/webhook-deliveries?subscriptionId=…` (`status`, `lastHttpStatus`, `lastErrorCode`) | `TARGET_FORBIDDEN`: URL resolve para endereço privado. `TIMEOUT`/`CONNECTION_FAILED`: destino fora. `HTTP_STATUS`: o destino respondeu erro. O cliente pode usar `/redeliver` e `/test` |
 | Notas paradas em `PENDING` | `NFSE_GATEWAY` do worker-fiscal (`none` deixa as filas `nfse.*` sem handler) | Fora de produção, `NFSE_GATEWAY=simulator`. Em produção, o adapter da SEFIN ainda não existe |
-| NFS-e parada em `UNKNOWN` | Jobs `nfse.reconcile` da nota (`ops queues`) e o log do worker-fiscal. Cada consulta agenda a próxima | Não reemita nem mude o estado à mão: o banco recusa `UNKNOWN → FAILED`. A resolução manual auditada (doc 12 §7) ainda vai ser implementada; até lá, só a consulta resolve |
+| NFS-e parada em `UNKNOWN` | Jobs `nfse.reconcile` da nota (`ops queues`) e o log do worker-fiscal. Cada consulta agenda a próxima | Não reemita nem mude o estado à mão: o banco recusa `UNKNOWN → FAILED`. Siga o [runbook de UNKNOWN](nfse-unknown.md): painel `ops nfse-unknown` e resolução auditada `ops nfse-resolve` |
 | Mortos em `nfse.process` com `NFSE_PROCESSING_DEFERRED:<código>` | Falha local (certificado, habilitação) numa **retransmissão**: a nota pode existir no autorizador | Corrigir a causa (por exemplo, enviar o novo certificado) e rodar `ops retry`. Nunca force `FAILED` |
 | Mortos em `audit.anchor-company` ou `audit.anchor-platform` | `ops dead`: erro do bucket (credencial, Object Lock desligado, provedor fora) | Corrigir e rodar `ops retry` **sempre**. O job de amanhã já foi agendado, mas a âncora de hoje fica faltando até o retry (ADR-0031) |
 | Log `âncora da auditoria não configurada` | Variáveis `AUDIT_ANCHOR_S3_*` | Em produção o worker nem sobe sem elas; fora de produção, as filas de âncora ficam paradas |

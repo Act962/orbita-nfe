@@ -1,17 +1,23 @@
 import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { composeFiscalWorker } from '../../src/main/compose.js';
+import { composeFiscalWorker, composeNfseDesk } from '../../src/main/compose.js';
 import { X509TrustStore } from '../../src/modules/certificates/public.js';
 import {
   SimulatedNfseGateway,
   type DpsPreparer,
+  type NfseDocumentVerifier,
   type NfseGateway,
+  type NfseVerification,
   type PreparationResult,
   type Reconciler,
+  type ResolutionApplier,
   type ServiceInvoice,
   type SubmissionProcessor,
+  type UnknownAlertSink,
+  type UnknownEscalator,
 } from '../../src/modules/nfse/public.js';
+import { ApplicationError } from '../../src/shared/application/errors.js';
 import type { AuditContext } from '../../src/shared/application/audit.js';
 import { CompanyTransactions, type DatabaseHandle } from '../../src/shared/infrastructure/database/database.js';
 import { sampleDpsData } from '../support/dps-fixtures.js';
@@ -27,6 +33,7 @@ import { connect, newId } from './support/db.js';
  */
 const API: AuditContext = { actor: { kind: 'CLIENT_APPLICATION', clientApplicationId: '00000000-0000-0000-0000-000000000000', credentialRef: 'credencial-teste' }, correlationId: null };
 const WORKER: AuditContext = { actor: { kind: 'SYSTEM', process: 'worker-fiscal-teste' }, correlationId: null };
+const OPERATOR: AuditContext = { actor: { kind: 'OPERATOR', operator: 'operador-teste' }, correlationId: null };
 const MIN = 60_000;
 
 let t: TestApi;
@@ -77,21 +84,44 @@ class HangingGateway implements NfseGateway {
   }
 }
 
+/** Verificador de teste do XML oficial (o real é testado contra o XSD em xml-nfse-verifier.test.ts). */
+class FakeVerifier implements NfseDocumentVerifier {
+  next: NfseVerification = { ok: true, accessKey: '1'.repeat(50), processedAt: new Date('2026-11-12T13:05:00Z'), dpsSignature: 'MATCH' };
+  seen: Parameters<NfseDocumentVerifier['verify']>[] = [];
+  verify(...args: Parameters<NfseDocumentVerifier['verify']>): Promise<NfseVerification> {
+    this.seen.push(args);
+    return Promise.resolve(this.next);
+  }
+}
+
+class RecordingAlerts implements UnknownAlertSink {
+  raised: Parameters<UnknownAlertSink['raise']>[0][] = [];
+  raise(alert: Parameters<UnknownAlertSink['raise']>[0]): void {
+    this.raised.push(alert);
+  }
+}
+
 let gateway: SimulatedNfseGateway;
 let preparer: FakePreparer;
+let verifier: FakeVerifier;
+let alerts: RecordingAlerts;
 let processor: SubmissionProcessor;
 let reconciler: Reconciler;
+let resolutions: ResolutionApplier;
+let escalator: UnknownEscalator;
 
 function buildWorker(g: NfseGateway = gateway) {
   const composed = composeFiscalWorker({
     db: worker.db,
     certificateKeks: [testCertificateKek().privateKey],
     trustStore: X509TrustStore.fromPem(pki.trustBundlePem),
-    nfse: { gateway: g, preparer },
+    nfse: { gateway: g, preparer, verifier, alerts },
     now,
   });
-  if (composed.processor === undefined || composed.reconciler === undefined) throw new Error('nfse não composto');
-  return { ...composed, processor: composed.processor, reconciler: composed.reconciler };
+  if (composed.processor === undefined || composed.reconciler === undefined || composed.resolutions === undefined || composed.escalator === undefined) {
+    throw new Error('nfse não composto');
+  }
+  return { ...composed, processor: composed.processor, reconciler: composed.reconciler, resolutions: composed.resolutions, escalator: composed.escalator };
 }
 
 async function activateCertificate(establishment: string, cnpj: string): Promise<void> {
@@ -170,6 +200,8 @@ beforeAll(async () => {
   establishmentId = await createEstablishment(t.app, key, companyId, cnpjOf(root));
   preparer = new FakePreparer();
   gateway = new SimulatedNfseGateway();
+  verifier = new FakeVerifier();
+  alerts = new RecordingAlerts();
   await activateCertificate(establishmentId, cnpjOf(root));
   await createSeries(establishmentId, '1');
 });
@@ -184,7 +216,9 @@ beforeEach(() => {
   crashOnNextNow = false;
   gateway = new SimulatedNfseGateway();
   preparer = new FakePreparer();
-  ({ processor, reconciler } = buildWorker());
+  verifier = new FakeVerifier();
+  alerts = new RecordingAlerts();
+  ({ processor, reconciler, resolutions, escalator } = buildWorker());
 });
 
 describe('aceite', () => {
@@ -407,6 +441,194 @@ describe('UNKNOWN e reconciliação (doc 12 §9, testes 2 a 5)', () => {
     expect(waits).toEqual([1, 2, 5, 10, 30, 60, 60]);
     expect(await state(invoice.id)).toMatchObject({ status: 'UNKNOWN', events: ['UNKNOWN'] });
     expect((await jobs(invoice.id, 'nfse.reconcile')).length).toBe(8);
+  });
+});
+
+const REASON = 'Conferido no portal oficial da NFS-e pelo operador de plantão';
+const EVIDENCE = 'a'.repeat(64);
+
+/** Leva uma nota a UNKNOWN sem que o autorizador a tenha recebido (as consultas dizem "não encontrado"). */
+async function unknownInvoice(mode: 'DROP_BEFORE_PROCESSING' | 'PROCESS_THEN_DROP' = 'DROP_BEFORE_PROCESSING') {
+  const { invoice } = await accept();
+  gateway.onSubmit(mode);
+  expect(await processor.process(companyId, invoice.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'UNKNOWN' });
+  return invoice;
+}
+
+const desk = () => composeNfseDesk({ db: t.adminDb.db, now });
+
+async function rejectionCode(promise: Promise<unknown>): Promise<string> {
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof ApplicationError) return error.code;
+    throw error;
+  }
+  throw new Error('esperava erro');
+}
+
+async function resolveJobs(resolutionId: string) {
+  const rows = await t.adminDb.db.execute<{ singleton_key: string; state: string }>(
+    sql`select singleton_key, state from jobs where queue = 'nfse.resolve' and payload->>'resolutionId' = ${resolutionId}`,
+  );
+  return rows.rows;
+}
+
+describe('alertas de UNKNOWN pela idade (doc 12 §6, ADR-0034)', () => {
+  it('entrar em UNKNOWN agenda a verificação em +15 min; WARNING, CRITICAL e INCIDENT; para quando a nota sai de UNKNOWN', async () => {
+    const sentAt = clock;
+    const invoice = await unknownInvoice('PROCESS_THEN_DROP');
+    const [first] = await jobs(invoice.id, 'nfse.escalate');
+    expect(first !== undefined && new Date(first.run_at).getTime()).toBe(sentAt.getTime() + 15 * MIN);
+
+    expect(await escalator.escalate(companyId, invoice.id, WORKER)).toMatchObject({ kind: 'NOT_YET' });
+    advance(15 * MIN);
+    expect(await escalator.escalate(companyId, invoice.id, WORKER)).toEqual({ kind: 'ALERTED', level: 'WARNING', next: new Date(sentAt.getTime() + 120 * MIN) });
+    advance(105 * MIN);
+    expect(await escalator.escalate(companyId, invoice.id, WORKER)).toMatchObject({ kind: 'ALERTED', level: 'CRITICAL' });
+    advance(22 * 60 * MIN);
+    expect(await escalator.escalate(companyId, invoice.id, WORKER)).toEqual({ kind: 'ALERTED', level: 'INCIDENT', next: new Date(sentAt.getTime() + 48 * 60 * MIN) });
+    expect(alerts.raised.map((a) => [a.level, a.ageSeconds])).toEqual([
+      ['WARNING', 15 * 60],
+      ['CRITICAL', 120 * 60],
+      ['INCIDENT', 24 * 3600],
+    ]);
+    // Só identificadores no alerta.
+    expect(Object.keys(alerts.raised[0] ?? {}).sort()).toEqual(['ageSeconds', 'attemptSeq', 'companyId', 'environment', 'invoiceId', 'level', 'lookups']);
+
+    expect(await reconciler.reconcile(companyId, invoice.id, WORKER)).toEqual({ kind: 'AUTHORIZED' });
+    expect(await escalator.escalate(companyId, invoice.id, WORKER)).toEqual({ kind: 'STOPPED', reason: 'NOT_UNKNOWN' });
+    expect(alerts.raised).toHaveLength(3);
+  });
+
+  it('queda depois do SENDING (recuperação) também agenda a verificação', async () => {
+    const { invoice } = await accept();
+    const hung = buildWorker(new HangingGateway());
+    void hung.processor.process(companyId, invoice.id, WORKER);
+    await waitFor(async () => (await state(invoice.id)).attempts.some((a) => a.state === 'SENDING'));
+    advance(10 * MIN);
+    expect(await processor.process(companyId, invoice.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'UNKNOWN' });
+    expect(await jobs(invoice.id, 'nfse.escalate')).toHaveLength(1);
+  });
+});
+
+describe('resolução manual de UNKNOWN (doc 12 §7, ADR-0034)', () => {
+  it('AUTHORIZED com o XML conferido: UNKNOWN → AUTHORIZED com a chave do XML, webhook resolvedBy MANUAL, sem nova transmissão', async () => {
+    const invoice = await unknownInvoice();
+    advance(30 * MIN);
+    const pending = await desk().listUnknown(15 * MIN, 500);
+    expect(pending.find((n) => n.id === invoice.id)).toMatchObject({ companyId, environment: 'HOMOLOGATION', attemptSeq: 1, openResolutionId: null });
+
+    const xml = '<NFSe>xml oficial de teste</NFSe>';
+    const request = await desk().request({ companyId, invoiceId: invoice.id, outcome: 'AUTHORIZED', reason: REASON, nfseXml: xml, evidenceSha256: null, operator: 'operador-teste' }, OPERATOR);
+    expect(request).toMatchObject({ state: 'REQUESTED', outcome: 'AUTHORIZED', evidenceSha256: createHash('sha256').update(xml).digest('hex') });
+    expect(await resolveJobs(request.id)).toEqual([{ singleton_key: request.id, state: 'queued' }]);
+    expect((await desk().listUnknown(0, 500)).find((n) => n.id === invoice.id)?.openResolutionId).toBe(request.id);
+    // Um pedido aberto por nota.
+    expect(
+      await rejectionCode(desk().request({ companyId, invoiceId: invoice.id, outcome: 'NOT_ISSUED', reason: REASON, nfseXml: null, evidenceSha256: EVIDENCE, operator: 'x' }, OPERATOR)),
+    ).toBe('RESOLUTION_ALREADY_REQUESTED');
+
+    expect(await resolutions.apply(companyId, request.id, WORKER)).toEqual({ kind: 'APPLIED', outcome: 'AUTHORIZED' });
+    expect(verifier.seen[0]?.[0]).toBe(xml);
+    expect(verifier.seen[0]?.[1]).toMatchObject({ dpsId: invoice.dpsId, environment: 'HOMOLOGATION', layoutPackage: 'teste/sem-xsd' });
+    expect(verifier.seen[0]?.[1].signedDps).toContain(invoice.dpsId);
+
+    expect(await state(invoice.id)).toMatchObject({ status: 'AUTHORIZED', nfse_access_key: '1'.repeat(50), events: ['UNKNOWN', 'AUTHORIZED'] });
+    expect(await desk().status(companyId, request.id)).toMatchObject({ state: 'APPLIED', resultCode: 'AUTHORIZED', operator: 'operador-teste' });
+    expect(await resolutions.apply(companyId, request.id, WORKER)).toEqual({ kind: 'SKIPPED', reason: 'ALREADY_DECIDED' });
+    expect(gateway.submits).toBe(1);
+
+    const events = await new CompanyTransactions(t.api.db).run(companyId, (tx) =>
+      tx.execute<{ data: Record<string, string> }>(sql`select data from outbox_events where subject_id = ${invoice.id} and data->>'status' = 'AUTHORIZED'`),
+    );
+    expect(events.rows[0]?.data).toMatchObject({ status: 'AUTHORIZED', resolvedBy: 'MANUAL' });
+  });
+
+  it('XML recusado pelo verificador: pedido REFUSED com o código, nota continua UNKNOWN e aceita novo pedido', async () => {
+    const invoice = await unknownInvoice();
+    verifier.next = { ok: false, code: 'NFSE_DPS_MISMATCH' };
+    const request = await desk().request({ companyId, invoiceId: invoice.id, outcome: 'AUTHORIZED', reason: REASON, nfseXml: '<NFSe/>', evidenceSha256: null, operator: 'op' }, OPERATOR);
+    expect(await resolutions.apply(companyId, request.id, WORKER)).toEqual({ kind: 'REFUSED', code: 'NFSE_DPS_MISMATCH' });
+    expect(await desk().status(companyId, request.id)).toMatchObject({ state: 'REFUSED', resultCode: 'NFSE_DPS_MISMATCH' });
+    expect(await state(invoice.id)).toMatchObject({ status: 'UNKNOWN', events: ['UNKNOWN'] });
+    // A reconciliação automática continua.
+    advance(2 * MIN);
+    expect((await reconciler.reconcile(companyId, invoice.id, WORKER)).kind).toBe('CONSULT_AGAIN');
+    const again = await desk().request({ companyId, invoiceId: invoice.id, outcome: 'NOT_ISSUED', reason: REASON, nfseXml: null, evidenceSha256: EVIDENCE, operator: 'op' }, OPERATOR);
+    expect(again.state).toBe('REQUESTED');
+  });
+
+  it('NOT_ISSUED: volta a PENDING e retransmite o MESMO XML, byte a byte, com o mesmo número', async () => {
+    const invoice = await unknownInvoice();
+    const request = await desk().request({ companyId, invoiceId: invoice.id, outcome: 'NOT_ISSUED', reason: REASON, nfseXml: null, evidenceSha256: EVIDENCE, operator: 'op' }, OPERATOR);
+    expect(await resolutions.apply(companyId, request.id, WORKER)).toEqual({ kind: 'APPLIED', outcome: 'NOT_ISSUED' });
+    expect(await state(invoice.id)).toMatchObject({ status: 'PENDING' });
+    expect((await jobs(invoice.id, 'nfse.process')).map((j) => j.singleton_key)).toContain(`${invoice.id}:manual:${request.id}`);
+    expect(await desk().status(companyId, request.id)).toMatchObject({ state: 'APPLIED', resultCode: 'RETRANSMISSION_SCHEDULED' });
+
+    expect(await processor.process(companyId, invoice.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'AUTHORIZED' });
+    const s = await state(invoice.id);
+    expect(s.attempts.map((a) => a.outcome)).toEqual(['UNKNOWN', 'AUTHORIZED']);
+    expect(new Set(s.attempts.map((a) => a.payload_sha256)).size).toBe(1);
+    expect(preparer.calls).toBe(1);
+  });
+
+  it('NOT_ISSUED depois de o autorizador responder duplicidade → REFUSED AUTHORIZER_REPORTED_EXISTING', async () => {
+    const { invoice } = await accept();
+    gateway.onSubmit('PROCESS_THEN_DROP').onLookup('NOT_YET_VISIBLE', 'NOT_YET_VISIBLE', 'ERROR');
+    await processor.process(companyId, invoice.id, WORKER);
+    advance(2 * MIN);
+    await reconciler.reconcile(companyId, invoice.id, WORKER);
+    advance(5 * MIN);
+    expect(await reconciler.reconcile(companyId, invoice.id, WORKER)).toEqual({ kind: 'RETRANSMISSION_SCHEDULED' });
+    expect(await processor.process(companyId, invoice.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'ALREADY_EXISTS' });
+    const request = await desk().request({ companyId, invoiceId: invoice.id, outcome: 'NOT_ISSUED', reason: REASON, nfseXml: null, evidenceSha256: EVIDENCE, operator: 'op' }, OPERATOR);
+    expect(await resolutions.apply(companyId, request.id, WORKER)).toEqual({ kind: 'REFUSED', code: 'AUTHORIZER_REPORTED_EXISTING' });
+    expect((await state(invoice.id)).status).toBe('UNKNOWN');
+  });
+
+  it('nota resolvida pela consulta antes do worker aplicar → pedido REFUSED SERVICE_INVOICE_NOT_UNKNOWN', async () => {
+    const invoice = await unknownInvoice('PROCESS_THEN_DROP');
+    const request = await desk().request({ companyId, invoiceId: invoice.id, outcome: 'NOT_ISSUED', reason: REASON, nfseXml: null, evidenceSha256: EVIDENCE, operator: 'op' }, OPERATOR);
+    advance(2 * MIN);
+    expect(await reconciler.reconcile(companyId, invoice.id, WORKER)).toEqual({ kind: 'AUTHORIZED' });
+    expect(await resolutions.apply(companyId, request.id, WORKER)).toEqual({ kind: 'REFUSED', code: 'SERVICE_INVOICE_NOT_UNKNOWN' });
+    expect((await state(invoice.id)).status).toBe('AUTHORIZED');
+  });
+
+  it('pedido só para nota em UNKNOWN e com evidência; nota inexistente → SERVICE_INVOICE_NOT_FOUND', async () => {
+    const { invoice } = await accept();
+    await processor.process(companyId, invoice.id, WORKER);
+    const base = { companyId, invoiceId: invoice.id, outcome: 'NOT_ISSUED', reason: REASON, nfseXml: null, evidenceSha256: EVIDENCE, operator: 'op' };
+    expect(await rejectionCode(desk().request(base, OPERATOR))).toBe('SERVICE_INVOICE_NOT_UNKNOWN');
+    expect(await rejectionCode(desk().request({ ...base, invoiceId: newId() }, OPERATOR))).toBe('SERVICE_INVOICE_NOT_FOUND');
+    // Empresa errada: a nota existe, mas a leitura é no contexto da empresa informada (RLS).
+    expect(await rejectionCode(desk().request({ ...base, companyId: newId() }, OPERATOR))).toBe('SERVICE_INVOICE_NOT_FOUND');
+    expect(await rejectionCode(desk().request({ ...base, evidenceSha256: null }, OPERATOR))).toBe('VALIDATION_FAILED');
+    expect(await rejectionCode(desk().request({ ...base, reason: 'curta' }, OPERATOR))).toBe('VALIDATION_FAILED');
+  });
+
+  it('o operador grava o pedido mas não lê o XML, não muda a nota e só enfileira nfse.resolve; ninguém reescreve a decisão', async () => {
+    const invoice = await unknownInvoice();
+    const request = await desk().request({ companyId, invoiceId: invoice.id, outcome: 'AUTHORIZED', reason: REASON, nfseXml: '<NFSe/>', evidenceSha256: null, operator: 'op' }, OPERATOR);
+    const admin = t.adminDb.db;
+    await expect(admin.execute(sql`select nfse_xml from service_invoice_resolutions where id = ${request.id}`)).rejects.toThrow();
+    await expect(admin.execute(sql`select payload from service_invoices where id = ${invoice.id}`)).rejects.toThrow();
+    await expect(admin.execute(sql`select signed_dps from service_invoices where id = ${invoice.id}`)).rejects.toThrow();
+    await expect(new CompanyTransactions(admin).run(companyId, (tx) => tx.execute(sql`update service_invoices set status = 'AUTHORIZED' where id = ${invoice.id}`))).rejects.toThrow();
+    const enqueue = (queue: string) =>
+      admin.execute(sql`insert into jobs (id, queue, lane, payload, priority, max_attempts) values (${newId()}, ${queue}, 'fiscal', '{}'::jsonb, 1, 1)`);
+    await expect(enqueue('nfse.process')).rejects.toThrow();
+    // Controle: o mesmo INSERT na única fila permitida passa (a recusa acima é da política).
+    await expect(enqueue('nfse.resolve')).resolves.toBeDefined();
+    await admin.execute(sql`update jobs set state = 'discarded', finished_at = now() where queue = 'nfse.resolve' and payload = '{}'::jsonb`);
+    await expect(admin.execute(sql`delete from service_invoice_resolutions where id = ${request.id}`)).rejects.toThrow();
+
+    expect(await resolutions.apply(companyId, request.id, WORKER)).toEqual({ kind: 'APPLIED', outcome: 'AUTHORIZED' });
+    const asWorker = new CompanyTransactions(worker.db);
+    await expect(asWorker.run(companyId, (tx) => tx.execute(sql`update service_invoice_resolutions set state = 'REFUSED', result_code = 'X' where id = ${request.id}`))).rejects.toThrow();
+    await expect(asWorker.run(companyId, (tx) => tx.execute(sql`update service_invoice_resolutions set reason = 'outra justificativa qualquer' where id = ${request.id}`))).rejects.toThrow();
   });
 });
 

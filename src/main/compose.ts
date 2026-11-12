@@ -41,16 +41,23 @@ import {
   ServiceInvoiceService,
   SubmissionProcessor,
   XmlDpsValidator,
+  ManualResolutionDesk,
+  ResolutionApplier,
+  UnknownEscalator,
   nfseApiUnitOfWork,
+  nfseDeskReader,
+  nfseDeskUnitOfWork,
   nfseWorkerUnitOfWork,
   registerNfseRoutes,
   type CredentialAccess,
   type DpsPreparer,
   type EstablishmentReader,
+  type NfseDocumentVerifier,
   type NfseGateway,
   type ProcessorOptions,
   type ProductionGate,
   type SeriesAllocator,
+  type UnknownAlertSink,
 } from '../modules/nfse/public.js';
 import {
   AccessControl,
@@ -236,7 +243,15 @@ export interface FiscalWorkerDependencies {
    * Emissão de NFS-e (ADR-0032). Sem isto, as filas `nfse.*` ficam sem handler. Nesta etapa o
    * gateway disponível é o simulador, e a configuração o recusa em produção.
    */
-  readonly nfse?: { readonly gateway: NfseGateway; readonly preparer: DpsPreparer; readonly options?: ProcessorOptions };
+  readonly nfse?: {
+    readonly gateway: NfseGateway;
+    readonly preparer: DpsPreparer;
+    /** Confere o XML oficial trazido na resolução manual (ADR-0034). */
+    readonly verifier: NfseDocumentVerifier;
+    /** Alertas de UNKNOWN pela idade (doc 12 §6). */
+    readonly alerts: UnknownAlertSink;
+    readonly options?: ProcessorOptions;
+  };
   readonly now?: () => Date;
 }
 
@@ -245,6 +260,8 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
   vault: CertificateVault;
   processor?: SubmissionProcessor;
   reconciler?: Reconciler;
+  resolutions?: ResolutionApplier;
+  escalator?: UnknownEscalator;
   handlers: Partial<Record<QueueName, JobHandler>>;
 } {
   const transactions = new CompanyTransactions(deps.db);
@@ -287,7 +304,15 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
   handlers['nfse.reconcile'] = async (job) => {
     await reconciler.reconcile(payloadId(job, 'companyId'), payloadId(job, 'invoiceId'), systemContext('worker-fiscal', job));
   };
-  return { vault, processor, reconciler, handlers };
+  const resolutions = new ResolutionApplier(nfseUow, deps.nfse.verifier, deps.now);
+  const escalator = new UnknownEscalator(nfseUow, deps.nfse.alerts, deps.now);
+  handlers['nfse.resolve'] = async (job) => {
+    await resolutions.apply(payloadId(job, 'companyId'), payloadId(job, 'resolutionId'), systemContext('worker-fiscal', job));
+  };
+  handlers['nfse.escalate'] = async (job) => {
+    await escalator.escalate(payloadId(job, 'companyId'), payloadId(job, 'invoiceId'), systemContext('worker-fiscal', job));
+  };
+  return { vault, processor, reconciler, resolutions, escalator, handlers };
 }
 
 export interface GeneralWorkerDependencies {
@@ -383,6 +408,15 @@ export function composeIamAdmin(deps: { db: Database; apiKeyPepper: Uint8Array }
 /** Operação das filas pelo operador (papel fiscal_admin). */
 export function composeQueueAdmin(deps: { db: Database }): QueueAdmin {
   return new QueueAdmin(deps.db, (tx) => platformAuditTrail(tx, { newId: uuidv7 }));
+}
+
+/**
+ * Balcão de resolução manual de NFS-e em UNKNOWN (operador, papel fiscal_admin, ADR-0034). Só
+ * grava o pedido e enfileira `nfse.resolve`: quem muda o documento é o worker-fiscal.
+ */
+export function composeNfseDesk(deps: { db: Database; now?: () => Date }): ManualResolutionDesk {
+  const transactions = new CompanyTransactions(deps.db);
+  return new ManualResolutionDesk(nfseDeskUnitOfWork(transactions, { auditFor, jobsFor: schedulerFor() }), nfseDeskReader(deps.db, transactions), uuidv7, deps.now);
 }
 
 /** Verificação das cadeias de auditoria (operador, papel fiscal_admin). */

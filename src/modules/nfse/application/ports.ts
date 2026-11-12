@@ -3,7 +3,9 @@ import type { AuditTrail } from '../../../shared/application/audit.js';
 import type { JobScheduler } from '../../../shared/application/job-queue.js';
 import type { EventOutbox } from '../../../shared/application/outbox.js';
 import type { DpsData } from '../domain/dps.js';
+import type { ResolutionOutcome, ResolutionState } from '../domain/manual-resolution.js';
 import type { AttemptState, ServiceInvoiceStatus } from '../domain/service-invoice.js';
+import type { EscalationLevel } from '../domain/unknown-escalation.js';
 
 export type FiscalEnvironment = 'PRODUCTION' | 'HOMOLOGATION';
 
@@ -138,6 +140,103 @@ export interface AttemptRepository {
   recordLookup(attemptId: string, state: { firstNotFoundAt: Date | null; consecutiveLookupErrors: number }): Promise<void>;
 }
 
+// ------------------------------------------------------------------ resolução manual (ADR-0034)
+
+export interface ServiceInvoiceResolution {
+  readonly id: string;
+  readonly companyId: string;
+  readonly invoiceId: string;
+  readonly outcome: ResolutionOutcome;
+  readonly reason: string;
+  readonly evidenceSha256: string;
+  readonly operator: string;
+  readonly requestedAt: Date;
+  readonly state: ResolutionState;
+  readonly resultCode: string | null;
+  readonly decidedAt: Date | null;
+}
+
+export interface NewResolution {
+  readonly id: string;
+  readonly companyId: string;
+  readonly invoiceId: string;
+  readonly outcome: ResolutionOutcome;
+  readonly reason: string;
+  readonly evidenceSha256: string;
+  readonly nfseXml: string | null;
+  readonly operator: string;
+}
+
+/** Lado do worker-fiscal: lê o pedido inteiro (com o XML) e grava a decisão uma vez. */
+export interface ResolutionRepository {
+  find(id: string): Promise<(ServiceInvoiceResolution & { readonly nfseXml: string | null }) | undefined>;
+  /** Compare-and-set a partir de REQUESTED. Devolve se decidiu. */
+  decide(id: string, state: 'APPLIED' | 'REFUSED', resultCode: string, at: Date): Promise<boolean>;
+}
+
+/** Lado do operador: grava o pedido na transação da empresa. */
+export interface ResolutionRequestRepository {
+  insert(resolution: NewResolution): Promise<ServiceInvoiceResolution>;
+}
+
+export interface NfseDeskRepositories {
+  readonly resolutions: ResolutionRequestRepository;
+  readonly audit: AuditTrail;
+  readonly jobs: JobScheduler;
+}
+
+/** Nota em UNKNOWN no painel de pendências: só metadados. */
+export interface UnknownInvoiceSummary {
+  readonly id: string;
+  readonly companyId: string;
+  readonly environment: FiscalEnvironment;
+  readonly dpsId: string;
+  /** Envio da tentativa que ficou sem resposta (base da idade). */
+  readonly since: Date;
+  readonly attemptSeq: number;
+  readonly lookups: number;
+  readonly consecutiveLookupErrors: number;
+  readonly openResolutionId: string | null;
+}
+
+/**
+ * Leitura do operador (só metadados). Dado de empresa é lido SEMPRE no contexto da empresa (RLS);
+ * a lista de empresas a olhar vem da fila, que só tem identificadores.
+ */
+export interface NfseDeskReader {
+  /** Empresas com reconciliação de NFS-e pendente, em execução ou morta na fila. */
+  companiesWithReconciliation(): Promise<readonly string[]>;
+  listUnknown(companyId: string, sinceBefore: Date, limit: number): Promise<readonly UnknownInvoiceSummary[]>;
+  findInvoice(companyId: string, id: string): Promise<{ readonly id: string; readonly companyId: string; readonly status: ServiceInvoiceStatus } | undefined>;
+  findResolution(companyId: string, id: string): Promise<ServiceInvoiceResolution | undefined>;
+}
+
+/** Resultado da conferência do XML oficial da NFS-e trazido pelo operador. */
+export type NfseVerification =
+  | { readonly ok: true; readonly accessKey: string; readonly processedAt: Date; readonly dpsSignature: 'MATCH' | 'ABSENT' }
+  /** `code` estável; nada do conteúdo do XML (pode ter dados pessoais). */
+  | { readonly ok: false; readonly code: string };
+
+export interface NfseDocumentVerifier {
+  verify(
+    nfseXml: string,
+    expected: { readonly dpsId: string; readonly environment: FiscalEnvironment; readonly layoutPackage: string | null; readonly signedDps: string | undefined },
+  ): Promise<NfseVerification>;
+}
+
+/** Destino dos alertas de UNKNOWN por idade (log estruturado no worker; só identificadores). */
+export interface UnknownAlertSink {
+  raise(alert: {
+    readonly level: EscalationLevel;
+    readonly companyId: string;
+    readonly invoiceId: string;
+    readonly environment: FiscalEnvironment;
+    readonly ageSeconds: number;
+    readonly attemptSeq: number;
+    readonly lookups: number;
+  }): void;
+}
+
 export interface NfseApiRepositories {
   readonly invoices: ServiceInvoiceRepository;
   readonly establishments: EstablishmentReader;
@@ -150,6 +249,7 @@ export interface NfseApiRepositories {
 export interface NfseWorkerRepositories {
   readonly invoices: ServiceInvoiceWorkerRepository;
   readonly attempts: AttemptRepository;
+  readonly resolutions: ResolutionRepository;
   readonly production: ProductionGate;
   readonly audit: AuditTrail;
   readonly jobs: JobScheduler;

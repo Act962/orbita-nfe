@@ -111,6 +111,11 @@ Para NFC-e, o `UNKNOWN` acontece com o cliente em frente ao caixa. A política (
 Métricas: `fiscal_unknown_documents{kind,authority}`, `fiscal_unknown_oldest_age_seconds`, `fiscal_reconcile_attempts_total{result}`.
 
 ## 7. Resolução manual
+> **Implementado** em 2026-11-12 ([ADR-0034](../adr/0034-resolucao-manual-unknown.md), [runbook](../runbooks/nfse-unknown.md)). Diferenças em relação ao texto abaixo:
+> - o comando é a CLI `ops nfse-resolve` (papel `fiscal_admin`), e não um escopo da API;
+> - `NOT_ISSUED` retransmite o mesmo XML;
+> - a evidência de `NOT_ISSUED` fica com o operador, e o banco guarda só o hash.
+
 Comando `ResolveUnknownDocument` (escopo `ops:resolve`, somente operador):
 - exige resultado alegado (`AUTHORIZED` com chave/protocolo, `NOT_ISSUED`), justificativa e evidência anexada (ex.: print/XML obtido no portal oficial);
 - se `AUTHORIZED`, o sistema ainda tenta baixar o documento oficial para arquivar;

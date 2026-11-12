@@ -70,6 +70,36 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Fase 2a, etapa 3 — resolução manual de UNKNOWN e alertas (2026-11-12)
+Decisões: [ADR-0034](adr/0034-resolucao-manual-unknown.md). Runbook: [nfse-unknown](runbooks/nfse-unknown.md).
+- [x] **O operador pede; o worker-fiscal decide.**
+  - `ops nfse-resolve` grava o pedido (só se acrescenta), audita e enfileira `nfse.resolve`.
+  - O `fiscal_admin` não tem `UPDATE` na nota e não lê o XML nem o pedido do cliente.
+  - O operador informa a empresa (`--company`), e tudo roda no contexto dela. Nenhuma política extra de RLS: o meta-teste barrou a primeira versão, que tinha uma.
+- [x] **`AUTHORIZED`:** o XML oficial do portal é conferido antes de aplicar:
+  - XSD `NFSe_v1.01.xsd` do mesmo pacote da DPS;
+  - Id da DPS e ambiente;
+  - assinatura da nossa DPS.
+
+  A chave vem de `infNFSe/@Id` (TSIdNFSe). O webhook sai com `resolvedBy: MANUAL`.
+- [x] **`NOT_ISSUED`:** volta a `PENDING` e retransmite o **mesmo XML**, com o mesmo número.
+  - É recusado se o autorizador já respondeu duplicidade.
+  - Nunca `FAILED`, nunca outro número.
+- [x] **Recusa:** código estável no pedido, a nota segue `UNKNOWN` e a reconciliação continua. Um pedido aberto por nota; a decisão é gravada uma vez (trigger).
+- [x] **Alertas por idade** (`nfse.escalate`): 15 min `WARNING`, 2 h `CRITICAL`, 24 h `INCIDENT`, repetido a cada 24 h. São log estruturado, só com identificadores. O painel é `ops nfse-unknown`.
+- [x] **Migration 0014:**
+  - integridade, guarda de só-acréscimo, RLS;
+  - grants mínimos: o operador só enfileira `nfse.resolve`.
+- [x] **Testes:**
+  - verificador contra os XSD oficiais, com NFS-e sintética montada do TCNFSe;
+  - domínio;
+  - integração: aplicar, recusar, `NOT_ISSUED` byte a byte, duplicidade, corrida com a consulta, quedas, alertas e privilégios no banco.
+- [ ] Próximas etapas:
+  - regras L2/L3 catalogadas com fonte;
+  - roteamento Teresina (ADR-0028);
+  - contrato v2;
+  - adapter da SEFIN (com o A1), que também deve verificar a assinatura da SEFIN.
+
 ### Fase 2a, etapa 2 — emissão pela API com o XML real (2026-11-12)
 Decisões: [ADR-0033](adr/0033-contrato-dps-v1.md). Contrato: [contrato-dps-v1](fiscal/contrato-dps-v1.md).
 - [x] **Contrato v1 da DPS:**
@@ -268,7 +298,8 @@ Decisões: [ADR-0032](adr/0032-nucleo-emissao-nfse.md). Fecha o "fluxo completo 
 7. ~~Encerramento da Fase 1: promoção e remoção dos spikes, remoção do pg-boss~~ ✔ (deploy real aguardando infraestrutura)
 8. ~~Fase 2a, etapa 1: núcleo da emissão (estados, write-ahead, reconciliação, simulador, fluxo completo com documento fake)~~ ✔ (ADR-0032)
 9. ~~Fase 2a, etapa 2: contrato da DPS na API e preparador real (XML + XSD + assinatura)~~ ✔ (ADR-0033)
-10. Fase 2a, etapa 3: resolução manual de `UNKNOWN` e alertas, regras L2/L3 com fonte, roteamento Teresina (ADR-0028).
+10. ~~Fase 2a, etapa 3: resolução manual de `UNKNOWN` e alertas~~ ✔ (ADR-0034)
+11. Fase 2a, etapa 4: roteamento Teresina (ADR-0028) e regras L2/L3 com fonte.
 
    A parte fiscal (regras L3, adapter SEFIN real) espera os pré-requisitos do roadmap: CNPJ e A1 reais, contador e gate fiscal 1.
 
@@ -301,6 +332,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-10 | Piloto em Teresina pela SEFIN Nacional (Res. CGSN 191/2026); adapter municipal DSF na Fase 2b conforme demanda | 0017 (revisado) |
 | 2026-11-10 | Canal de NFS-e decidido pela data de competência, por tabela versionada com fonte | 0028 |
 | 2026-11-10 | Cliente único do padrão nacional com perfil de endpoint; reconciliação por Id da DPS antes de reenviar | 0029 |
+| 2026-11-12 | Resolução manual de `UNKNOWN`: o operador pede, o worker-fiscal confere o XML oficial e decide; `NOT_ISSUED` retransmite o mesmo XML; alertas por idade com um job por nota | 0034 |
 | 2026-11-12 | Contrato v1 da DPS (um campo por elemento do XSD, valores do cliente), perfil de leiaute por pacote, pré-validação no aceite | 0033 |
 | 2026-11-12 | Núcleo da emissão de NFS-e: recuperação de queda pela própria fila (sem varredura entre empresas), DPS assinada uma vez, reconciliação por função pura | 0032 |
 
@@ -317,7 +349,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 6. ~~Aprovar o [ADR-0027](adr/0027-convencoes-cadastro-fiscal-referencia-nfe-io.md) (cadastro fiscal, certificados e documentação inspirados na NFE.io)~~ — aprovado em 2026-11-10.
 
 ## Riscos ativos principais
-R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente · R-30 enquadramento `regApTribSN` da empresa-piloto · R-33 Swagger da SEFIN só com certificado · R-34 corrente de âncora · R-35 Coolify não exercitado · R-36 errata do XSD de produção da NFS-e · R-37 resolução manual de `UNKNOWN` pendente · R-38 fuso do `dhEmi`. Ver [riscos.md](riscos.md).
+R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS única · R-19 Teresina em transição · R-21 obrigação Simples já vigente · R-30 enquadramento `regApTribSN` da empresa-piloto · R-33 Swagger da SEFIN só com certificado · R-34 corrente de âncora · R-35 Coolify não exercitado · R-36 errata do XSD de produção da NFS-e · R-37 assinatura da SEFIN na resolução manual · R-38 fuso do `dhEmi`. Ver [riscos.md](riscos.md).
 
 ## Código temporário / dívidas registradas
 | Item | Finalidade | Remoção |
@@ -336,7 +368,8 @@ R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS �
 | Comando de re-embrulho das DEKs (rotação da KEK) | O banco e o opener já aceitam; falta o comando | Antes da primeira rotação (runbook kek-certificados §3) |
 | Escrita da trilha serializada por empresa (trava da cabeça) | Simplicidade e ordem total; volume atual baixo | Reavaliar com carga real de emissão |
 | DPS assinada guardada só no banco (`service_invoices.signed_dps`) | O arquivo fiscal em S3 (ADR-0010) depende do provedor | Copiar para o bucket `fiscal-archive` quando ele existir |
-| Resolução manual de `UNKNOWN` e alertas por idade (15 min / 2 h / 24 h) | Fora da etapa 1 (R-37) | Fase 2a, antes do piloto em produção |
+| Assinatura da SEFIN no XML da NFS-e trazido na resolução manual não verificada | Cadeia de confiança do emissor nacional não definida (ADR-0034) | Adapter da SEFIN |
+| Alertas de `UNKNOWN` só em log, sem métrica `fiscal_unknown_documents` | Sem stack de métricas ainda | Observabilidade do deploy |
 | Worker-fiscal de produção sem as filas `nfse.*` ligadas | Preparador real pronto; falta o adapter SEFIN | Adapter SEFIN (com o A1) |
 | Falha de XSD no worker grava só `DPS_SCHEMA_INVALID`, sem o detalhe | As mensagens da libxml2 podem citar dados pessoais | A pré-validação do aceite já devolve o detalhe ao cliente; avaliar detalhe sanitizado |
 | Contrato v1 sem endereço, intermediário, exterior, obra, deduções, tributos federais e IBS/CBS | Escopo do piloto (ME/EPP de Teresina) | Contrato v2, conforme a demanda dos clientes |

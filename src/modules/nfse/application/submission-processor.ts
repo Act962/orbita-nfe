@@ -5,6 +5,7 @@ import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-o
 import { retryDelaySeconds } from '../../../shared/domain/backoff.js';
 import { DEFAULT_RECONCILIATION_POLICY, type ReconciliationPolicy } from '../domain/reconciliation.js';
 import { recoverStuck, type ServiceInvoiceStatus } from '../domain/service-invoice.js';
+import { scheduleFirstEscalation } from './unknown-escalator.js';
 import type { CredentialAccess, DpsPreparer, IssuerCredential, NfseGateway, NfseWorkerRepositories, ServiceInvoice, SubmissionOutcome } from './ports.js';
 
 export interface ProcessorOptions {
@@ -156,6 +157,7 @@ export class SubmissionProcessor {
           await this.settle(r, invoice, 'PROCESSING', 'UNKNOWN', context, { leaseUntil: null });
           // Duplicidade: a DPS existe lá; consulta já. Senão, respeita a espera mínima.
           await this.scheduleLookup(r, companyId, invoice.id, attempt.seq, 0, outcome.kind === 'ALREADY_EXISTS' ? at : new Date(sendingAt.getTime() + this.options.reconciliation.minWaitAfterSendingMs), context);
+          await scheduleFirstEscalation(r.jobs, { companyId, invoiceId: invoice.id, attemptSeq: attempt.seq, since: sendingAt, correlationId: context.correlationId });
           return;
       }
     });
@@ -178,6 +180,7 @@ export class SubmissionProcessor {
         await this.settle(r, invoice, 'PROCESSING', 'UNKNOWN', context, { leaseUntil: null });
         const sendingAt = open.sendingAt ?? at;
         await this.scheduleLookup(r, companyId, invoice.id, open.seq, 0, new Date(sendingAt.getTime() + this.options.reconciliation.minWaitAfterSendingMs), context);
+        await scheduleFirstEscalation(r.jobs, { companyId, invoiceId: invoice.id, attemptSeq: open.seq, since: sendingAt, correlationId: context.correlationId });
         return { kind: 'TRANSMITTED', outcome: 'UNKNOWN' } as const;
       }
       if (open !== undefined) await r.attempts.close(open.id, 'RECOVERED_NOT_SENT', null, at);

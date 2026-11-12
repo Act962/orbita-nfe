@@ -1,5 +1,5 @@
 import { loadPrivateKek, X509TrustStore } from '../modules/certificates/public.js';
-import { SimulatedNfseGateway, XmlDpsPreparer } from '../modules/nfse/public.js';
+import { SimulatedNfseGateway, XmlDpsPreparer, XmlNfseVerifier, type UnknownAlertSink } from '../modules/nfse/public.js';
 import { createDatabase } from '../shared/infrastructure/database/database.js';
 import { createLogger } from '../shared/infrastructure/logging/logger.js';
 import { composeFiscalWorker } from './compose.js';
@@ -15,10 +15,28 @@ const config = loadFiscalWorkerConfig();
 const logger = createLogger({ level: config.LOG_LEVEL, service: 'worker-fiscal' });
 const database = createDatabase({ url: config.WORKER_DATABASE_URL, poolMax: config.WORKER_CONCURRENCY + 2, statementTimeoutMs: 30_000, applicationName: 'orbita-nfe-worker-fiscal' });
 
+/**
+ * Alertas de NFS-e em UNKNOWN pela idade (doc 12 §6): log estruturado com o evento
+ * `nfse.unknown_age`, só identificadores. WARNING → warn; CRITICAL e INCIDENT → error.
+ */
+const alerts: UnknownAlertSink = {
+  raise: (alert) => {
+    const line = { event: 'nfse.unknown_age', ...alert };
+    if (alert.level === 'WARNING') logger.warn(line, 'NFS-e em UNKNOWN há mais de 15 min');
+    else logger.error(line, alert.level === 'CRITICAL' ? 'NFS-e em UNKNOWN há mais de 2 h' : 'INCIDENTE: NFS-e em UNKNOWN há mais de 24 h; análise manual obrigatória');
+  },
+};
+
+const schemas = config.NFSE_GATEWAY === 'simulator' ? loadFiscalSchemas() : undefined;
 const nfse =
-  config.NFSE_GATEWAY === 'simulator'
-    ? { gateway: new SimulatedNfseGateway(), preparer: new XmlDpsPreparer(loadFiscalSchemas(), `orbita-nfe-${config.APP_VERSION}`) }
-    : undefined;
+  schemas === undefined
+    ? undefined
+    : {
+        gateway: new SimulatedNfseGateway(),
+        preparer: new XmlDpsPreparer(schemas, `orbita-nfe-${config.APP_VERSION}`),
+        verifier: new XmlNfseVerifier(schemas),
+        alerts,
+      };
 if (nfse !== undefined) logger.warn('NFS-e com autorizador SIMULADO (NFSE_GATEWAY=simulator): nada é enviado a órgão nenhum');
 
 const { handlers } = composeFiscalWorker({

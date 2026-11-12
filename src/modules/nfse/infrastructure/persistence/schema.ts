@@ -95,3 +95,42 @@ export const serviceInvoiceAttempts = pgTable(
     index('ix_service_invoice_attempts_company').on(t.companyId),
   ],
 );
+
+/**
+ * Pedidos de resolução manual de NFS-e em UNKNOWN (doc 12 §7, ADR-0034). Só se acrescenta: o
+ * operador grava o pedido, o worker-fiscal confere e decide uma única vez (APPLIED ou REFUSED).
+ */
+export const serviceInvoiceResolutions = pgTable(
+  'service_invoice_resolutions',
+  {
+    id: uuid('id').primaryKey(),
+    companyId: uuid('company_id').notNull(),
+    invoiceId: uuid('invoice_id').notNull(),
+    /** AUTHORIZED (com o XML oficial) | NOT_ISSUED (retransmite o mesmo XML) */
+    outcome: text('outcome').notNull(),
+    reason: text('reason').notNull(),
+    /** SHA-256 da evidência: o próprio XML da NFS-e, ou o arquivo guardado pelo operador. */
+    evidenceSha256: char('evidence_sha256', { length: 64 }).notNull(),
+    /** XML oficial da NFS-e obtido no portal (só em AUTHORIZED). O operador grava e não lê de volta. */
+    nfseXml: text('nfse_xml'),
+    operator: text('operator').notNull(),
+    requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
+    state: text('state').notNull().default('REQUESTED'),
+    /** Código estável do resultado (ex.: NFSE_DPS_MISMATCH). Nunca mensagem livre. */
+    resultCode: text('result_code'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (t) => [
+    // No máximo um pedido aberto por documento.
+    uniqueIndex('uq_service_invoice_resolutions_open').on(t.invoiceId).where(sql`${t.state} = 'REQUESTED'`),
+    check('ck_service_invoice_resolutions_outcome', sql`${t.outcome} in ('AUTHORIZED', 'NOT_ISSUED')`),
+    check('ck_service_invoice_resolutions_state', sql`${t.state} in ('REQUESTED', 'APPLIED', 'REFUSED')`),
+    check('ck_service_invoice_resolutions_reason', sql`length(btrim(${t.reason})) between 10 and 2000`),
+    check('ck_service_invoice_resolutions_operator', sql`length(${t.operator}) between 1 and 200`),
+    check('ck_service_invoice_resolutions_evidence', sql`${t.evidenceSha256} ~ '^[0-9a-f]{64}$'`),
+    check('ck_service_invoice_resolutions_xml', sql`(${t.outcome} = 'AUTHORIZED') = (${t.nfseXml} is not null)`),
+    check('ck_service_invoice_resolutions_decided', sql`(${t.state} = 'REQUESTED') = (${t.decidedAt} is null)`),
+    check('ck_service_invoice_resolutions_result', sql`${t.state} <> 'REFUSED' or ${t.resultCode} is not null`),
+    index('ix_service_invoice_resolutions_company').on(t.companyId),
+  ],
+);

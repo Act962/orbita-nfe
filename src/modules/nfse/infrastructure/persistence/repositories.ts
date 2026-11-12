@@ -23,6 +23,7 @@ import type {
 } from '../../application/ports.js';
 import { IDEMPOTENCY_RACE } from '../../application/service-invoice-service.js';
 import type { AttemptState, ServiceInvoiceStatus } from '../../domain/service-invoice.js';
+import { RESOLUTION_CONSTRAINTS, resolutionRepository } from './resolution-repositories.js';
 import { serviceInvoiceAttempts, serviceInvoices } from './schema.js';
 
 export const NFSE_CONSTRAINTS: ConstraintErrorMap = {
@@ -31,6 +32,7 @@ export const NFSE_CONSTRAINTS: ConstraintErrorMap = {
   uq_service_invoices_external_reference: () =>
     new ConflictError('DOCUMENT_IN_PROGRESS', 'Já existe NFS-e em andamento com esta referência externa. Não reemita.'),
   fk_service_invoices_establishment: () => new NotFoundError('ESTABLISHMENT_NOT_FOUND', 'Estabelecimento não encontrado.'),
+  ...RESOLUTION_CONSTRAINTS,
 };
 
 type InvoiceRow = typeof serviceInvoices.$inferSelect;
@@ -263,6 +265,7 @@ export function nfseWorkerUnitOfWork(
     (tx) => ({
       invoices: serviceInvoiceWorkerRepository(tx),
       attempts: attemptRepository(tx),
+      resolutions: resolutionRepository(tx),
       production: ports.productionFor(tx),
       audit: ports.auditFor(tx),
       jobs: ports.jobsFor(tx),

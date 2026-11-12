@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { composeFiscalWorker } from '../../src/main/compose.js';
 import { X509TrustStore } from '../../src/modules/certificates/public.js';
-import { SimulatedNfseGateway, XmlDpsPreparer } from '../../src/modules/nfse/public.js';
+import { SimulatedNfseGateway, XmlDpsPreparer, XmlNfseVerifier } from '../../src/modules/nfse/public.js';
 import type { AuditContext } from '../../src/shared/application/audit.js';
 import { CompanyTransactions, type DatabaseHandle } from '../../src/shared/infrastructure/database/database.js';
 import { FiscalSchemaCatalog } from '../../src/shared/infrastructure/xml/fiscal-schema-catalog.js';
@@ -47,7 +47,7 @@ function fiscalWorker() {
     db: worker.db,
     certificateKeks: [testCertificateKek().privateKey],
     trustStore: X509TrustStore.fromPem(pki.trustBundlePem),
-    nfse: { gateway, preparer: new XmlDpsPreparer(catalog, 'orbita-nfe-teste') },
+    nfse: { gateway, preparer: new XmlDpsPreparer(catalog, 'orbita-nfe-teste'), verifier: new XmlNfseVerifier(catalog), alerts: { raise: () => undefined } },
   });
   if (composed.processor === undefined) throw new Error('nfse não composto');
   return { vault: composed.vault, processor: composed.processor };

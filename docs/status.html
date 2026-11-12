@@ -73,16 +73,16 @@
   <div class="card kpi">
     <div class="label">Fase atual</div>
     <div class="value">2a · NFS-e Nacional</div>
-    <div class="note">Etapas 1 e 2 da emissão concluídas</div>
+    <div class="note">Etapas 1, 2 e 3 da emissão concluídas</div>
   </div>
   <div class="card kpi">
     <div class="label">Próxima etapa</div>
-    <div class="value">Resolução manual</div>
-    <div class="note">Nota “indeterminada”, alertas e regras com fonte</div>
+    <div class="value">Roteamento Teresina</div>
+    <div class="note">Canal pela competência (ADR-0028) e regras com fonte</div>
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">535 ✓</div>
+    <div class="value">555 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -106,7 +106,7 @@
   </div>
   <div class="phase">
     <div class="id">2a</div>
-    <div><h3>NFS-e Nacional (Simples, Teresina) · 8–12 semanas</h3><p>Emissão pela SEFIN Nacional: DPS, assinatura, envio, consulta, cancelamento, piloto.</p><div class="bar"><span style="width:40%"></span></div></div>
+    <div><h3>NFS-e Nacional (Simples, Teresina) · 8–12 semanas</h3><p>Emissão pela SEFIN Nacional: DPS, assinatura, envio, consulta, cancelamento, piloto.</p><div class="bar"><span style="width:50%"></span></div></div>
     <span class="tag doing">Em andamento</span>
   </div>
   <div class="phase">
@@ -163,7 +163,9 @@
     <li><span class="tag done">Pronto</span><div>Rota de emissão na API (<code>POST /v1/service-invoices</code>) e consulta</div></li>
     <li><span class="tag done">Pronto</span><div>XML real da DPS montado a partir do pedido, assinado e conferido no XSD oficial de cada ambiente</div></li>
     <li><span class="tag done">Pronto</span><div>Teste de ponta a ponta: API → worker → simulador do órgão → nota autorizada</div></li>
-    <li><span class="tag doing">Próximo</span><div>Resolução manual auditada de nota “indeterminada” e alertas por tempo</div></li>
+    <li><span class="tag done">Pronto</span><div>Resolução manual auditada de nota “indeterminada”: o operador pede, o sistema confere o XML oficial e decide<small>Nota “não emitida” é reenviada com o mesmo XML e o mesmo número; nunca nasce uma segunda nota.</small></div></li>
+    <li><span class="tag done">Pronto</span><div>Alertas de nota “indeterminada” por tempo: 15 min, 2 h e 24 h, e painel de pendências (<code>ops nfse-unknown</code>)</div></li>
+    <li><span class="tag doing">Próximo</span><div>Roteamento de Teresina pela competência (ADR-0028) e regras fiscais catalogadas com fonte</div></li>
     <li><span class="tag block">Você</span><div>Envio real à produção restrita (precisa do CNPJ e do certificado A1)</div></li>
   </ul>
 </div>
@@ -187,8 +189,7 @@
     <h2>Próximos passos (desenvolvimento)</h2>
     <div class="card">
       <ol>
-        <li>Resolução manual de nota “indeterminada” e alertas</li>
-        <li>Regras fiscais catalogadas com fonte e roteamento de Teresina</li>
+        <li>Roteamento de Teresina pela competência e regras fiscais com fonte</li>
         <li>Consulta, cancelamento e substituição</li>
         <li>Envio real à produção restrita (precisa do A1)</li>
         <li>Piloto controlado em produção</li>
@@ -218,7 +219,7 @@
     <li><span class="tag doing">Médio</span><div>Algoritmo de assinatura da SEFIN só documentado pela DSF (R-31)</div></li>
     <li><span class="tag doing">Médio</span><div>Uma VPS só: depende de backup e restauração testados (R-17)</div></li>
     <li><span class="tag todo">Baixo</span><div>Errata no XSD oficial de produção a confirmar no primeiro envio (R-36)</div></li>
-    <li><span class="tag todo">Baixo</span><div>Resolução manual de nota “indeterminada” ainda não existe (R-37)</div></li>
+    <li><span class="tag todo">Baixo</span><div>Na resolução manual, a assinatura da SEFIN no XML ainda não é conferida (R-37)</div></li>
     <li><span class="tag todo">Baixo</span><div>Fuso do horário de emissão para empresas fora de Brasília a confirmar (R-38)</div></li>
   </ul>
 </div>
@@ -229,7 +230,8 @@
     <li><span class="tag done">Enviado</span><div><code>295b55c</code> Semana 7: habilitação de produção, dryRun, âncora da auditoria e deploy</div></li>
     <li><span class="tag done">Enviado</span><div><code>27e5c88</code> Encerramento da Fase 1: spikes promovidos, errata do XSD, este painel</div></li>
     <li><span class="tag done">Enviado</span><div><code>24216be</code> Fase 2a, etapa 1: núcleo da emissão de NFS-e e correção do teste com data fixa (CI verde)</div></li>
-    <li><span class="tag done">Enviado</span><div>Fase 2a, etapa 2: emissão pela API com o XML real</div></li>
+    <li><span class="tag done">Enviado</span><div><code>647715b</code> Fase 2a, etapa 2: emissão pela API com o XML real (CI verde)</div></li>
+    <li><span class="tag doing">Local</span><div>Fase 2a, etapa 3: resolução manual de nota “indeterminada” e alertas (commit local, ainda não enviado)</div></li>
   </ul>
 </div>
 

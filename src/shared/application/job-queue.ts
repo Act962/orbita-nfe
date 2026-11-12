@@ -81,6 +81,25 @@ export const QUEUES = {
     timeoutSeconds: 120,
     priority: 15,
   },
+  /**
+   * Aplica um pedido de resolução manual de NFS-e em UNKNOWN (ADR-0034). Enfileirado pelo
+   * operador (CLI ops); só o worker-fiscal confere o XML e muda o estado do documento.
+   */
+  'nfse.resolve': {
+    lane: 'fiscal',
+    maxAttempts: 10,
+    backoff: { baseSeconds: 30, maxSeconds: 900, jitter: 0.2 },
+    timeoutSeconds: 60,
+    priority: 15,
+  },
+  /** Alerta de NFS-e em UNKNOWN pela idade (doc 12 §6); a próxima verificação é um job novo. */
+  'nfse.escalate': {
+    lane: 'fiscal',
+    maxAttempts: 5,
+    backoff: { baseSeconds: 60, maxSeconds: 900, jitter: 0.2 },
+    timeoutSeconds: 30,
+    priority: 2,
+  },
   /** Distribui um evento do outbox às assinaturas de webhook interessadas. */
   'webhooks.fanout': {
     lane: 'general',

@@ -92,6 +92,20 @@
       "when": 1794483821731,
       "tag": "0012_security_service_invoices",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794496257280,
+      "tag": "0013_service_invoice_resolutions",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794496259820,
+      "tag": "0014_security_service_invoice_resolutions",
+      "breakpoints": true
     }
   ]
 }
