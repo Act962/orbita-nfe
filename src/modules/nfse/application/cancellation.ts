@@ -18,7 +18,7 @@ import type {
   ServiceInvoice,
   ServiceInvoiceCancellation,
 } from './ports.js';
-import { publishStatus } from './submission-processor.js';
+import { channelOf, publishStatus } from './submission-processor.js';
 
 /** Código interno da corrida no índice de pedido ativo (constraint → releitura). */
 export const CANCELLATION_RACE = 'SERVICE_INVOICE_CANCELLATION_RACE';
@@ -220,7 +220,7 @@ export class CancellationProcessor {
 
     let outcome: EventOutcome;
     try {
-      outcome = await this.gateway.registerEvent(accessKey, signed, { environment: invoice.environment, credential });
+      outcome = await this.gateway.registerEvent(accessKey, signed, { environment: invoice.environment, channel: channelOf(invoice), credential });
     } catch {
       outcome = { kind: 'UNKNOWN', errorCode: 'GATEWAY_EXCEPTION' };
     }
@@ -344,7 +344,7 @@ export class CancellationReconciler {
     let lookup: EventLookupOutcome;
     try {
       lookup = await this.credentials.withCredential(companyId, invoice.establishmentId, (credential) =>
-        this.gateway.findEvent(accessKey, CANCELLATION_EVENT_TYPE, CANCELLATION_EVENT_SEQUENCE, { environment: invoice.environment, credential }),
+        this.gateway.findEvent(accessKey, CANCELLATION_EVENT_TYPE, CANCELLATION_EVENT_SEQUENCE, { environment: invoice.environment, channel: channelOf(invoice), credential }),
       );
     } catch (error) {
       lookup = { kind: 'ERROR', errorCode: error instanceof BusinessRuleError ? error.code : 'LOOKUP_EXCEPTION' };

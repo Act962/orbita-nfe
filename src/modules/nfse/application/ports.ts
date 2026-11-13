@@ -367,6 +367,8 @@ export interface CredentialAccess {
 
 export interface GatewayContext {
   readonly environment: FiscalEnvironment;
+  /** Canal gravado na nota no aceite (ADR-0028); escolhe o autorizador (ADR-0039). */
+  readonly channel: string;
   readonly credential: IssuerCredential;
 }
 

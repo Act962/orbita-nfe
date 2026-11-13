@@ -29,8 +29,8 @@ O canal depende do enquadramento no Simples e da **competência**, não da data 
 | qualquer | 2 (MEI) | — | qualquer (*) | NATIONAL_SEFIN | Res. CGSN (MEI); E0039 |
 | qualquer | 3 (ME/EPP) | 1 | ≥ 2026-11-01 | NATIONAL_SEFIN | Res. CGSN 191/2026; notícia de 29/10/2026; E0039 |
 | 2211001 | 3 | 2 ou 3 | ≥ 2026-11-01 | **a confirmar** (a E0039 não tem exceção textual) | pendente com a SEMF e o contador |
-| 2211001 | qualquer | — | < 2026-11-01 | MUNICIPAL_TERESINA_DSF (indisponível até a Fase 2b) | notícia de 29/10/2026 |
-| 2211001 | 1 (não optante) | — | qualquer | MUNICIPAL_TERESINA_DSF (indisponível até a Fase 2b) | Portaria SEMF 20/2026, art. 1º |
+| 2211001 | qualquer | — | < 2026-11-01 | MUNICIPAL_TERESINA_DSF (disponível em homologação desde 2026-11-13, ADR-0039) | notícia de 29/10/2026 |
+| 2211001 | 1 (não optante) | — | qualquer | MUNICIPAL_TERESINA_DSF (disponível em homologação desde 2026-11-13, ADR-0039) | Portaria SEMF 20/2026, art. 1º |
 
 (*) A obrigatoriedade do MEI vem de resoluções anteriores. O texto delas ainda precisa ser registrado em fontes-oficiais.
 

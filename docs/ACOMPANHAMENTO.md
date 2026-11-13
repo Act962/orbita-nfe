@@ -70,6 +70,20 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Fase 2b adiantada — emissor municipal de Teresina (DSF) (2026-11-13)
+Decisão: [ADR-0039](adr/0039-adapter-emissor-municipal-teresina.md). Motivo: a empresa de teste é não optante, e o canal real dela é a DSF. O A1 vence em 26/11.
+- [x] **Perfil `TERESINA_DSF`** sobre o mesmo cliente do padrão nacional (Guia V7):
+  - homologação `nfse2-the.dsfweb.com.br/notafiscal-ws`;
+  - consulta pela DPS em `/nfse/dps/{id}`;
+  - sem consulta de evento.
+  - O perfil passou a ter os caminhos, além das URLs.
+- [x] **Autorizador escolhido pelo canal gravado na nota** (`ChannelRoutedGateway`). Uma nota nunca vai para o outro autorizador.
+- [x] **Leiaute e Anexo I por canal:** a DSF usa o pacote de 09/02/2026 também na homologação, sem `finNFSe`. A confirmar no primeiro envio.
+- [x] **THE-001:** `cTribMun` obrigatório no canal da DSF, conferido no aceite. Catálogo [NFSE-TERESINA-DSF](fiscal/regras/NFSE-TERESINA-DSF.md).
+- [x] **Canal da DSF aceito:** não optante em Teresina e competência anterior a 11/2026. Cancelamento e substituição continuam só na SEFIN.
+- [x] **Configuração:** `NFSE_GATEWAY=real` liga os dois adapters, só em homologação. Comando de teste: `npm run sefin:test -- send … --channel dsf`.
+- [ ] Primeiro envio à homologação da DSF, com o A1 da empresa de teste. A 1ª tentativa (2026-11-13 20:20 UTC) deu `NOT_SENT`, porque o **certificado TLS do servidor da DSF venceu** às 19:59 UTC do mesmo dia. Nada saiu, e a verificação não é desligada. Tentar de novo depois da renovação.
+
 ### Fase 2a, etapa 8 — adapter da SEFIN Nacional (2026-11-13)
 Decisão: [ADR-0038](adr/0038-adapter-sefin-nacional.md).
 - [x] **`NationalNfseGateway`** sobre o transporte mTLS do projeto, com os caminhos, envelopes e respostas do Swagger confirmado:
@@ -80,7 +94,7 @@ Decisão: [ADR-0038](adr/0038-adapter-sefin-nacional.md).
 - [x] **Mapeamento seguro:** só `Exxxx` é rejeição. E0014 (DPS) e E0802/E0840 (evento) viram "já existe" e levam à consulta. 5xx, corpo ilegível ou resposta de outra DPS viram `UNKNOWN`. `NOT_SENT` só com prova do transporte.
 - [x] **Porta de consulta de evento** com o `nSeqEvento`; o cancelamento usa 1 (Anexo II).
 - [x] **Perfil com só a produção restrita.** Nota de produção dá `NOT_SENT` local, sem rede.
-- [x] **`NFSE_GATEWAY=sefin`** no worker-fiscal.
+- [x] **`NFSE_GATEWAY=real` (era `sefin`, renomeado no ADR-0039)** no worker-fiscal.
 - [x] **Testes:** 16 casos contra uma SEFIN falsa local (HTTPS com mTLS) nos formatos do Swagger; nada sai da máquina.
 - [x] **Primeiro envio real à produção restrita** com o OK do responsável, feito com `npm run sefin:test` (sem banco nem cofre, mas com o mesmo preparador e adapter do worker). Resultado:
   - 1º envio: `UNKNOWN`. O HTTP/2 do undici 8 não combina com a renegociação TLS da SEFIN; corrigido com HTTP/1.1.
@@ -462,6 +476,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-10 | Piloto em Teresina pela SEFIN Nacional (Res. CGSN 191/2026); adapter municipal DSF na Fase 2b conforme demanda | 0017 (revisado) |
 | 2026-11-10 | Canal de NFS-e decidido pela data de competência, por tabela versionada com fonte | 0028 |
 | 2026-11-10 | Cliente único do padrão nacional com perfil de endpoint; reconciliação por Id da DPS antes de reenviar | 0029 |
+| 2026-11-13 | Emissor municipal de Teresina (DSF) como novo perfil do mesmo cliente; autorizador escolhido pelo canal da nota; DSF com o pacote e o Anexo de 09/02/2026; `cTribMun` obrigatório (THE-001); cancelamento e substituição só na SEFIN | 0039 |
 | 2026-11-13 | Adapter da SEFIN pelo Swagger lido com o A1: só produção restrita; só `Exxxx` é rejeição; duplicidade (E0014, E0802, E0840) leva à consulta | 0038 |
 | 2026-11-13 | Regras do Anexo I conferidas no aceite só quando dependem apenas da DPS, por ambiente, com o código oficial; lacunas do contrato v1 viram recusa local | 0037 |
 | 2026-11-13 | Substituição como NFS-e nova com `subst`; a original só vira SUBSTITUTED com a substituta autorizada; exclusiva com o cancelamento; campos travados pela matriz do Anexo I (na dúvida, trava a menos) | 0036 |

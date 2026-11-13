@@ -1,8 +1,10 @@
 import { loadPrivateKek, X509TrustStore } from '../modules/certificates/public.js';
 import {
+  ChannelRoutedGateway,
   NationalNfseGateway,
   SEFIN_NACIONAL,
   SimulatedNfseGateway,
+  TERESINA_DSF,
   XmlCancellationPreparer,
   XmlDpsPreparer,
   XmlNfseVerifier,
@@ -17,8 +19,8 @@ import { runWorker } from './worker-runtime.js';
 
 /**
  * worker-fiscal (ADR-0021): único processo com a KEK privada dos certificados. Consome só a
- * lane `fiscal` (RLS da tabela de jobs). A única saída de rede é o autorizador fiscal
- * (NFSE_GATEWAY=sefin), com mTLS e o certificado do estabelecimento; nunca URLs de clientes.
+ * lane `fiscal` (RLS da tabela de jobs). A única saída de rede são os autorizadores fiscais
+ * (NFSE_GATEWAY=real), com mTLS e o certificado do estabelecimento; nunca URLs de clientes.
  */
 const config = loadFiscalWorkerConfig();
 const logger = createLogger({ level: config.LOG_LEVEL, service: 'worker-fiscal' });
@@ -41,14 +43,19 @@ const nfse =
   schemas === undefined
     ? undefined
     : {
-        gateway: config.NFSE_GATEWAY === 'sefin' ? new NationalNfseGateway(SEFIN_NACIONAL) : new SimulatedNfseGateway(),
+        gateway:
+          config.NFSE_GATEWAY === 'real'
+            ? new ChannelRoutedGateway({ NATIONAL_SEFIN: new NationalNfseGateway(SEFIN_NACIONAL), MUNICIPAL_TERESINA_DSF: new NationalNfseGateway(TERESINA_DSF) })
+            : new SimulatedNfseGateway(),
         preparer: new XmlDpsPreparer(schemas, `orbita-nfe-${config.APP_VERSION}`),
         verifier: new XmlNfseVerifier(schemas),
         alerts,
         cancellationPreparer: new XmlCancellationPreparer(schemas, `orbita-nfe-${config.APP_VERSION}`),
       };
 if (config.NFSE_GATEWAY === 'simulator') logger.warn('NFS-e com autorizador SIMULADO (NFSE_GATEWAY=simulator): nada é enviado a órgão nenhum');
-if (config.NFSE_GATEWAY === 'sefin') logger.warn({ endpoints: SEFIN_NACIONAL.baseUrls }, 'NFS-e com a SEFIN Nacional REAL (NFSE_GATEWAY=sefin): só a produção restrita está configurada');
+if (config.NFSE_GATEWAY === 'real') {
+  logger.warn({ sefin: SEFIN_NACIONAL.baseUrls, teresinaDsf: TERESINA_DSF.baseUrls }, 'NFS-e com autorizadores REAIS (NFSE_GATEWAY=real): só os ambientes de homologação estão configurados');
+}
 
 const { handlers } = composeFiscalWorker({
   db: database.db,

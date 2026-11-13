@@ -6,9 +6,12 @@ import { ForgePkcs12Reader } from '../modules/certificates/public.js';
 import {
   brasiliaDate,
   buildDpsId,
+  checkChannelRules,
   checkDpsRules,
+  layoutEnvironmentOf,
   NationalNfseGateway,
   SEFIN_NACIONAL,
+  TERESINA_DSF,
   XmlDpsPreparer,
   type DpsData,
   type GatewayContext,
@@ -17,8 +20,10 @@ import {
 import { loadFiscalSchemas } from './fiscal-resources.js';
 
 /**
- * Teste de transporte com a SEFIN Nacional na PRODUÇÃO RESTRITA (ADR-0038), sem banco e sem
- * cofre: usa o MESMO preparador (XML, regras, assinatura, XSD) e o MESMO adapter do worker-fiscal.
+ * Teste de transporte com o autorizador real em HOMOLOGAÇÃO, sem banco e sem cofre: usa o MESMO
+ * preparador (XML, regras, assinatura, XSD) e o MESMO adapter do worker-fiscal.
+ * - `--channel sefin` (padrão): SEFIN Nacional, produção restrita (ADR-0038);
+ * - `--channel dsf`: emissor municipal de Teresina, homologação da DSF (ADR-0039).
  *
  *   npm run sefin:test -- send <certificado.p12> --municipality 2211001 --simples 1
  *   npm run sefin:test -- lookup <certificado.p12> --dps <Id da DPS>
@@ -40,7 +45,7 @@ import { loadFiscalSchemas } from './fiscal-resources.js';
 const TEST_SERIES = '900';
 const OUT = join('.local', 'sefin-teste');
 const USAGE =
-  'uso: sefin:test send <cert.p12> --municipality <IBGE 7> --simples <1|2|3> [--regime <1|2|3>]\n' +
+  'uso: sefin:test send <cert.p12> --municipality <IBGE 7> --simples <1|2|3> [--regime <1|2|3>] [--channel sefin|dsf]\n' +
   '     sefin:test lookup <cert.p12> --dps <Id da DPS>\n' +
   '     sefin:test resend <cert.p12> --file <dps-assinada.xml>   (só depois de lookup NOT_FOUND)\n';
 
@@ -53,19 +58,32 @@ function fail(message: string): never {
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
-  options: { municipality: { type: 'string' }, simples: { type: 'string' }, regime: { type: 'string' }, dps: { type: 'string' }, file: { type: 'string' } },
+  options: {
+    municipality: { type: 'string' },
+    simples: { type: 'string' },
+    regime: { type: 'string' },
+    dps: { type: 'string' },
+    file: { type: 'string' },
+    channel: { type: 'string', default: 'sefin' },
+  },
 });
+const CHANNELS = {
+  sefin: { channel: 'NATIONAL_SEFIN', profile: SEFIN_NACIONAL },
+  dsf: { channel: 'MUNICIPAL_TERESINA_DSF', profile: TERESINA_DSF },
+} as const;
+const selected = values.channel === 'dsf' ? CHANNELS.dsf : values.channel === 'sefin' ? CHANNELS.sefin : undefined;
 const [command, p12Path] = positionals;
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 let responses = 0;
 // Respostas brutas da SEFIN, para diagnóstico: só em .local/ (fora do git), nunca em log.
-const gateway = new NationalNfseGateway(SEFIN_NACIONAL, undefined, (r) => {
+const gateway = new NationalNfseGateway(selected?.profile ?? SEFIN_NACIONAL, undefined, (r) => {
   mkdirSync(OUT, { recursive: true });
   writeFileSync(join(OUT, `${stamp}-resposta-${++responses}-${r.method}-${r.status}.json`), `${r.method} ${r.path}\n${r.body}`);
 });
 
 try {
-  if ((command !== 'send' && command !== 'lookup' && command !== 'resend') || p12Path === undefined) fail(USAGE);
+  if ((command !== 'send' && command !== 'lookup' && command !== 'resend') || p12Path === undefined || selected === undefined) fail(USAGE);
+  process.stdout.write(`Autorizador: ${selected.profile.id} (${selected.profile.baseUrls.HOMOLOGATION ?? '?'})\n`);
   const password = await askHidden('Senha do certificado: ');
   const { context, cnpj } = openCertificate(p12Path, password);
   mkdirSync(OUT, { recursive: true });
@@ -102,7 +120,7 @@ function openCertificate(path: string, password: string): { context: GatewayCont
   if (metadata.notAfter.getTime() < Date.now()) fail('O certificado está vencido.');
   process.stdout.write(`Certificado: ${metadata.subjectName} (vence em ${metadata.notAfter.toISOString().slice(0, 10)})\n`);
   const credential = { privateKey: opened.value.privateKey, certificatePem: [opened.value.certificatePem, ...opened.value.chainPem].join('') };
-  return { context: { environment: 'HOMOLOGATION', credential }, cnpj: metadata.subjectCnpj };
+  return { context: { environment: 'HOMOLOGATION', channel: selected?.channel ?? 'NATIONAL_SEFIN', credential }, cnpj: metadata.subjectCnpj };
 }
 
 async function lookup(context: GatewayContext): Promise<void> {
@@ -143,14 +161,25 @@ async function send(context: GatewayContext, cnpj: string): Promise<void> {
   if (regime !== undefined && regime !== '1' && regime !== '2' && regime !== '3') fail('--regime: 1, 2 ou 3 (só para ME/EPP).');
 
   // DPS FICTÍCIA: valor simbólico, sem tomador, sem retenção, sem alíquota. O enquadramento é o real
-  // (informado pelo responsável); os demais valores existem só para o teste de transporte.
+  // (informado pelo responsável); os demais valores existem só para o teste de transporte. Na DSF,
+  // o par cTribNac 010301 / cTribMun 001 é o do XML modelo da SEMF (diagnóstico §1.6), só como
+  // valor de teste.
+  const dsf = context.channel === 'MUNICIPAL_TERESINA_DSF';
   const dps: DpsData = {
     competenceDate: brasiliaDate(new Date()),
     provider: { simplesNacionalOption: simples, ...(regime === undefined ? {} : { simplesNacionalRegime: regime }), specialTaxRegime: '0' },
-    service: { municipalityCode: municipality, nationalTaxCode: '010101', description: 'TESTE DE INTEGRACAO EM PRODUCAO RESTRITA - SEM VALOR FISCAL' },
+    service: {
+      municipalityCode: municipality,
+      nationalTaxCode: dsf ? '010301' : '010101',
+      ...(dsf ? { municipalTaxCode: '001' } : {}),
+      description: 'TESTE DE INTEGRACAO EM HOMOLOGACAO - SEM VALOR FISCAL',
+    },
     values: { serviceAmount: '1.00', issqn: { taxation: '1', retention: '1' }, approximateTaxes: { kind: 'AMOUNTS', federal: '0.00', state: '0.00', municipal: '0.00' } },
   };
-  const violations = checkDpsRules(dps, { environment: 'HOMOLOGATION', providerCnpj: cnpj, issueDate: brasiliaDate(new Date()) });
+  const violations = [
+    ...checkDpsRules(dps, { environment: layoutEnvironmentOf(context.channel, 'HOMOLOGATION'), providerCnpj: cnpj, issueDate: brasiliaDate(new Date()) }),
+    ...checkChannelRules(context.channel, dps),
+  ];
   if (violations.length > 0) fail(`A DPS de teste viola regras do Anexo I: ${violations.map((v) => `${v.code} (${v.field})`).join(', ')}`);
 
   const number = Math.floor(Date.now() / 1000) % 1_000_000_000;
@@ -164,12 +193,13 @@ async function send(context: GatewayContext, cnpj: string): Promise<void> {
     series: TEST_SERIES,
     number,
     payload: dps,
+    routingChannel: context.channel,
     substitution: null,
   } as unknown as ServiceInvoice;
   const prepared = await new XmlDpsPreparer(loadFiscalSchemas(), 'orbita-nfe-teste').prepare(invoice, context.credential);
   if (!prepared.ok) fail(`Falha local antes do envio (nada saiu): ${prepared.code}`);
   writeFileSync(join(OUT, `${stamp}-dps-assinada.xml`), prepared.signedXml);
-  process.stdout.write(`DPS ${dpsId.value} montada, assinada e válida no XSD (${prepared.layoutPackage}). Enviando à produção restrita...\n`);
+  process.stdout.write(`DPS ${dpsId.value} montada, assinada e válida no XSD (${prepared.layoutPackage}). Enviando à homologação...\n`);
 
   const result = await gateway.submit(prepared.signedXml, context);
   report('send', {

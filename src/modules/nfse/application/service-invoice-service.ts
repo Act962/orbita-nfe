@@ -4,7 +4,8 @@ import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-o
 import { brasiliaDate, type DpsData } from '../domain/dps.js';
 import { checkDpsRules, DPS_RULE_SET_VERSION } from '../domain/dps-rules.js';
 import { buildDpsId } from '../domain/dps-id.js';
-import { route, SUPPORTED_CHANNELS, type RoutingTable } from '../domain/routing.js';
+import { checkChannelRules } from '../domain/channel-rules.js';
+import { layoutEnvironmentOf, route, SUPPORTED_CHANNELS, type RoutingTable } from '../domain/routing.js';
 import { checkSubstitutionReason, lockedFieldChanges, type SubstitutionReason } from '../domain/substitution.js';
 import type { DpsValidator, FiscalEnvironment, NfseApiRepositories, ServiceInvoice, SubstitutionOf } from './ports.js';
 
@@ -182,13 +183,18 @@ export class ServiceInvoiceService {
     // das regras porque a recusa de canal é mais específica (ex.: ROUTE_REGIME_REQUIRED × E0166).
     const channel = this.channelFor(establishment.municipalityCode, input.dps);
 
-    // Regras do Anexo I que só dependem da DPS (ADR-0037), antes de numerar: todas de uma vez.
-    const violations = checkDpsRules(input.dps, { environment: input.environment, providerCnpj: establishment.cnpj, issueDate: brasiliaDate(this.now()) });
+    // Regras do Anexo I que só dependem da DPS (ADR-0037), pelo Anexo que o canal usa (ADR-0039),
+    // e regras próprias do canal; antes de numerar, todas de uma vez.
+    const rulesEnvironment = layoutEnvironmentOf(channel, input.environment);
+    const violations = [
+      ...checkDpsRules(input.dps, { environment: rulesEnvironment, providerCnpj: establishment.cnpj, issueDate: brasiliaDate(this.now()) }).map((v) => ({ ...v, ruleId: 'NFSE-DPS' })),
+      ...checkChannelRules(channel, input.dps).map((v) => ({ ...v, ruleId: 'NFSE-TERESINA-DSF' })),
+    ];
     if (violations.length > 0) {
       throw new BusinessRuleError(
         'NFSE_RULES_VIOLATED',
-        `A DPS viola regras do Anexo I do Sistema Nacional NFS-e (${DPS_RULE_SET_VERSION}); o autorizador a rejeitaria.`,
-        violations.map((v) => ({ code: v.code, field: v.field, message: v.message, ruleId: 'NFSE-DPS' })),
+        `A DPS viola regras do Anexo I do Sistema Nacional NFS-e (${DPS_RULE_SET_VERSION}) ou do canal de emissão; o autorizador a rejeitaria.`,
+        violations.map((v) => ({ code: v.code, field: v.field, message: v.message, ruleId: v.ruleId })),
       );
     }
 

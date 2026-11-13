@@ -13,8 +13,21 @@
 export const ROUTING_CHANNELS = ['NATIONAL_SEFIN', 'MUNICIPAL_TERESINA_DSF', 'TO_CONFIRM'] as const;
 export type RoutingChannel = (typeof ROUTING_CHANNELS)[number];
 
-/** Canais com adapter implementado. O emissor municipal de Teresina fica para a Fase 2b. */
-export const SUPPORTED_CHANNELS: readonly RoutingChannel[] = ['NATIONAL_SEFIN'];
+/** Canais com adapter implementado (ADR-0038 e ADR-0039). */
+export const SUPPORTED_CHANNELS: readonly RoutingChannel[] = ['NATIONAL_SEFIN', 'MUNICIPAL_TERESINA_DSF'];
+
+/**
+ * Pacote de leiaute (XSD) e Anexo I que o canal usa, por ambiente do motor.
+ * - SEFIN Nacional: produção → pacote de produção (09/02/2026); homologação → produção restrita
+ *   (20/10/2026), como no ADR-0013.
+ * - Emissor municipal de Teresina (DSF): o nacional v1.01 de 09/02/2026 nos DOIS ambientes. O
+ *   portal e a Carta de Serviços da SEMF linkam esse pacote e esse Anexo I, e o Guia V7 (20/08/2026)
+ *   é anterior ao pacote da produção restrita (diagnóstico §1.1 e §1.5). A confirmar no primeiro
+ *   envio à homologação da DSF (ADR-0039).
+ */
+export function layoutEnvironmentOf(channel: string, environment: 'PRODUCTION' | 'HOMOLOGATION'): 'PRODUCTION' | 'HOMOLOGATION' {
+  return channel === 'MUNICIPAL_TERESINA_DSF' ? 'PRODUCTION' : environment;
+}
 
 export interface RoutingRow {
   readonly id: string;

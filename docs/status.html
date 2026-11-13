@@ -82,7 +82,7 @@
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">683 ✓</div>
+    <div class="value">687 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -173,6 +173,8 @@
     <li><span class="tag done">Pronto</span><div>Conexão real com a SEFIN Nacional (produção restrita), feita a partir da documentação oficial lida com o certificado: envio, consulta, cancelamento e consulta de evento<small>Só a produção restrita está ligada; notas de produção não saem. Falta o primeiro envio de teste, que precisa da cadeia de certificados ICP-Brasil e do seu OK.</small></div></li>
     <li><span class="tag done">Pronto</span><div>Primeiro envio de teste à SEFIN real: a nota de teste chegou, passou pela recepção (formato, compactação e schema) e foi recusada por uma regra de cadastro<small>A SEFIN de testes não tem Teresina no cadastro de municípios conveniados (E0037). Por isso ainda não dá para provar a assinatura nem ter uma nota autorizada de teste de Teresina (R-43). Nenhuma nota foi duplicada.</small></div></li>
     <li><span class="tag block">Você</span><div>Perguntar à SEMF/SEFIN se Teresina será cadastrada no ambiente de testes, ou conseguir o certificado de um MEI de Teresina para o teste</div></li>
+    <li><span class="tag done">Pronto</span><div>Conexão com o emissor municipal de Teresina (DSF), o canal real da empresa de teste (não optante): o sistema escolhe sozinho o emissor certo pela nota<small>Só o ambiente de homologação da DSF está ligado; cancelamento e substituição por esse canal ficam para depois.</small></div></li>
+    <li><span class="tag doing">Próximo</span><div>Primeiro envio de teste à homologação da DSF, antes de o certificado vencer em 26/11<small>A 1ª tentativa não saiu: o certificado de segurança do próprio servidor de testes da DSF venceu hoje (13/11). O sistema recusa conexão insegura de propósito; tentar de novo quando a DSF renovar.</small></div></li>
     <li><span class="tag todo">Depois</span><div>Contrato v2 da DPS: endereço do tomador, intermediário e tipo de imunidade (destrava o B2B)</div></li>
     <li><span class="tag block">Você</span><div>Envio real à produção restrita (precisa do CNPJ e do certificado A1)</div></li>
   </ul>

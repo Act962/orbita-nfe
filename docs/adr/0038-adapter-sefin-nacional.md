@@ -41,7 +41,7 @@ Até aqui, o worker-fiscal só falava com o simulador. Em 2026-11-13 o Swagger d
    - **E0840:** o cancelamento não é recebido porque já existe evento de cancelamento vinculado. A matriz "RN EVENTOSxEVENTOS" proíbe cancelamento sobre cancelamento, sobre cancelamento por substituição e sobre cancelamento por ofício.
    - Nos dois casos o resultado é `ALREADY_EXISTS`, que leva à consulta e nunca a "não cancelada". **Limite conhecido:** se o E0840 vier de outro tipo de cancelamento (substituição ou ofício), a consulta do 101101 não acha nada, e o pedido fica em `UNKNOWN` para o operador. Confirmar no primeiro caso real.
 5. **`nSeqEvento`.** A consulta de evento exige o número sequencial. A porta passou a recebê-lo, e o cancelamento usa **1**: "Para os eventos que ocorrem somente uma vez, como é o caso do cancelamento, o nSeqEvento = 001" (Anexo II, aba LEIAUTE).
-6. **Configuração:** `NFSE_GATEWAY=sefin` no worker-fiscal, além de `none` e `simulator`. O worker registra no log que está falando com a SEFIN real e quais URLs estão no perfil.
+6. **Configuração:** `NFSE_GATEWAY=real` (era `sefin`, renomeado no ADR-0039) no worker-fiscal, além de `none` e `simulator`. O worker registra no log que está falando com a SEFIN real e quais URLs estão no perfil.
 
 ## Primeiro envio real (2026-11-13, produção restrita)
 DPS fictícia (R$ 1,00, série 900, sem tomador) da empresa de teste, não optante, de Teresina. Foi enviada com `npm run sefin:test` e o mesmo preparador e adapter do worker.

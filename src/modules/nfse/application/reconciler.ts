@@ -3,7 +3,7 @@ import { BusinessRuleError } from '../../../shared/application/errors.js';
 import type { UnitOfWork } from '../../../shared/application/unit-of-work.js';
 import { afterLookup, DEFAULT_RECONCILIATION_POLICY, nextStep, type LookupResult, type ReconciliationPolicy } from '../domain/reconciliation.js';
 import type { CredentialAccess, LookupOutcome, NfseGateway, NfseWorkerRepositories } from './ports.js';
-import { completeSubstitution, publishStatus } from './submission-processor.js';
+import { channelOf, completeSubstitution, publishStatus } from './submission-processor.js';
 
 export type ReconcileResult =
   | { readonly kind: 'SKIPPED'; readonly reason: 'NOT_FOUND' | 'NOT_UNKNOWN' | 'NO_ATTEMPT' }
@@ -57,7 +57,7 @@ export class Reconciler {
     let lookup: LookupOutcome;
     try {
       lookup = await this.credentials.withCredential(companyId, invoice.establishmentId, (credential) =>
-        this.gateway.findByDpsId(invoice.dpsId, { environment: invoice.environment, credential }),
+        this.gateway.findByDpsId(invoice.dpsId, { environment: invoice.environment, channel: channelOf(invoice), credential }),
       );
     } catch (error) {
       // Sem certificado não há consulta (mTLS): conta como erro de consulta e tenta depois.

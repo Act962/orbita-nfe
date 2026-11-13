@@ -45,10 +45,13 @@ export type {
 } from './application/ports.js';
 export { nfseApiUnitOfWork, nfseWorkerUnitOfWork, NFSE_CONSTRAINTS } from './infrastructure/persistence/repositories.js';
 export { SimulatedNfseGateway, type LookupMode, type SubmitMode } from './infrastructure/gateways/simulated-gateway.js';
-export { NationalNfseGateway, SEFIN_NACIONAL, type NationalEndpointProfile } from './infrastructure/gateways/national/national-gateway.js';
+export { ChannelRoutedGateway } from './infrastructure/gateways/channel-router.js';
+export { NationalNfseGateway, SEFIN_NACIONAL, TERESINA_DSF, type NationalEndpointProfile } from './infrastructure/gateways/national/national-gateway.js';
 export { XmlDpsPreparer, XmlDpsValidator, formatDhEmi } from './infrastructure/dps/xml-dps-preparer.js';
 export { buildDpsId } from './domain/dps-id.js';
 export { checkDpsRules } from './domain/dps-rules.js';
+export { checkChannelRules } from './domain/channel-rules.js';
+export { layoutEnvironmentOf } from './domain/routing.js';
 export { brasiliaDate } from './domain/dps.js';
 export { buildDpsXml, LAYOUT_PROFILES } from './infrastructure/dps/dps-xml.js';
 export type { DpsData } from './domain/dps.js';

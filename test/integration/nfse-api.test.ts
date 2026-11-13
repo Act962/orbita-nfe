@@ -223,8 +223,32 @@ describe('roteamento pela competência (ADR-0028)', () => {
   });
 
   it.each([
-    ['competência anterior a 11/2026 (emissor municipal)', { competenceDate: '2026-10-31' }, 'ROUTE_CHANNEL_NOT_SUPPORTED'],
-    ['não optante em Teresina (emissor municipal)', { provider: { simplesNacionalOption: '1', specialTaxRegime: '0' } }, 'ROUTE_CHANNEL_NOT_SUPPORTED'],
+    ['não optante em Teresina', { provider: { simplesNacionalOption: '1', specialTaxRegime: '0' } }, 'rota-dsf-nao-optante'],
+    ['competência anterior a 11/2026', { competenceDate: '2026-10-31' }, 'rota-dsf-competencia'],
+  ])('%s → canal do emissor municipal (DSF, ADR-0039): cTribMun obrigatório (THE-001); com ele, aceita no canal DSF e o worker monta no pacote de 09/02/2026', async (_name, overrides, keyBase) => {
+    const without = await post({ establishmentId, ...sampleDpsData(overrides) }, `${keyBase}-sem`);
+    expect(without.statusCode, without.body).toBe(422);
+    expect(problemCode(without)).toBe('NFSE_RULES_VIOLATED');
+    expect(without.json<{ issues: { code: string; ruleId: string }[] }>().issues).toContainEqual(expect.objectContaining({ code: 'THE-001', ruleId: 'NFSE-TERESINA-DSF' }));
+    expect(await invoiceRow(`${keyBase}-sem`)).toBeUndefined();
+
+    const service = { ...sampleDpsData().service, municipalTaxCode: '001' };
+    const accepted = await post({ establishmentId, ...sampleDpsData({ ...overrides, service }) }, `${keyBase}-com`);
+    expect(accepted.statusCode, accepted.body).toBe(202);
+    expect(await invoiceRow(`${keyBase}-com`)).toEqual({ routing_channel: 'MUNICIPAL_TERESINA_DSF', routing_table_version: 'nfse-routing/2026-11-10' });
+
+    const id = accepted.json<{ id: string }>().id;
+    expect(await fiscalWorker().processor.process(companyId, id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'AUTHORIZED' });
+    const stored = await new CompanyTransactions(worker.db).run(companyId, (tx) =>
+      tx.execute<{ layout_package: string; signed_dps: string }>(sql`select layout_package, signed_dps from service_invoices where id = ${id}`),
+    );
+    const row = stored.rows[0];
+    expect(row?.layout_package).toBe('nfse-nacional/1.01-20260209');
+    expect(row?.signed_dps).not.toContain('<finNFSe>');
+    expect((await catalog.validate(row?.layout_package ?? '', 'DPS_v1.01.xsd', row?.signed_dps ?? '')).errors).toEqual([]);
+  }, 60_000);
+
+  it.each([
     ['ME/EPP fora do sublimite (linha a confirmar)', { provider: { simplesNacionalOption: '3', simplesNacionalRegime: '2', specialTaxRegime: '0' } }, 'ROUTE_PENDING_CONFIRMATION'],
     ['ME/EPP sem o regime informado', { provider: { simplesNacionalOption: '3', specialTaxRegime: '0' } }, 'ROUTE_REGIME_REQUIRED'],
     ['MEI com competência anterior em Teresina (regras conflitantes)', { competenceDate: '2026-10-31', provider: { simplesNacionalOption: '2', specialTaxRegime: '0' } }, 'ROUTE_AMBIGUOUS'],

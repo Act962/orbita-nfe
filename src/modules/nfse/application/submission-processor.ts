@@ -117,7 +117,7 @@ export class SubmissionProcessor {
 
     let outcome: SubmissionOutcome;
     try {
-      outcome = await this.gateway.submit(signed, { environment: invoice.environment, credential });
+      outcome = await this.gateway.submit(signed, { environment: invoice.environment, channel: channelOf(invoice), credential });
     } catch {
       // Exceção inesperada do adapter depois do SENDING: não há prova de que não saiu.
       outcome = { kind: 'UNKNOWN', errorCode: 'GATEWAY_EXCEPTION' };
@@ -293,6 +293,11 @@ export async function completeSubstitution(r: NfseWorkerRepositories, substitute
     subject: { type: 'service_invoice', id: substitute.id },
     details: { substitutesInvoiceId: substitute.substitution.invoiceId, originalStatus: original?.status ?? 'NOT_FOUND' },
   });
+}
+
+/** Notas anteriores ao roteamento (migration 0015) não têm canal: eram todas da SEFIN Nacional. */
+export function channelOf(invoice: Pick<ServiceInvoice, 'routingChannel'>): string {
+  return invoice.routingChannel ?? 'NATIONAL_SEFIN';
 }
 
 const sha256 = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');

@@ -5,7 +5,7 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestPki, type TestPki } from '../../../../../../test/support/tls-test-pki.js';
 import type { GatewayContext } from '../../../application/ports.js';
-import { NationalNfseGateway, pack, SEFIN_NACIONAL } from './national-gateway.js';
+import { NationalNfseGateway, pack, SEFIN_NACIONAL, TERESINA_DSF, type NationalEndpointProfile } from './national-gateway.js';
 
 /**
  * Cliente do padrão nacional contra uma SEFIN FALSA local (HTTPS com mTLS), que responde nos
@@ -21,6 +21,7 @@ type Reply = { status: number; body?: unknown; hang?: true; raw?: string };
 let pki: TestPki;
 let server: Server;
 let base: string;
+let origin: string;
 let next: Record<string, Reply> = {};
 let seen: { method: string; path: string; body: string; clientCert: boolean }[] = [];
 
@@ -33,7 +34,8 @@ beforeAll(async () => {
     let body = '';
     req.on('data', (c: Buffer) => (body += c.toString()));
     req.on('end', () => {
-      const path = (req.url ?? '').replace('/SefinNacional', '');
+      // Tira o basePath do perfil (/SefinNacional ou /notafiscal-ws).
+      const path = (req.url ?? '').replace(/^\/[^/]+/, '');
       seen.push({ method: req.method ?? '', path, body, clientCert: (req.socket as { authorized?: boolean }).authorized === true });
       const reply = next[`${req.method} ${path}`] ?? { status: 404, body: { ...meta, erro: { codigo: 'E9999', descricao: 'não programado' } } };
       if (reply.hang) return;
@@ -41,7 +43,8 @@ beforeAll(async () => {
     });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  base = `https://localhost:${(server.address() as AddressInfo).port}/SefinNacional`;
+  origin = `https://localhost:${(server.address() as AddressInfo).port}`;
+  base = `${origin}/SefinNacional`;
 });
 
 afterAll(async () => {
@@ -53,9 +56,14 @@ beforeEach(() => {
   seen = [];
 });
 
-const context = (): GatewayContext => ({ environment: 'HOMOLOGATION', credential: { privateKey: createPrivateKey(pki.client.keyPem), certificatePem: pki.client.certPem } });
+const context = (): GatewayContext => ({
+  environment: 'HOMOLOGATION',
+  channel: 'NATIONAL_SEFIN',
+  credential: { privateKey: createPrivateKey(pki.client.keyPem), certificatePem: pki.client.certPem },
+});
 const LIMITS = { connectTimeoutMs: 2000, headersTimeoutMs: 800, bodyTimeoutMs: 800, maxResponseBytes: 1024 * 1024, maxXmlBytes: 1024 * 1024 };
-const gateway = (url = base) => new NationalNfseGateway({ id: 'sefin-teste', baseUrls: { HOMOLOGATION: url }, serverTrustPem: pki.ca.caCertPem }, LIMITS);
+const gateway = (url = base, profile: NationalEndpointProfile = SEFIN_NACIONAL) =>
+  new NationalNfseGateway({ ...profile, baseUrls: { HOMOLOGATION: url }, serverTrustPem: pki.ca.caCertPem }, LIMITS);
 
 describe('NationalNfseGateway.submit (POST /nfse)', () => {
   it('201: envia { dpsXmlGZipB64 } com mTLS e devolve chave e XML da NFS-e descompactados', async () => {
@@ -169,8 +177,25 @@ describe('NationalNfseGateway: eventos', () => {
   });
 });
 
-describe('perfil da SEFIN Nacional', () => {
-  it('só a produção restrita, com o basePath do Swagger', () => {
+describe('perfis', () => {
+  it('SEFIN Nacional: só a produção restrita, com o basePath do Swagger', () => {
     expect(SEFIN_NACIONAL.baseUrls).toEqual({ HOMOLOGATION: 'https://sefin.producaorestrita.nfse.gov.br/SefinNacional' });
+  });
+
+  it('Teresina (DSF): só a homologação do Guia V7, sem produção', () => {
+    expect(TERESINA_DSF.baseUrls).toEqual({ HOMOLOGATION: 'https://nfse2-the.dsfweb.com.br/notafiscal-ws' });
+  });
+
+  it('DSF: consulta pela DPS em /nfse/dps/{id}, emissão em /nfse; sem consulta de evento', async () => {
+    const dsf = gateway(`${origin}/notafiscal-ws`, TERESINA_DSF);
+    next[`GET /nfse/dps/${DPS_ID}`] = { status: 200, body: { ...meta, idDps: DPS_ID, chaveAcesso: KEY } };
+    next[`GET /nfse/${KEY}`] = { status: 200, body: { ...meta, chaveAcesso: KEY, nfseXmlGZipB64: gz(NFSE) } };
+    expect(await dsf.findByDpsId(DPS_ID, context())).toEqual({ kind: 'FOUND', accessKey: KEY, nfseXml: NFSE });
+    next['POST /nfse'] = { status: 201, body: { ...meta, idDps: DPS_ID, chaveAcesso: KEY, nfseXmlGZipB64: gz(NFSE) } };
+    expect((await dsf.submit(DPS, context())).kind).toBe('AUTHORIZED');
+    expect(seen.map((s) => `${s.method} ${s.path}`)).toEqual([`GET /nfse/dps/${DPS_ID}`, `GET /nfse/${KEY}`, 'POST /nfse']);
+    seen = [];
+    expect(await dsf.findEvent(KEY, '101101', 1, context())).toEqual({ kind: 'ERROR', errorCode: 'EVENT_LOOKUP_NOT_SUPPORTED' });
+    expect(seen).toEqual([]);
   });
 });

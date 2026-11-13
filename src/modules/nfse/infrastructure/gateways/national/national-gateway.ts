@@ -21,17 +21,53 @@ export interface NationalEndpointProfile {
   readonly id: string;
   /** URL base por ambiente (com o `basePath`). Ambiente sem URL não é atendido: nada sai. */
   readonly baseUrls: Partial<Readonly<Record<FiscalEnvironment, string>>>;
+  /** Caminhos relativos à URL base (ADR-0029 item 1: o perfil é dado, não código). */
+  readonly paths: {
+    readonly submit: string;
+    readonly dpsLookup: (dpsId: string) => string;
+    readonly nfse: (accessKey: string) => string;
+    readonly events: (accessKey: string) => string;
+    /** Ausente = o autorizador não oferece consulta de evento. */
+    readonly eventLookup?: (accessKey: string, eventType: string, sequence: number) => string;
+  };
   /** ACs confiáveis para o certificado do SERVIDOR. Ausente = repositório padrão do Node. */
   readonly serverTrustPem?: string;
 }
 
 /**
- * Perfil da SEFIN Nacional. Só a produção restrita (homologação) está configurada: o Swagger de
- * produção não foi lido e a regra do projeto é não emitir em produção sem habilitação explícita.
+ * Perfil da SEFIN Nacional (Swagger da produção restrita, 2026-11-13). Só a produção restrita
+ * (homologação) está configurada: o Swagger de produção não foi lido e a regra do projeto é não
+ * emitir em produção sem habilitação explícita.
  */
 export const SEFIN_NACIONAL: NationalEndpointProfile = {
   id: 'sefin-nacional',
   baseUrls: { HOMOLOGATION: 'https://sefin.producaorestrita.nfse.gov.br/SefinNacional' },
+  paths: {
+    submit: '/nfse',
+    dpsLookup: (id) => `/dps/${id}`,
+    nfse: (key) => `/nfse/${key}`,
+    events: (key) => `/nfse/${key}/eventos`,
+    eventLookup: (key, type, sequence) => `/nfse/${key}/eventos/${type}/${sequence}`,
+  },
+};
+
+/**
+ * Perfil do emissor municipal de Teresina, operado pela DSF, que segue o contrato do padrão
+ * nacional (Guia de Utilização da API THE V7, 20/08/2026, SHA-256 5a75fca0…42ff; ADR-0039).
+ * - Homologação: `https://nfse2-the.dsfweb.com.br`, caminhos sob `/notafiscal-ws`.
+ * - Consulta pela DPS em `/nfse/dps/{id}` (não `/dps/{id}`).
+ * - O Guia não documenta consulta de evento.
+ * - Produção (`https://nfseapi.teresina.pi.gov.br`) NÃO está configurada.
+ */
+export const TERESINA_DSF: NationalEndpointProfile = {
+  id: 'teresina-dsf',
+  baseUrls: { HOMOLOGATION: 'https://nfse2-the.dsfweb.com.br/notafiscal-ws' },
+  paths: {
+    submit: '/nfse',
+    dpsLookup: (id) => `/nfse/dps/${id}`,
+    nfse: (key) => `/nfse/${key}`,
+    events: (key) => `/nfse/${key}/eventos`,
+  },
 };
 
 export const DEFAULT_NATIONAL_LIMITS: TransportLimits & { readonly maxXmlBytes: number } = {
@@ -74,7 +110,7 @@ export class NationalNfseGateway implements NfseGateway {
     const base = this.profile.baseUrls[context.environment];
     if (base === undefined) return { kind: 'NOT_SENT', errorCode: 'NFSE_ENVIRONMENT_NOT_CONFIGURED' };
     const sentId = /<infDPS[^>]*\sId="(DPS[0-9A-Z]{42})"/.exec(signedDps)?.[1];
-    const outcome = await this.send(context, { method: 'POST', url: `${base}/nfse`, body: JSON.stringify({ dpsXmlGZipB64: pack(signedDps) }) });
+    const outcome = await this.send(context, { method: 'POST', url: `${base}${this.profile.paths.submit}`, body: JSON.stringify({ dpsXmlGZipB64: pack(signedDps) }) });
     if (outcome.kind !== 'RESPONSE') return outcome.kind === 'NOT_SENT' ? { kind: 'NOT_SENT', errorCode: outcome.errorCode } : { kind: 'UNKNOWN', errorCode: outcome.errorCode };
 
     const json = parseJson(outcome.body);
@@ -100,13 +136,13 @@ export class NationalNfseGateway implements NfseGateway {
     const base = this.profile.baseUrls[context.environment];
     if (base === undefined) return { kind: 'ERROR', errorCode: 'NFSE_ENVIRONMENT_NOT_CONFIGURED' };
     if (!DPS_ID.test(dpsId)) return { kind: 'ERROR', errorCode: 'DPS_ID_INVALID' };
-    const dps = await this.send(context, { method: 'GET', url: `${base}/dps/${dpsId}` });
+    const dps = await this.send(context, { method: 'GET', url: `${base}${this.profile.paths.dpsLookup(dpsId)}` });
     if (dps.kind !== 'RESPONSE') return { kind: 'ERROR', errorCode: dps.errorCode };
     if (dps.status === 404) return { kind: 'NOT_FOUND' };
     const accessKey = dps.status === 200 ? stringField(parseJson(dps.body), 'chaveAcesso') : undefined;
     if (accessKey === undefined || !ACCESS_KEY.test(accessKey)) return { kind: 'ERROR', errorCode: dps.status === 200 ? 'RESPONSE_UNREADABLE' : `HTTP_${dps.status}` };
 
-    const nfse = await this.send(context, { method: 'GET', url: `${base}/nfse/${accessKey}` });
+    const nfse = await this.send(context, { method: 'GET', url: `${base}${this.profile.paths.nfse(accessKey)}` });
     if (nfse.kind !== 'RESPONSE') return { kind: 'ERROR', errorCode: nfse.errorCode };
     const nfseXml = nfse.status === 200 ? this.unpack(stringField(parseJson(nfse.body), 'nfseXmlGZipB64')) : undefined;
     // A DPS existe, mas o XML não veio: erro de consulta (tenta de novo), nunca NOT_FOUND.
@@ -120,7 +156,7 @@ export class NationalNfseGateway implements NfseGateway {
     if (!ACCESS_KEY.test(accessKey)) return { kind: 'NOT_SENT', errorCode: 'ACCESS_KEY_INVALID' };
     const outcome = await this.send(context, {
       method: 'POST',
-      url: `${base}/nfse/${accessKey}/eventos`,
+      url: `${base}${this.profile.paths.events(accessKey)}`,
       body: JSON.stringify({ pedidoRegistroEventoXmlGZipB64: pack(signedEvent) }),
     });
     if (outcome.kind !== 'RESPONSE') return outcome.kind === 'NOT_SENT' ? { kind: 'NOT_SENT', errorCode: outcome.errorCode } : { kind: 'UNKNOWN', errorCode: outcome.errorCode };
@@ -142,10 +178,11 @@ export class NationalNfseGateway implements NfseGateway {
   async findEvent(accessKey: string, eventType: string, sequence: number, context: GatewayContext): Promise<EventLookupOutcome> {
     const base = this.profile.baseUrls[context.environment];
     if (base === undefined) return { kind: 'ERROR', errorCode: 'NFSE_ENVIRONMENT_NOT_CONFIGURED' };
+    if (this.profile.paths.eventLookup === undefined) return { kind: 'ERROR', errorCode: 'EVENT_LOOKUP_NOT_SUPPORTED' };
     if (!ACCESS_KEY.test(accessKey) || !/^[0-9]{6}$/.test(eventType) || !Number.isInteger(sequence) || sequence < 1) {
       return { kind: 'ERROR', errorCode: 'EVENT_QUERY_INVALID' };
     }
-    const outcome = await this.send(context, { method: 'GET', url: `${base}/nfse/${accessKey}/eventos/${eventType}/${sequence}` });
+    const outcome = await this.send(context, { method: 'GET', url: `${base}${this.profile.paths.eventLookup(accessKey, eventType, sequence)}` });
     if (outcome.kind !== 'RESPONSE') return { kind: 'ERROR', errorCode: outcome.errorCode };
     if (outcome.status === 404) return { kind: 'NOT_FOUND' };
     const eventXml = outcome.status === 200 ? this.unpack(stringField(parseJson(outcome.body), 'eventoXmlGZipB64')) : undefined;

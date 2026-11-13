@@ -32,8 +32,8 @@ describe('separação de segredos por processo (ADR-0021)', () => {
     expect(loadFiscalWorkerConfig(FISCAL).NFSE_GATEWAY).toBe('none');
     expect(loadFiscalWorkerConfig({ ...FISCAL, NFSE_GATEWAY: 'simulator' }).NFSE_GATEWAY).toBe('simulator');
     expect(() => loadFiscalWorkerConfig({ ...FISCAL, NODE_ENV: 'production', NFSE_GATEWAY: 'simulator' })).toThrow(/NFSE_GATEWAY/);
-    expect(loadFiscalWorkerConfig({ ...FISCAL, NFSE_GATEWAY: 'sefin' }).NFSE_GATEWAY).toBe('sefin');
-    expect(() => loadFiscalWorkerConfig({ ...FISCAL, NFSE_GATEWAY: 'sefin-producao' })).toThrow(/NFSE_GATEWAY/);
+    expect(loadFiscalWorkerConfig({ ...FISCAL, NFSE_GATEWAY: 'real' }).NFSE_GATEWAY).toBe('real');
+    expect(() => loadFiscalWorkerConfig({ ...FISCAL, NFSE_GATEWAY: 'sefin' })).toThrow(/NFSE_GATEWAY/);
   });
 
   it('worker-general sobe com a chave de webhooks e, em produção, recusa a KEK dos certificados', () => {

@@ -33,10 +33,11 @@ const FiscalWorkerSchema = z
     /**
      * Autorizador da NFS-e (ADR-0032/0033). `none`: as filas nfse.* ficam sem handler.
      * `simulator`: autorizador SIMULADO em memória, só fora de produção.
-     * `sefin`: SEFIN Nacional real (ADR-0038). Só a PRODUÇÃO RESTRITA está no perfil: nota de
-     * produção não é enviada (NOT_SENT local) até o Swagger de produção ser lido e habilitado.
+     * `real`: autorizadores reais, escolhidos pelo canal da nota (ADR-0038 e ADR-0039): SEFIN
+     * Nacional (produção restrita) e emissor municipal de Teresina (homologação da DSF). Só os
+     * ambientes de HOMOLOGAÇÃO estão nos perfis: nota de produção não sai (NOT_SENT local).
      */
-    NFSE_GATEWAY: z.enum(['none', 'simulator', 'sefin']).default('none'),
+    NFSE_GATEWAY: z.enum(['none', 'simulator', 'real']).default('none'),
   })
   .refine((c) => !(c.NODE_ENV === 'production' && c.NFSE_GATEWAY === 'simulator'), {
     path: ['NFSE_GATEWAY'],

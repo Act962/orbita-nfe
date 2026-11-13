@@ -2,6 +2,7 @@ import type { FiscalSchemaCatalog, SchemaEnvironment } from '../../../../shared/
 import { SIGNATURE_PROFILES, signEnveloped } from '../../../../shared/infrastructure/xml/xml-signer.js';
 import type { DpsPreparer, DpsValidator, FiscalEnvironment, IssuerCredential, PreparationResult, ServiceInvoice } from '../../application/ports.js';
 import { issuerFromDpsId, tpAmbOf, type DpsData } from '../../domain/dps.js';
+import { layoutEnvironmentOf } from '../../domain/routing.js';
 import { buildDpsXml, LayoutNotSupportedError } from './dps-xml.js';
 
 const DOCUMENT = 'nfse-nacional';
@@ -36,7 +37,8 @@ export class XmlDpsPreparer implements DpsPreparer {
   async prepare(invoice: ServiceInvoice, credential: IssuerCredential): Promise<PreparationResult> {
     const issuer = issuerFromDpsId(invoice.dpsId);
     if (issuer === undefined) return { ok: false, code: 'DPS_ID_UNSUPPORTED' };
-    const layoutPackage = this.catalog.forEnvironment(DOCUMENT, schemaEnvironmentOf(invoice.environment)).id;
+    // O pacote é o do canal (ADR-0039): a DSF usa o de 09/02/2026 também na homologação.
+    const layoutPackage = this.catalog.forEnvironment(DOCUMENT, schemaEnvironmentOf(layoutEnvironmentOf(invoice.routingChannel ?? 'NATIONAL_SEFIN', invoice.environment))).id;
     let xml: string;
     try {
       xml = buildDpsXml({
