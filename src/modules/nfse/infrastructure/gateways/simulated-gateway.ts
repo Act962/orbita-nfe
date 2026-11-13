@@ -10,6 +10,10 @@ import type { EventLookupOutcome, EventOutcome, LookupOutcome, NfseGateway, Subm
  * 50 dígitos e passa nos padrões dos dois pacotes (TSChaveNFSe e, na produção restrita,
  * TSIdPedRegEvt, que exige 1 ou 2 na 9ª posição), mas começa com "0000000", que não é código IBGE
  * de município: nunca se confunde com uma chave real.
+ *
+ * Substituição (ADR-0036): uma DPS com `chSubstda` só é autorizada se a chave for de uma nota
+ * autorizada aqui (senão E0044), ainda não cancelada nem substituída (senão E0046, Anexo I v1.01).
+ * Ao autorizar, o simulador registra sozinho o e105102 na original, como a SEFIN.
  */
 export type SubmitMode =
   /** Recebe e autoriza. */
@@ -118,7 +122,19 @@ export class SimulatedNfseGateway implements NfseGateway {
 
     if (this.authorized.has(dpsId)) return Promise.resolve({ kind: 'ALREADY_EXISTS' });
     if (mode === 'REJECT') return Promise.resolve({ kind: 'REJECTED', ...this.rejection });
+    const substituted = /<chSubstda>([0-9A-Z]{50})<\/chSubstda>/.exec(signedDps)?.[1];
+    if (substituted !== undefined) {
+      if (![...this.authorized.values()].some((a) => a.accessKey === substituted)) {
+        return Promise.resolve({ kind: 'REJECTED', code: 'E0044', message: 'NFS-e não existe na base de dados do autorizador (simulado).' });
+      }
+      if (this.events.has(`${substituted}:101101`) || this.events.has(`${substituted}:105102`)) {
+        return Promise.resolve({ kind: 'REJECTED', code: 'E0046', message: 'NFS-e cancelada não pode ser substituída (simulado).' });
+      }
+    }
     const authorization = this.authorize(dpsId);
+    if (substituted !== undefined) {
+      this.events.set(`${substituted}:105102`, `<EventoSimulado chave="${substituted}" tipo="105102" substituta="${authorization.accessKey}"/>`);
+    }
     if (mode === 'PROCESS_THEN_DROP') return Promise.resolve({ kind: 'UNKNOWN', errorCode: 'ECONNRESET' });
     return Promise.resolve({ kind: 'AUTHORIZED', ...authorization });
   }

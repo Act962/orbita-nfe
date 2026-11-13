@@ -70,9 +70,15 @@ export class CancellationService {
   }
 
   private async requestIn(r: NfseApiRepositories, input: RequestCancellation, requestHash: string, context: AuditContext): Promise<CancellationRequestResult> {
+    // Serializa com a substituição da mesma nota (ADR-0036 item 3).
+    await r.invoices.lockForEvents(input.invoiceId);
     const invoice = await visibleInvoice(r, input.clientApplicationId, input.environment, input.invoiceId);
     const active = await r.cancellations.findActive(invoice.id);
     if (active !== undefined) return replay(active, requestHash);
+    const substitute = await r.invoices.findActiveSubstitute(invoice.id);
+    if (substitute !== undefined && invoice.status === 'AUTHORIZED') {
+      throw new ConflictError('SUBSTITUTION_IN_PROGRESS', `A NFS-e tem substituição em andamento (${substitute.id}, ${substitute.status}): não pode ser cancelada.`);
+    }
     if (invoice.status !== 'AUTHORIZED') {
       throw new BusinessRuleError('SERVICE_INVOICE_NOT_AUTHORIZED', `Só NFS-e autorizada pode ser cancelada (a nota está em ${invoice.status}).`);
     }

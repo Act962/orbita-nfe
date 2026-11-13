@@ -50,6 +50,7 @@ export class XmlDpsPreparer implements DpsPreparer {
         issuerMunicipalityCode: issuer.municipalityCode,
         issuerCnpj: issuer.cnpj,
         dps: invoice.payload as unknown as DpsData,
+        substitution: invoice.substitution ?? undefined,
       });
     } catch (error) {
       if (error instanceof LayoutNotSupportedError) return { ok: false, code: 'LAYOUT_NOT_SUPPORTED' };

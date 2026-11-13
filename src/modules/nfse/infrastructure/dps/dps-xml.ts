@@ -34,6 +34,8 @@ export interface DpsXmlInput {
   readonly issuerMunicipalityCode: string;
   readonly issuerCnpj: string;
   readonly dps: DpsData;
+  /** Grupo `subst` (TCSubstituicao), só na nota substituta (ADR-0036). */
+  readonly substitution?: { readonly accessKey: string; readonly reasonCode: string; readonly reasonText: string | null } | undefined;
 }
 
 export class LayoutNotSupportedError extends Error {
@@ -91,6 +93,10 @@ export function buildDpsXml(input: DpsXmlInput): string {
     el('tpEmit', '1') + // 1 - Prestador: o motor emite em nome do prestador (estabelecimento).
     (layout.finNFSe ? el('finNFSe', '0') : '') +
     el('cLocEmi', input.issuerMunicipalityCode) +
+    // Mesma posição nos dois pacotes: depois de cLocEmi, antes de prest.
+    (input.substitution === undefined
+      ? ''
+      : group('subst', el('chSubstda', input.substitution.accessKey) + el('cMotivo', input.substitution.reasonCode) + opt('xMotivo', input.substitution.reasonText ?? undefined))) +
     group('prest', prest) +
     toma +
     serv +

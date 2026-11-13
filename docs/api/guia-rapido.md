@@ -1,7 +1,7 @@
 ---
 title: Guia rápido
 status: current
-last_updated: 2026-11-12
+last_updated: 2026-11-13
 ---
 
 # Guia rápido
@@ -179,3 +179,30 @@ Content-Type: application/json
   - `FAILED`: falha local antes de qualquer envio;
   - `UNKNOWN`: **em verificação. Não peça de novo.** O motor consulta o autorizador e resolve.
 - **Referência externa:** uma nota cancelada continua ocupando a `externalReference`. Para reemitir a mesma venda, use uma referência nova.
+
+## 9. Substituir NFS-e
+
+```http
+POST /v1/service-invoices/<id da original>/substitution
+Authorization: Bearer fk_test_...
+X-Company-Id: <empresa>
+Idempotency-Key: <chave nova>
+Content-Type: application/json
+
+{ "competenceDate": "2026-11-11", "provider": { ... }, "taker": { ... }, "service": { ... }, "values": { ... },
+  "substitution": { "reasonCode": "99", "reasonText": "Correção da descrição do serviço" } }
+```
+
+- **Escopo:** `nfse:issue`. Só nota `AUTHORIZED`, sem cancelamento em andamento.
+- **O corpo** é a DPS completa da nota nova (o mesmo contrato da emissão), sem `establishmentId`: a substituta sai do estabelecimento da original.
+- **O motivo é seu:**
+  - `reasonCode` (cMotivo): `01` Desenquadramento do Simples, `02` Enquadramento no Simples, `03` e `04` Inclusão e exclusão retroativa de imunidade/isenção, `05` Rejeição pelo tomador ou intermediário, `99` Outros;
+  - `reasonText` (xMotivo): de 15 a 255 caracteres, obrigatório com `99`.
+- **Campos que não podem mudar** dependem da opção pelo Simples da original e da substituta:
+  - substituta MEI ou ME/EPP: competência, documento do tomador (se a original tinha) e valor do serviço;
+  - substituta não optante: competência, `nationalTaxCode`, `municipalTaxCode` e município da prestação.
+  - Se mudar, a resposta é `422 SUBSTITUTION_LOCKED_FIELDS`, com cada campo em `issues[].field` e a regra do Anexo I em `issues[].code`.
+- **Resposta `202`** com a substituta em `PENDING`. A original continua `AUTHORIZED` até a substituta ser autorizada; então vira `SUBSTITUTED`, com `substitutedById`.
+  - Se a substituta for rejeitada (por exemplo, prazo do município), a original segue autorizada e você pode tentar de novo.
+  - Com a substituta em `UNKNOWN`, **não emita outra**: a resposta é `409 SUBSTITUTION_IN_PROGRESS` até o motor resolver.
+- **Referência externa:** a original substituída continua ocupando a `externalReference`. Use outra na substituta, ou nenhuma.

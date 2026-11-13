@@ -133,6 +133,7 @@ export class SubmissionProcessor {
             leaseUntil: null,
             authorization: { accessKey: outcome.accessKey, nfseXml: outcome.nfseXml, authorizedAt: at },
           });
+          await completeSubstitution(r, invoice, context);
           return;
         case 'REJECTED':
           await r.attempts.close(attempt.id, 'REJECTED', outcome.code, at);
@@ -235,8 +236,11 @@ export class SubmissionProcessor {
   }
 }
 
-const AUDIT_BY_STATUS: Record<'AUTHORIZED' | 'REJECTED' | 'FAILED' | 'UNKNOWN' | 'CANCELLED', CompanyAuditAction> = {
+type PublishedStatus = 'AUTHORIZED' | 'REJECTED' | 'FAILED' | 'UNKNOWN' | 'CANCELLED' | 'SUBSTITUTED';
+
+const AUDIT_BY_STATUS: Record<PublishedStatus, CompanyAuditAction> = {
   CANCELLED: 'service_invoice.cancelled',
+  SUBSTITUTED: 'service_invoice.substituted',
   AUTHORIZED: 'service_invoice.authorized',
   REJECTED: 'service_invoice.rejected',
   FAILED: 'service_invoice.failed',
@@ -247,10 +251,11 @@ const AUDIT_BY_STATUS: Record<'AUTHORIZED' | 'REJECTED' | 'FAILED' | 'UNKNOWN' |
 export async function publishStatus(
   r: Pick<NfseWorkerRepositories, 'audit' | 'events'>,
   invoice: ServiceInvoice,
-  status: 'AUTHORIZED' | 'REJECTED' | 'FAILED' | 'UNKNOWN' | 'CANCELLED',
+  status: PublishedStatus,
   context: AuditContext,
   extra: Readonly<Record<string, string>> = {},
 ): Promise<void> {
+  if (invoice.substitution !== null) extra = { substitutesInvoiceId: invoice.substitution.invoiceId, ...extra };
   await r.audit.record(context, { action: AUDIT_BY_STATUS[status], subject: { type: 'service_invoice', id: invoice.id }, details: { dpsId: invoice.dpsId, ...extra } });
   await r.events.publish({
     type: 'service_invoice.status_changed',
@@ -264,6 +269,29 @@ export async function publishStatus(
       ...extra,
     },
     correlationId: context.correlationId,
+  });
+}
+
+/**
+ * Depois que uma SUBSTITUTA vira AUTHORIZED (envio, consulta ou resolução manual), na mesma
+ * transação: original AUTHORIZED → SUBSTITUTED, com auditoria e webhook (ADR-0036 item 5). O
+ * autorizador já gerou o e105102; não há envio aqui.
+ *
+ * Nunca desfaz a autorização da substituta: se a original não estiver mais AUTHORIZED (não deveria
+ * acontecer, porque cancelamento e substituição são exclusivos), registra a inconsistência na
+ * auditoria e segue.
+ */
+export async function completeSubstitution(r: NfseWorkerRepositories, substitute: ServiceInvoice, context: AuditContext): Promise<void> {
+  if (substitute.substitution === null) return;
+  const original = await r.invoices.findById(substitute.substitution.invoiceId);
+  if (original !== undefined && (await r.invoices.changeStatus(original.id, 'AUTHORIZED', 'SUBSTITUTED', { substitutedBy: substitute.id }))) {
+    await publishStatus(r, original, 'SUBSTITUTED', context, { substitutedById: substitute.id });
+    return;
+  }
+  await r.audit.record(context, {
+    action: 'service_invoice.substitution_unlinked',
+    subject: { type: 'service_invoice', id: substitute.id },
+    details: { substitutesInvoiceId: substitute.substitution.invoiceId, originalStatus: original?.status ?? 'NOT_FOUND' },
   });
 }
 

@@ -1,6 +1,6 @@
 import { and, desc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
 import type { AuditTrail } from '../../../../shared/application/audit.js';
-import { ConflictError, NotFoundError } from '../../../../shared/application/errors.js';
+import { BusinessRuleError, ConflictError, NotFoundError } from '../../../../shared/application/errors.js';
 import type { JobScheduler } from '../../../../shared/application/job-queue.js';
 import type { EventOutbox } from '../../../../shared/application/outbox.js';
 import type { UnitOfWork } from '../../../../shared/application/unit-of-work.js';
@@ -23,6 +23,7 @@ import type {
 } from '../../application/ports.js';
 import { IDEMPOTENCY_RACE } from '../../application/service-invoice-service.js';
 import type { AttemptState, ServiceInvoiceStatus } from '../../domain/service-invoice.js';
+import type { SubstitutionReasonCode } from '../../domain/substitution.js';
 import { CANCELLATION_CONSTRAINTS, cancellationRepository, cancellationRequestRepository } from './cancellation-repositories.js';
 import { RESOLUTION_CONSTRAINTS, resolutionRepository } from './resolution-repositories.js';
 import { serviceInvoiceAttempts, serviceInvoices } from './schema.js';
@@ -33,6 +34,15 @@ export const NFSE_CONSTRAINTS: ConstraintErrorMap = {
   uq_service_invoices_external_reference: () =>
     new ConflictError('DOCUMENT_IN_PROGRESS', 'Já existe NFS-e em andamento com esta referência externa. Não reemita.'),
   fk_service_invoices_establishment: () => new NotFoundError('ESTABLISHMENT_NOT_FOUND', 'Estabelecimento não encontrado.'),
+  // Os pedidos sobre a mesma nota são serializados (lockForEvents): chegar aqui é defesa em profundidade.
+  uq_service_invoices_active_substitute: () =>
+    new ConflictError('SUBSTITUTION_IN_PROGRESS', 'Já existe nota substituta em andamento ou autorizada para esta NFS-e. Não emita outra.'),
+  ck_service_invoices_substitution_original: () =>
+    new BusinessRuleError('SERVICE_INVOICE_NOT_SUBSTITUTABLE', 'A NFS-e original não pode ser substituída por esta nota.'),
+  ck_service_invoices_substitution_cancellation: () =>
+    new ConflictError('CANCELLATION_IN_PROGRESS', 'A NFS-e tem pedido de cancelamento em andamento.'),
+  ck_service_invoice_cancellations_substitution: () =>
+    new ConflictError('SUBSTITUTION_IN_PROGRESS', 'A NFS-e tem substituição em andamento ou concluída.'),
   ...RESOLUTION_CONSTRAINTS,
   ...CANCELLATION_CONSTRAINTS,
 };
@@ -65,6 +75,16 @@ const toInvoice = (row: InvoiceRow): ServiceInvoice => ({
   rejectionCode: row.rejectionCode,
   rejectionMessage: row.rejectionMessage,
   failureCode: row.failureCode,
+  substitution:
+    row.substitutesInvoiceId === null || row.substitutionAccessKey === null || row.substitutionReasonCode === null
+      ? null
+      : {
+          invoiceId: row.substitutesInvoiceId,
+          accessKey: row.substitutionAccessKey,
+          reasonCode: row.substitutionReasonCode as SubstitutionReasonCode,
+          reasonText: row.substitutionReasonText,
+        },
+  substitutedById: row.substitutedByInvoiceId,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
 });
@@ -111,6 +131,11 @@ const invoiceColumns = {
   rejectionCode: serviceInvoices.rejectionCode,
   rejectionMessage: serviceInvoices.rejectionMessage,
   failureCode: serviceInvoices.failureCode,
+  substitutesInvoiceId: serviceInvoices.substitutesInvoiceId,
+  substitutionAccessKey: serviceInvoices.substitutionAccessKey,
+  substitutionReasonCode: serviceInvoices.substitutionReasonCode,
+  substitutionReasonText: serviceInvoices.substitutionReasonText,
+  substitutedByInvoiceId: serviceInvoices.substitutedByInvoiceId,
   createdAt: serviceInvoices.createdAt,
   updatedAt: serviceInvoices.updatedAt,
 };
@@ -150,13 +175,27 @@ export function serviceInvoiceRepository(tx: Transaction): ServiceInvoiceReposit
       // SQL explícito: a API só tem INSERT nas colunas do pedido (estado e datas ficam no padrão).
       await tx.execute(sql`
         insert into service_invoices (id, company_id, establishment_id, client_application_id, environment, series_id, series, number,
-          dps_id, idempotency_key, request_hash, external_reference, payload, routing_channel, routing_table_version)
+          dps_id, idempotency_key, request_hash, external_reference, payload, routing_channel, routing_table_version,
+          substitutes_invoice_id, substitution_access_key, substitution_reason_code, substitution_reason_text)
         values (${invoice.id}, ${invoice.companyId}, ${invoice.establishmentId}, ${invoice.clientApplicationId}, ${invoice.environment},
           ${invoice.seriesId}, ${invoice.series}, ${invoice.number}, ${invoice.dpsId}, ${invoice.idempotencyKey}, ${invoice.requestHash},
-          ${invoice.externalReference}, ${JSON.stringify(invoice.payload)}::jsonb, ${invoice.routingChannel}, ${invoice.routingTableVersion})`);
+          ${invoice.externalReference}, ${JSON.stringify(invoice.payload)}::jsonb, ${invoice.routingChannel}, ${invoice.routingTableVersion},
+          ${invoice.substitution?.invoiceId ?? null}, ${invoice.substitution?.accessKey ?? null}, ${invoice.substitution?.reasonCode ?? null},
+          ${invoice.substitution?.reasonText ?? null})`);
       const found = await selectInvoice(tx, eq(serviceInvoices.id, invoice.id));
       if (found === undefined) throw new Error('INSERT sem linha');
       return found;
+    },
+    async lockForEvents(invoiceId) {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`nfse-events:${invoiceId}`}, 0))`);
+    },
+    async findActiveSubstitute(originalId) {
+      const rows = await tx
+        .select(invoiceColumns)
+        .from(serviceInvoices)
+        .where(and(eq(serviceInvoices.substitutesInvoiceId, originalId), notInArray(serviceInvoices.status, ['REJECTED', 'FAILED'])))
+        .limit(1);
+      return rows[0] === undefined ? undefined : toInvoice(rows[0] as InvoiceRow);
     },
   };
 }
@@ -182,6 +221,7 @@ export function serviceInvoiceWorkerRepository(tx: Transaction): ServiceInvoiceW
             : { nfseAccessKey: change.authorization.accessKey, nfseXml: change.authorization.nfseXml, authorizedAt: change.authorization.authorizedAt }),
           ...(change.rejection === undefined ? {} : { rejectionCode: change.rejection.code, rejectionMessage: change.rejection.message }),
           ...(change.failureCode === undefined ? {} : { failureCode: change.failureCode }),
+          ...(change.substitutedBy === undefined ? {} : { substitutedByInvoiceId: change.substitutedBy }),
         })
         .where(and(eq(serviceInvoices.id, id), eq(serviceInvoices.status, from)))
         .returning({ id: serviceInvoices.id });

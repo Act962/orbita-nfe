@@ -70,6 +70,35 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Fase 2a, etapa 6 — substituição de NFS-e (2026-11-13)
+Decisão: [ADR-0036](adr/0036-substituicao-nfse.md).
+- [x] **API:**
+  - `POST /v1/service-invoices/{id}/substitution` (`nfse:issue`, `Idempotency-Key`), com o contrato v1 da DPS e o motivo do cliente (TSCodJustSubst e TSMotivo);
+  - status `SUBSTITUTED` e os campos `substitution` e `substitutedById` na nota;
+  - webhook `status_changed` liga as duas notas.
+- [x] **A substituta é uma NFS-e comum** com o grupo `subst` (depois de `cLocEmi`, nos dois pacotes): número próprio, mesmo write-ahead, `UNKNOWN` e reconciliação. A original só vira `SUBSTITUTED` na transação que autoriza a substituta, nos três caminhos (envio, consulta e resolução manual).
+- [x] **Nunca duas substitutas:**
+  - uma substituta viva por original (índice único);
+  - substituição e cancelamento da mesma nota são exclusivos, serializados por trava consultiva;
+  - uma substituta em `UNKNOWN` não libera outra.
+- [x] **Regras do Anexo I com fonte:**
+  - E0078 (motivo 99 com texto);
+  - campos travados pela opção pelo Simples (E0059–E0064 da produção restrita, E0060/E0061 da produção), campo a campo;
+  - E0042, E0046 e E0065 pelo estabelecimento, pelo status e pelo canal.
+  - O resto (prazo do município, eventos de terceiros) é do autorizador.
+- [x] **Achado:** o Anexo I da produção restrita reescreveu as regras de campos travados como uma matriz original → substituta. Ela confirma a leitura das regras de produção e diz que "subitem" é o `cTribNac` (R-41).
+- [x] **Banco:** migrations 0019 e 0020 (colunas imutáveis, CHECK, FK pela empresa, trigger no INSERT da substituta e do cancelamento, `SUBSTITUTED` só com substituta autorizada, grants mínimos).
+- [x] **Simulador:** recusa substituta de chave desconhecida (E0044) ou de nota cancelada/substituída (E0046) e registra o e105102 na original.
+- [x] **Testes:**
+  - domínio: a matriz inteira nos dois pacotes;
+  - XML com `subst` nos dois XSD, e o código de 1 posição recusado;
+  - integração: caminho feliz, repetição, exclusão com o cancelamento, rejeição, "processa e derruba", resolução manual, recusas, concorrência (20 substituições e 1 cancelamento, um vence) e travas do banco;
+  - ponta a ponta HTTP e matriz de isolamento com a rota nova.
+- [ ] Próximas etapas:
+  - regras L2/L3 com fonte;
+  - contrato v2;
+  - adapter da SEFIN (com o A1).
+
 ### Fase 2a, etapa 5 — cancelamento de NFS-e (2026-11-12)
 Decisão: [ADR-0035](adr/0035-cancelamento-nfse.md).
 - [x] **API:**
@@ -350,7 +379,8 @@ Decisões: [ADR-0032](adr/0032-nucleo-emissao-nfse.md). Fecha o "fluxo completo 
 10. ~~Fase 2a, etapa 3: resolução manual de `UNKNOWN` e alertas~~ ✔ (ADR-0034)
 11. ~~Fase 2a, etapa 4: roteamento Teresina (ADR-0028)~~ ✔
 12. ~~Fase 2a, etapa 5: cancelamento~~ ✔ (ADR-0035)
-13. Fase 2a, etapa 6: substituição e regras L2/L3 com fonte.
+13. ~~Fase 2a, etapa 6: substituição~~ ✔ (ADR-0036)
+14. Fase 2a, etapa 7: regras L2/L3 catalogadas com fonte e contrato v2 (endereço, intermediário, deduções, IBS/CBS).
 
    A parte fiscal (regras L3, adapter SEFIN real) espera os pré-requisitos do roadmap: CNPJ e A1 reais, contador e gate fiscal 1.
 
@@ -383,6 +413,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-10 | Piloto em Teresina pela SEFIN Nacional (Res. CGSN 191/2026); adapter municipal DSF na Fase 2b conforme demanda | 0017 (revisado) |
 | 2026-11-10 | Canal de NFS-e decidido pela data de competência, por tabela versionada com fonte | 0028 |
 | 2026-11-10 | Cliente único do padrão nacional com perfil de endpoint; reconciliação por Id da DPS antes de reenviar | 0029 |
+| 2026-11-13 | Substituição como NFS-e nova com `subst`; a original só vira SUBSTITUTED com a substituta autorizada; exclusiva com o cancelamento; campos travados pela matriz do Anexo I (na dúvida, trava a menos) | 0036 |
 | 2026-11-12 | Cancelamento assíncrono com write-ahead e UNKNOWN; um pedido ativo por nota; nota cancelada continua ocupando a referência externa | 0035 |
 | 2026-11-12 | Roteamento implementado como dado versionado; município = do estabelecimento; conflito entre linhas recusa (sem precedência implícita) | 0028 |
 | 2026-11-12 | Resolução manual de `UNKNOWN`: o operador pede, o worker-fiscal confere o XML oficial e decide; `NOT_ISSUED` retransmite o mesmo XML; alertas por idade com um job por nota | 0034 |

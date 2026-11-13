@@ -97,7 +97,7 @@ Estados internos comuns ao vocabulário do projeto, mas **cada modalidade define
 | `REJECTED` | autorizador retornou rejeição definitiva (código oficial guardado) |
 | `DENIED` | **(NF-e/NFC-e)** uso denegado — situação fiscal real, distinta de rejeição; número consumido |
 | `CANCELLED` | evento de cancelamento homologado pelo autorizador |
-| `SUBSTITUTED` | **(NFS-e)** substituída por outra NFS-e, quando o padrão permitir |
+| `SUBSTITUTED` | **(NFS-e)** substituída por outra NFS-e já autorizada (implementado, ADR-0036) |
 | `FAILED` | falha definitiva **comprovadamente anterior a qualquer transmissão** (ex.: certificado vencido, validação XSD local falhou, dados inconsistentes) |
 | `UNKNOWN` | pode ter chegado ao autorizador e não sabemos o resultado. Saída **somente por consulta** |
 | `CONTINGENCY_PENDING_SYNC` | **(NFC-e/NF-e em contingência)** emitido em contingência, pendente de transmissão/regularização |

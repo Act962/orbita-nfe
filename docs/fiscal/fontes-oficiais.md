@@ -54,3 +54,4 @@ Detalhes, links e status de cada item: [diagnóstico](nfse-teresina-api-municipa
 | 2026-11-10 | SEMF/DSF — Guia de Utilização da API THE | V7, 20/08/2026 | `5a75fca07c0779a4c9d14100ea84bb12f1ce4120b125455f876a27caca5742ff` | ADR-0014 (perfil de assinatura), ADR-0029 |
 | 2026-11-10 | SEMF/DSF — Guia do Emissor Municipal Web | V1, 01/07/2026 | `ec0957c4529ce1a3f0986c2e62c2ff96c619071f446988c23e9805ed02c510f8` | contexto |
 | 2026-11-10 | Portarias SEMF 20/2026 e 25/2026 (DOM 4.182 e 4.191) | 22/01/2026 e 04/02/2026 | `2cbaa636…66a7` / `9b98e888…026a` | ADR-0028 (substitui a linha de 2026-11-09 via fonte secundária) |
+| 2026-11-13 | Anexo I, produção e produção restrita (baixados de novo; hash igual ao registrado em 2026-11-10) | v1.01, 09/02/2026 e 20/10/2026 | `de5bc492…eeb7c` / `72b05981…2dd8` | ADR-0036: E0042–E0078 (substituição); E0059–E0064 da produção restrita (matriz dos campos travados) |

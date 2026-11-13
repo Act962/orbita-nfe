@@ -210,6 +210,59 @@ describe('roteamento pela competência (ADR-0028)', () => {
   });
 });
 
+describe('substituição pela API (ADR-0036)', () => {
+  const substitute = (id: string, body: Record<string, unknown>, idempotencyKey: string, apiKey = key) =>
+    t.app.inject({ method: 'POST', url: `/v1/service-invoices/${id}/substitution`, headers: { ...bearer(apiKey, companyId), 'idempotency-key': idempotencyKey }, payload: body });
+  const reason = { reasonCode: '99', reasonText: 'Correção da descrição do serviço' };
+
+  it('nota autorizada → 202 substituta PENDING → worker monta a DPS real com subst → AUTHORIZED; original SUBSTITUTED', async () => {
+    const issued = await post({ establishmentId, ...sampleDpsData() }, 'subst-e2e-1');
+    const originalId = issued.json<{ id: string }>().id;
+    const w = fiscalWorker();
+    await w.processor.process(companyId, originalId, WORKER);
+    const originalKey = (await get(originalId)).json<{ accessKey: string }>().accessKey;
+
+    const body = { ...sampleDpsData({ service: { ...sampleDpsData().service, description: 'Descricao corrigida' } }), substitution: reason };
+    const res = await substitute(originalId, body, 'subst-e2e-1-a');
+    expect(res.statusCode, res.body).toBe(202);
+    const accepted = res.json<{ id: string; status: string; substitution: unknown; establishmentId: string }>();
+    expect(accepted).toMatchObject({ status: 'PENDING', establishmentId, substitution: { serviceInvoiceId: originalId, reasonCode: '99', reasonText: reason.reasonText } });
+    expect(res.headers.location).toBe(`/v1/service-invoices/${accepted.id}`);
+    expect((await substitute(originalId, body, 'subst-e2e-1-a')).statusCode).toBe(200);
+
+    expect(await w.processor.process(companyId, accepted.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'AUTHORIZED' });
+    expect((await get(originalId)).json()).toMatchObject({ status: 'SUBSTITUTED', substitutedById: accepted.id });
+    expect((await get(accepted.id)).json()).toMatchObject({ status: 'AUTHORIZED', substitutedById: null });
+
+    const stored = await new CompanyTransactions(worker.db).run(companyId, (tx) =>
+      tx.execute<{ signed_dps: string; layout_package: string }>(sql`select signed_dps, layout_package from service_invoices where id = ${accepted.id}`),
+    );
+    const row = stored.rows[0];
+    if (row === undefined) throw new Error('substituta não encontrada');
+    expect(row.signed_dps).toContain(`<subst><chSubstda>${originalKey}</chSubstda><cMotivo>99</cMotivo>`);
+    expect((await catalog.validate(row.layout_package, 'DPS_v1.01.xsd', row.signed_dps)).errors).toEqual([]);
+  }, 60_000);
+
+  it('motivo fora do XSD ou 99 sem texto → 400; campo travado (E0063) → 422 com o campo; nota não autorizada → 422; outra aplicação → 404', async () => {
+    const issued = await post({ establishmentId, ...sampleDpsData() }, 'subst-e2e-2');
+    const id = issued.json<{ id: string }>().id;
+    expect((await substitute(id, { ...sampleDpsData(), substitution: { reasonCode: '1' } }, 'subst-e2e-2-a')).statusCode).toBe(400);
+    expect((await substitute(id, { ...sampleDpsData(), substitution: { reasonCode: '99' } }, 'subst-e2e-2-b')).statusCode).toBe(400);
+    expect((await substitute(id, { establishmentId, ...sampleDpsData(), substitution: reason }, 'subst-e2e-2-c')).statusCode).toBe(400);
+    const pending = await substitute(id, { ...sampleDpsData(), substitution: reason }, 'subst-e2e-2-d');
+    expect(pending.statusCode).toBe(422);
+    expect(problemCode(pending)).toBe('SERVICE_INVOICE_NOT_AUTHORIZED');
+
+    await fiscalWorker().processor.process(companyId, id, WORKER);
+    const locked = await substitute(id, { ...sampleDpsData({ competenceDate: '2026-11-12' }), substitution: reason }, 'subst-e2e-2-e');
+    expect(locked.statusCode).toBe(422);
+    expect(problemCode(locked)).toBe('SUBSTITUTION_LOCKED_FIELDS');
+    expect(JSON.stringify(locked.json())).toContain('competenceDate');
+    const other = await substitute(id, { ...sampleDpsData(), substitution: reason }, 'subst-e2e-2-f', otherAppKey);
+    expect(other.statusCode).toBe(404);
+  });
+});
+
 describe('cancelamento pela API (ADR-0035)', () => {
   const cancel = (id: string, body: Record<string, unknown>) =>
     t.app.inject({ method: 'POST', url: `/v1/service-invoices/${id}/cancellation`, headers: bearer(key, companyId), payload: body });

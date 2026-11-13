@@ -83,7 +83,7 @@ Fontes, todas dos pacotes oficiais versionados. O `tiposEventos_v1.01.xsd` (estr
 7. **Assinatura:** perfil `nfse-nacional-dps` (RSA-SHA1, C14N), sobre `infPedReg`, com o certificado do prestador. É o mesmo provisório da DPS (R-31).
 
 ## Fora deste ADR
-- **Substituição:** é uma DPS nova com o grupo `subst`, e a SEFIN gera o `e105102`. As restrições da E0061 para ME/EPP entram na próxima etapa.
+- **Substituição:** é uma DPS nova com o grupo `subst`, e a SEFIN gera o `e105102`. Implementada no [ADR-0036](0036-substituicao-nfse.md), que também torna exclusivos o cancelamento e a substituição da mesma nota.
 - **Prazo de cancelamento:** E0050 segue a parametrização do município e o prazo não está confirmado. O motor **não** impõe prazo: o autorizador rejeita, e a rejeição chega ao cliente.
 - **Liberação da `externalReference`:** uma nota `CANCELLED` continua ocupando a referência (ADR-0026 item 1 só libera `REJECTED` e `FAILED`). Para reemitir a mesma venda, use uma referência nova. A revisão disso é decisão do responsável.
 - **Resolução manual e alertas de idade do cancelamento em UNKNOWN:** o runbook orienta; a ferramenta entra se houver necessidade.

@@ -39,6 +39,16 @@ export const serviceInvoices = pgTable(
     rejectionCode: text('rejection_code'),
     rejectionMessage: text('rejection_message'),
     failureCode: text('failure_code'),
+    /**
+     * Substituição (ADR-0036), gravada na aceitação da SUBSTITUTA e imutável: a nota original, a
+     * chave dela (`chSubstda`) e o motivo (`cMotivo`, `xMotivo`) escolhido pelo contribuinte.
+     */
+    substitutesInvoiceId: uuid('substitutes_invoice_id'),
+    substitutionAccessKey: varchar('substitution_access_key', { length: 50 }),
+    substitutionReasonCode: text('substitution_reason_code'),
+    substitutionReasonText: text('substitution_reason_text'),
+    /** Na ORIGINAL: a substituta autorizada (gravada uma vez, junto com SUBSTITUTED). */
+    substitutedByInvoiceId: uuid('substituted_by_invoice_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -51,7 +61,7 @@ export const serviceInvoices = pgTable(
     uniqueIndex('uq_service_invoices_external_reference')
       .on(t.companyId, t.clientApplicationId, t.externalReference)
       .where(sql`${t.externalReference} is not null and ${t.status} not in ('REJECTED', 'FAILED')`),
-    check('ck_service_invoices_status', sql`${t.status} in ('PENDING', 'PROCESSING', 'AUTHORIZED', 'REJECTED', 'FAILED', 'UNKNOWN', 'CANCELLED')`),
+    check('ck_service_invoices_status', sql`${t.status} in ('PENDING', 'PROCESSING', 'AUTHORIZED', 'REJECTED', 'FAILED', 'UNKNOWN', 'CANCELLED', 'SUBSTITUTED')`),
     check('ck_service_invoices_environment', sql`${t.environment} in ('PRODUCTION', 'HOMOLOGATION')`),
     check('ck_service_invoices_dps_id', sql`${t.dpsId} ~ '^DPS[0-9]{7}(1[0-9]{14}|2[0-9A-Z]{14})[0-9]{20}$'`),
     check('ck_service_invoices_number', sql`${t.number} between 1 and 999999999999999`),
@@ -59,7 +69,22 @@ export const serviceInvoices = pgTable(
     check('ck_service_invoices_external_reference', sql`${t.externalReference} is null or length(${t.externalReference}) between 1 and 255`),
     check('ck_service_invoices_signed', sql`(${t.signedDps} is null) = (${t.signedDpsSha256} is null)`),
     check('ck_service_invoices_authorized', sql`${t.status} <> 'AUTHORIZED' or ${t.nfseAccessKey} is not null`),
+    check(
+      'ck_service_invoices_substitution',
+      sql`(${t.substitutesInvoiceId} is null) = (${t.substitutionAccessKey} is null) and (${t.substitutesInvoiceId} is null) = (${t.substitutionReasonCode} is null)`,
+    ),
+    check('ck_service_invoices_substitution_reason_code', sql`${t.substitutionReasonCode} is null or ${t.substitutionReasonCode} in ('01', '02', '03', '04', '05', '99')`),
+    check(
+      'ck_service_invoices_substitution_reason_text',
+      sql`(${t.substitutionReasonText} is null or (${t.substitutesInvoiceId} is not null and char_length(${t.substitutionReasonText}) between 15 and 255)) and (${t.substitutionReasonCode} is distinct from '99' or ${t.substitutionReasonText} is not null)`,
+    ),
+    check('ck_service_invoices_substitution_key', sql`${t.substitutionAccessKey} is null or ${t.substitutionAccessKey} ~ '^[0-9A-Z]{50}$'`),
+    check('ck_service_invoices_substituted', sql`(${t.status} = 'SUBSTITUTED') = (${t.substitutedByInvoiceId} is not null)`),
     index('ix_service_invoices_company_created').on(t.companyId, t.createdAt),
+    // Uma substituta "viva" por original: só REJECTED ou FAILED liberam outra tentativa.
+    uniqueIndex('uq_service_invoices_active_substitute')
+      .on(t.companyId, t.substitutesInvoiceId)
+      .where(sql`${t.substitutesInvoiceId} is not null and ${t.status} not in ('REJECTED', 'FAILED')`),
   ],
 );
 

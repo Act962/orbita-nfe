@@ -43,6 +43,7 @@ Jobs agendados (semana 7):
   - O pedido agenda com a chave `<cancelamento>`.
   - Os reenvios usam `<cancelamento>:resend:<envios>` depois de `NOT_SENT` e `<cancelamento>:retransmit:<envios>` depois da prova de inexistência.
   - A recuperação de queda é a própria fila: o job volta quando a concessão vence.
+- **Substituição** (ADR-0036): não tem fila própria. A substituta é uma NFS-e e passa por `nfse.process` e `nfse.reconcile`; a original muda na transação que autoriza a substituta.
 - **`nfse.cancel-reconcile`** (ADR-0035): uma consulta do evento por execução, com a mesma política da `nfse.reconcile`. A chave é `<cancelamento>:lookup:<envios>:<consulta>`.
 - **`nfse.escalate`** (ADR-0034, doc 12 §6): alerta de `UNKNOWN` pela idade.
   - A entrada em `UNKNOWN` agenda a verificação de +15 min.
@@ -55,7 +56,7 @@ Filas previstas:
 |---|---|---|---|
 | `nfse.submit` | transmitir documento | por autorizador/empresa | singleton por documento |
 | `nfse.reconcile` | consultar `UNKNOWN` | baixa, rate-limited | backoff 30s → 1m → 5m → 15m → 1h… |
-| `nfse.event` | cancelamento/substituição | | singleton por documento |
+| `nfse.event` | cancelamento/substituição | | implementado como `nfse.cancel` e `nfse.cancel-reconcile`; a substituta usa `nfse.process` (ADR-0036) |
 | `nfe.*`, `nfce.*` | análogos | | |
 | `webhook.deliver` | entrega HTTP | alta | retries até 24h |
 | `certificates.expiry-scan` | diário (cron) | 1 | |

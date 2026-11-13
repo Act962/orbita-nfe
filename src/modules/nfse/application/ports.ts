@@ -6,9 +6,19 @@ import type { DpsData } from '../domain/dps.js';
 import type { CancellationReasonCode, CancellationState } from '../domain/cancellation.js';
 import type { ResolutionOutcome, ResolutionState } from '../domain/manual-resolution.js';
 import type { AttemptState, ServiceInvoiceStatus } from '../domain/service-invoice.js';
+import type { SubstitutionReasonCode } from '../domain/substitution.js';
 import type { EscalationLevel } from '../domain/unknown-escalation.js';
 
 export type FiscalEnvironment = 'PRODUCTION' | 'HOMOLOGATION';
+
+/** Na SUBSTITUTA (ADR-0036): a nota original e o grupo `subst` da DPS. Imutável. */
+export interface SubstitutionOf {
+  readonly invoiceId: string;
+  /** `chSubstda`: chave de acesso da original. */
+  readonly accessKey: string;
+  readonly reasonCode: SubstitutionReasonCode;
+  readonly reasonText: string | null;
+}
 
 export interface ServiceInvoice {
   readonly id: string;
@@ -36,6 +46,10 @@ export interface ServiceInvoice {
   readonly rejectionCode: string | null;
   readonly rejectionMessage: string | null;
   readonly failureCode: string | null;
+  /** Esta nota substitui outra (null numa emissão comum). */
+  readonly substitution: SubstitutionOf | null;
+  /** Na original SUBSTITUTED: a substituta autorizada. */
+  readonly substitutedById: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -57,6 +71,7 @@ export type NewServiceInvoice = Pick<
   | 'payload'
   | 'routingChannel'
   | 'routingTableVersion'
+  | 'substitution'
 >;
 
 export type AttemptOutcome = 'AUTHORIZED' | 'REJECTED' | 'NOT_SENT' | 'UNKNOWN' | 'ALREADY_EXISTS' | 'RECOVERED_NOT_SENT' | 'RECOVERED_UNKNOWN';
@@ -114,6 +129,13 @@ export interface ServiceInvoiceRepository {
   /** Documento com a referência ainda "ocupada" (não REJECTED/FAILED). */
   findActiveByExternalReference(clientApplicationId: string, reference: string): Promise<ServiceInvoice | undefined>;
   insert(invoice: NewServiceInvoice): Promise<ServiceInvoice>;
+  /**
+   * Serializa, até o fim da transação, os pedidos que mudam o destino de uma nota autorizada
+   * (cancelamento e substituição). Trava consultiva: não exige privilégio de UPDATE.
+   */
+  lockForEvents(invoiceId: string): Promise<void>;
+  /** Substituta que ainda ocupa a original (não REJECTED/FAILED). */
+  findActiveSubstitute(originalId: string): Promise<ServiceInvoice | undefined>;
 }
 
 export interface ServiceInvoiceStatusChange {
@@ -122,6 +144,8 @@ export interface ServiceInvoiceStatusChange {
   readonly authorization?: { readonly accessKey: string; readonly nfseXml: string; readonly authorizedAt: Date };
   readonly rejection?: { readonly code: string; readonly message: string };
   readonly failureCode?: string;
+  /** Original → SUBSTITUTED: a substituta autorizada. */
+  readonly substitutedBy?: string;
 }
 
 export interface ServiceInvoiceWorkerRepository {

@@ -41,6 +41,9 @@ export const COMPANY_AUDIT_ACTIONS = [
   'service_invoice.cancellation_failed',
   'service_invoice.cancellation_unknown',
   'service_invoice.cancellation_retransmission_scheduled',
+  'service_invoice.substitution_requested',
+  'service_invoice.substituted',
+  'service_invoice.substitution_unlinked',
 ] as const;
 export type CompanyAuditAction = (typeof COMPANY_AUDIT_ACTIONS)[number];
 

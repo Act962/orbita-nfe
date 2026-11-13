@@ -4,7 +4,8 @@ import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-o
 import type { DpsData } from '../domain/dps.js';
 import { buildDpsId } from '../domain/dps-id.js';
 import { route, SUPPORTED_CHANNELS, type RoutingTable } from '../domain/routing.js';
-import type { DpsValidator, FiscalEnvironment, NfseApiRepositories, ServiceInvoice } from './ports.js';
+import { checkSubstitutionReason, lockedFieldChanges, type SubstitutionReason } from '../domain/substitution.js';
+import type { DpsValidator, FiscalEnvironment, NfseApiRepositories, ServiceInvoice, SubstitutionOf } from './ports.js';
 
 export interface AcceptServiceInvoice {
   readonly companyId: string;
@@ -20,6 +21,12 @@ export interface AcceptServiceInvoice {
   readonly externalReference: string | null;
   /** Contrato v1 (ADR-0033), já validado no formato pela apresentação (L1). */
   readonly dps: DpsData;
+}
+
+/** Substituição (ADR-0036): a nota nova sai do MESMO estabelecimento da original (E0042). */
+export interface SubstituteServiceInvoice extends Omit<AcceptServiceInvoice, 'establishmentId'> {
+  readonly originalId: string;
+  readonly reason: SubstitutionReason;
 }
 
 export interface AcceptResult {
@@ -49,19 +56,48 @@ export class ServiceInvoiceService {
   ) {}
 
   async accept(input: AcceptServiceInvoice, context: AuditContext): Promise<AcceptResult> {
-    // Pré-validação estrutural fora da transação: o XSD leva centenas de ms e não pode segurar a
-    // trava da série. Repetição idempotente de um pedido já aceito passa por aqui de novo, sem efeito.
-    if (this.validator !== undefined) {
-      const problems = await this.validator.validate(input.environment, input.dps);
-      if (problems.length > 0) {
-        throw new ValidationFailedError(
-          problems.map((message) => ({ code: 'DPS_SCHEMA_INVALID', message })),
-          'A DPS não passa no schema oficial (XSD) do ambiente.',
-        );
-      }
+    await this.prevalidate(input);
+    return this.withIdempotencyRace(input, (r) => this.acceptIn(r, input, context));
+  }
+
+  /**
+   * Substituição (ADR-0036): aceita uma NFS-e nova com o grupo `subst` apontando para a original.
+   * A original continua AUTHORIZED até a substituta ser autorizada; então, na mesma transação, vira
+   * SUBSTITUTED. Pedidos sobre a mesma original (substituição e cancelamento) são serializados.
+   */
+  async substitute(input: SubstituteServiceInvoice, context: AuditContext): Promise<AcceptResult> {
+    const reason = checkSubstitutionReason(input.reason);
+    if (!reason.ok) {
+      throw new ValidationFailedError(
+        [{ code: reason.error, field: 'substitution.reasonText', message: 'Com o motivo 99 (Outros), a descrição do motivo é obrigatória (E0078).' }],
+        'Motivo da substituição incompleto.',
+      );
     }
+    await this.prevalidate(input);
+    return this.withIdempotencyRace(input, (r) => this.substituteIn(r, input, context));
+  }
+
+  /**
+   * Pré-validação estrutural fora da transação: o XSD leva centenas de ms e não pode segurar a
+   * trava da série. Repetição idempotente de um pedido já aceito passa por aqui de novo, sem efeito.
+   */
+  private async prevalidate(input: Pick<AcceptServiceInvoice, 'environment' | 'dps'>): Promise<void> {
+    if (this.validator === undefined) return;
+    const problems = await this.validator.validate(input.environment, input.dps);
+    if (problems.length > 0) {
+      throw new ValidationFailedError(
+        problems.map((message) => ({ code: 'DPS_SCHEMA_INVALID', message })),
+        'A DPS não passa no schema oficial (XSD) do ambiente.',
+      );
+    }
+  }
+
+  private async withIdempotencyRace(
+    input: Pick<AcceptServiceInvoice, 'companyId' | 'clientApplicationId' | 'idempotencyKey' | 'requestHash'>,
+    work: (r: NfseApiRepositories) => Promise<AcceptResult>,
+  ): Promise<AcceptResult> {
     try {
-      return await this.uow.inCompany(input.companyId, (r) => this.acceptIn(r, input, context));
+      return await this.uow.inCompany(input.companyId, work);
     } catch (error) {
       if (!(error instanceof ConflictError && error.code === IDEMPOTENCY_RACE)) throw error;
       const winner = await this.uow.inCompany(input.companyId, (r) => r.invoices.findByIdempotencyKey(input.clientApplicationId, input.idempotencyKey));
@@ -83,7 +119,50 @@ export class ServiceInvoiceService {
   private async acceptIn(r: NfseApiRepositories, input: AcceptServiceInvoice, context: AuditContext): Promise<AcceptResult> {
     const existing = await r.invoices.findByIdempotencyKey(input.clientApplicationId, input.idempotencyKey);
     if (existing !== undefined) return replay(existing, input);
+    return this.create(r, input, null, context);
+  }
 
+  private async substituteIn(r: NfseApiRepositories, input: SubstituteServiceInvoice, context: AuditContext): Promise<AcceptResult> {
+    // Antes de qualquer leitura: o cancelamento da mesma nota espera esta transação terminar.
+    await r.invoices.lockForEvents(input.originalId);
+    const existing = await r.invoices.findByIdempotencyKey(input.clientApplicationId, input.idempotencyKey);
+    if (existing !== undefined) return replay(existing, input);
+
+    const original = await r.invoices.findById(input.originalId);
+    if (original?.clientApplicationId !== input.clientApplicationId || original.environment !== input.environment) throw notFound();
+    if (original.status !== 'AUTHORIZED') {
+      throw new BusinessRuleError('SERVICE_INVOICE_NOT_AUTHORIZED', `Só NFS-e autorizada pode ser substituída (a nota está em ${original.status}).`);
+    }
+    // E0065: a substituta sai pelo mesmo ambiente gerador; só o canal nacional é suportado.
+    if (original.routingChannel !== 'NATIONAL_SEFIN' || original.nfseAccessKey === null) {
+      throw new BusinessRuleError('NFSE_CHANNEL_NOT_AVAILABLE', 'A substituição desta nota não está disponível pelo canal em que ela foi emitida.');
+    }
+    const cancellation = await r.cancellations.findActive(original.id);
+    if (cancellation !== undefined) {
+      throw new ConflictError('CANCELLATION_IN_PROGRESS', `A NFS-e tem pedido de cancelamento em andamento (${cancellation.id}, ${cancellation.state}).`);
+    }
+    const active = await r.invoices.findActiveSubstitute(original.id);
+    if (active !== undefined) {
+      throw new ConflictError('SUBSTITUTION_IN_PROGRESS', `Já existe nota substituta para esta NFS-e (${active.id}, ${active.status}). Não emita outra.`);
+    }
+    const locked = lockedFieldChanges(original.payload as unknown as DpsData, input.dps, input.environment);
+    if (locked.length > 0) {
+      throw new BusinessRuleError(
+        'SUBSTITUTION_LOCKED_FIELDS',
+        'A substituta não pode mudar estes campos da nota original (regras de substituição do Anexo I, conforme a opção pelo Simples Nacional).',
+        locked.map((change) => ({ code: change.rule, field: change.field, message: 'Este campo não pode mudar na substituição.' })),
+      );
+    }
+    const substitution: SubstitutionOf = {
+      invoiceId: original.id,
+      accessKey: original.nfseAccessKey,
+      reasonCode: input.reason.code,
+      reasonText: input.reason.text,
+    };
+    return this.create(r, { ...input, establishmentId: original.establishmentId }, substitution, context);
+  }
+
+  private async create(r: NfseApiRepositories, input: AcceptServiceInvoice, substitution: SubstitutionOf | null, context: AuditContext): Promise<AcceptResult> {
     if (input.externalReference !== null) {
       const occupied = await r.invoices.findActiveByExternalReference(input.clientApplicationId, input.externalReference);
       if (occupied !== undefined) {
@@ -143,7 +222,15 @@ export class ServiceInvoiceService {
       payload: input.dps as unknown as Readonly<Record<string, unknown>>,
       routingChannel: channel,
       routingTableVersion: this.routing.version,
+      substitution,
     });
+    if (substitution !== null) {
+      await r.audit.record(context, {
+        action: 'service_invoice.substitution_requested',
+        subject: { type: 'service_invoice', id: substitution.invoiceId },
+        details: { substituteId: invoice.id, reasonCode: substitution.reasonCode },
+      });
+    }
     await r.audit.record(context, {
       action: 'service_invoice.accepted',
       subject: { type: 'service_invoice', id: invoice.id },
@@ -156,6 +243,7 @@ export class ServiceInvoiceService {
         routingChannel: channel,
         routingTableVersion: this.routing.version,
         clientApplicationId: clientApplicationOf(context) ?? null,
+        substitutesInvoiceId: substitution?.invoiceId ?? null,
       },
     });
     await r.jobs.enqueue({
@@ -210,7 +298,7 @@ export class ServiceInvoiceService {
 
 const CHANNEL_NOT_AVAILABLE = 'NFSE_CHANNEL_NOT_AVAILABLE';
 
-function replay(existing: ServiceInvoice, input: AcceptServiceInvoice): AcceptResult {
+function replay(existing: ServiceInvoice, input: Pick<AcceptServiceInvoice, 'requestHash'>): AcceptResult {
   if (existing.requestHash !== input.requestHash) {
     throw new BusinessRuleError('IDEMPOTENCY_KEY_REUSED', 'Esta Idempotency-Key já foi usada com outro conteúdo. Use uma chave nova para um documento novo.');
   }

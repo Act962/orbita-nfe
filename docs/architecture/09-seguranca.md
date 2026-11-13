@@ -60,6 +60,10 @@ Implementado em 2026-11-10 (módulo `audit`, migration 0003):
     - `service_invoice.resolution_requested`: pelo operador, com o resultado alegado e o SHA-256 da evidência, nunca o XML;
     - `service_invoice.resolution_applied` e `service_invoice.resolution_refused`: pelo worker-fiscal, com o código;
   - empresa (cancelamento, [ADR-0035](../adr/0035-cancelamento-nfse.md)): `service_invoice.cancellation_requested`, `service_invoice.cancelled`, `service_invoice.cancellation_rejected`, `service_invoice.cancellation_failed`, `service_invoice.cancellation_unknown`, `service_invoice.cancellation_retransmission_scheduled`;
+  - empresa (substituição, [ADR-0036](../adr/0036-substituicao-nfse.md)):
+    - `service_invoice.substitution_requested`: na original, com o id da substituta e o motivo;
+    - `service_invoice.substituted`: na original, quando a substituta é autorizada;
+    - `service_invoice.substitution_unlinked`: na substituta, se a original não estava mais `AUTHORIZED` (não deveria acontecer);
   - plataforma: `client_application.created`, `credential.issued`, `credential.revoked`, `queue.paused`, `queue.resumed`, `job.retried`, `job.discarded`.
 - Os detalhes aceitam só valores escalares. Chave com nome sensível é recusada.
 - Âncora externa diária (semana 7, [ADR-0031](../adr/0031-ancora-externa-auditoria.md)): a cabeça de cada cadeia vai para um bucket com Object Lock COMPLIANCE; `npm run audit -- verify --anchor` confere a cadeia contra ela.

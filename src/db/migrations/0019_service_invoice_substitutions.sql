@@ -1,0 +1,13 @@
+ALTER TABLE "service_invoices" DROP CONSTRAINT "ck_service_invoices_status";--> statement-breakpoint
+ALTER TABLE "service_invoices" ADD COLUMN "substitutes_invoice_id" uuid;--> statement-breakpoint
+ALTER TABLE "service_invoices" ADD COLUMN "substitution_access_key" varchar(50);--> statement-breakpoint
+ALTER TABLE "service_invoices" ADD COLUMN "substitution_reason_code" text;--> statement-breakpoint
+ALTER TABLE "service_invoices" ADD COLUMN "substitution_reason_text" text;--> statement-breakpoint
+ALTER TABLE "service_invoices" ADD COLUMN "substituted_by_invoice_id" uuid;--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_service_invoices_active_substitute" ON "service_invoices" USING btree ("company_id","substitutes_invoice_id") WHERE "service_invoices"."substitutes_invoice_id" is not null and "service_invoices"."status" not in ('REJECTED', 'FAILED');--> statement-breakpoint
+ALTER TABLE "service_invoices" ADD CONSTRAINT "ck_service_invoices_substitution" CHECK (("service_invoices"."substitutes_invoice_id" is null) = ("service_invoices"."substitution_access_key" is null) and ("service_invoices"."substitutes_invoice_id" is null) = ("service_invoices"."substitution_reason_code" is null));--> statement-breakpoint
+ALTER TABLE "service_invoices" ADD CONSTRAINT "ck_service_invoices_substitution_reason_code" CHECK ("service_invoices"."substitution_reason_code" is null or "service_invoices"."substitution_reason_code" in ('01', '02', '03', '04', '05', '99'));--> statement-breakpoint
+ALTER TABLE "service_invoices" ADD CONSTRAINT "ck_service_invoices_substitution_reason_text" CHECK (("service_invoices"."substitution_reason_text" is null or ("service_invoices"."substitutes_invoice_id" is not null and char_length("service_invoices"."substitution_reason_text") between 15 and 255)) and ("service_invoices"."substitution_reason_code" is distinct from '99' or "service_invoices"."substitution_reason_text" is not null));--> statement-breakpoint
+ALTER TABLE "service_invoices" ADD CONSTRAINT "ck_service_invoices_substitution_key" CHECK ("service_invoices"."substitution_access_key" is null or "service_invoices"."substitution_access_key" ~ '^[0-9A-Z]{50}$');--> statement-breakpoint
+ALTER TABLE "service_invoices" ADD CONSTRAINT "ck_service_invoices_substituted" CHECK (("service_invoices"."status" = 'SUBSTITUTED') = ("service_invoices"."substituted_by_invoice_id" is not null));--> statement-breakpoint
+ALTER TABLE "service_invoices" ADD CONSTRAINT "ck_service_invoices_status" CHECK ("service_invoices"."status" in ('PENDING', 'PROCESSING', 'AUTHORIZED', 'REJECTED', 'FAILED', 'UNKNOWN', 'CANCELLED', 'SUBSTITUTED'));

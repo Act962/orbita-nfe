@@ -10,8 +10,7 @@ Recursos separados por modalidade (contratos diferentes), com consulta unificada
 | GET | `/v1/service-invoices/{id}` | `nfse:read` — **implementado** (404 para outra aplicação ou outro ambiente) |
 | POST | `/v1/service-invoices/{id}/cancellation` | `nfse:cancel` — **implementado** (ADR-0035) |
 | GET | `/v1/service-invoices/{id}/cancellation` | `nfse:read` — **implementado** |
-| POST | `/v1/service-invoices/{id}/cancellation` | `nfse:cancel` |
-| POST | `/v1/service-invoices/{id}/substitution` | `nfse:issue` (quando suportado) |
+| POST | `/v1/service-invoices/{id}/substitution` | `nfse:issue` — **implementado** (ADR-0036) |
 | GET | `/v1/service-invoices/{id}/xml` | `nfse:read` → redirect para URL pré-assinada |
 | GET | `/v1/service-invoices/{id}/pdf` | `nfse:read` |
 | POST | `/v1/product-invoices` / `/v1/consumer-invoices` | Fases 4 e 3 |

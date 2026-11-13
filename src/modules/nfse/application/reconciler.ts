@@ -3,7 +3,7 @@ import { BusinessRuleError } from '../../../shared/application/errors.js';
 import type { UnitOfWork } from '../../../shared/application/unit-of-work.js';
 import { afterLookup, DEFAULT_RECONCILIATION_POLICY, nextStep, type LookupResult, type ReconciliationPolicy } from '../domain/reconciliation.js';
 import type { CredentialAccess, LookupOutcome, NfseGateway, NfseWorkerRepositories } from './ports.js';
-import { publishStatus } from './submission-processor.js';
+import { completeSubstitution, publishStatus } from './submission-processor.js';
 
 export type ReconcileResult =
   | { readonly kind: 'SKIPPED'; readonly reason: 'NOT_FOUND' | 'NOT_UNKNOWN' | 'NO_ATTEMPT' }
@@ -78,6 +78,7 @@ export class Reconciler {
           });
           if (!changed) return { kind: 'SKIPPED', reason: 'NOT_UNKNOWN' };
           await publishStatus(r, invoice, 'AUTHORIZED', context, { resolvedBy: 'LOOKUP' });
+          await completeSubstitution(r, invoice, context);
           return { kind: 'AUTHORIZED' };
         }
         case 'RETRANSMIT': {

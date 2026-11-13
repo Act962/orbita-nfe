@@ -11,7 +11,7 @@ import type {
   ServiceInvoiceResolution,
   UnknownInvoiceSummary,
 } from './ports.js';
-import { publishStatus } from './submission-processor.js';
+import { completeSubstitution, publishStatus } from './submission-processor.js';
 
 export interface ResolutionRequest {
   /** Empresa informada pelo operador; a nota é procurada só no contexto dela (RLS). */
@@ -201,6 +201,7 @@ export class ResolutionApplier {
         details: { resolutionId: resolution.id, outcome: 'AUTHORIZED', operator: resolution.operator, accessKey: verification.accessKey, dpsSignature: verification.dpsSignature },
       });
       await publishStatus(r, invoice, 'AUTHORIZED', context, { resolvedBy: 'MANUAL' });
+      await completeSubstitution(r, invoice, context);
       return { kind: 'APPLIED', outcome: 'AUTHORIZED' };
     });
   }

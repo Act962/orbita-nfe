@@ -14,9 +14,9 @@ import {
   SIMPLES_NACIONAL_OPTIONS,
   SIMPLES_NACIONAL_REGIMES,
   SPECIAL_TAX_REGIMES,
-
 } from '../../domain/dps.js';
 import { SERVICE_INVOICE_STATUSES } from '../../domain/service-invoice.js';
+import { SUBSTITUTION_REASON_CODES } from '../../domain/substitution.js';
 
 const TAG = 'NFS-e';
 
@@ -117,7 +117,8 @@ const ServiceInvoiceResponse = z
     status: z.enum(SERVICE_INVOICE_STATUSES).meta({
       description:
         'PENDING/PROCESSING: em andamento. AUTHORIZED: autorizada. REJECTED: rejeitada pelo autorizador. FAILED: falha local antes de qualquer envio. ' +
-        'UNKNOWN: em verificação junto ao autorizador — NÃO reemita; o motor consulta e resolve. CANCELLED: cancelamento registrado no autorizador.',
+        'UNKNOWN: em verificação junto ao autorizador — NÃO reemita; o motor consulta e resolve. CANCELLED: cancelamento registrado no autorizador. ' +
+        'SUBSTITUTED: substituída por outra NFS-e já autorizada (`substitutedById`).',
     }),
     environment: z.enum(['PRODUCTION', 'HOMOLOGATION']),
     establishmentId: z.uuid(),
@@ -129,6 +130,11 @@ const ServiceInvoiceResponse = z
     authorizedAt: z.iso.datetime().nullable(),
     rejection: z.object({ code: z.string(), message: z.string() }).nullable().meta({ description: 'Código e mensagem do autorizador (REJECTED).' }),
     failureCode: z.string().nullable().meta({ description: 'Motivo da falha local (FAILED), ex.: CERTIFICATE_EXPIRED, DPS_SCHEMA_INVALID.' }),
+    substitution: z
+      .object({ serviceInvoiceId: z.uuid(), reasonCode: z.enum(SUBSTITUTION_REASON_CODES), reasonText: z.string().nullable() })
+      .nullable()
+      .meta({ description: 'Nesta nota substituta: a NFS-e que ela substitui e o motivo.' }),
+    substitutedById: z.uuid().nullable().meta({ description: 'Na nota SUBSTITUTED: a substituta autorizada.' }),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
@@ -147,6 +153,8 @@ const invoiceJson = (i: ServiceInvoice): z.infer<typeof ServiceInvoiceResponse> 
   authorizedAt: i.authorizedAt?.toISOString() ?? null,
   rejection: i.rejectionCode === null ? null : { code: i.rejectionCode, message: i.rejectionMessage ?? '' },
   failureCode: i.failureCode,
+  substitution: i.substitution === null ? null : { serviceInvoiceId: i.substitution.invoiceId, reasonCode: i.substitution.reasonCode, reasonText: i.substitution.reasonText },
+  substitutedById: i.substitutedById,
   createdAt: i.createdAt.toISOString(),
   updatedAt: i.updatedAt.toISOString(),
 });
@@ -162,6 +170,32 @@ function canonical(value: unknown): string {
     .map((k) => `${JSON.stringify(k)}:${canonical(record[k])}`)
     .join(',')}}`;
 }
+
+/** Substituição (ADR-0036): a mesma DPS do contrato v1, sem o estabelecimento (é o da original). */
+const SubstitutionBody = DpsBody.omit({ establishmentId: true })
+  .extend({
+    substitution: z
+      .object({
+        reasonCode: z.enum(SUBSTITUTION_REASON_CODES).meta({
+          description:
+            'cMotivo (TSCodJustSubst): 01 Desenquadramento do Simples Nacional; 02 Enquadramento no Simples Nacional; 03 Inclusão retroativa de imunidade/isenção; ' +
+            '04 Exclusão retroativa de imunidade/isenção; 05 Rejeição pelo tomador ou intermediário responsável pelo recolhimento; 99 Outros. Escolha do contribuinte.',
+        }),
+        reasonText: z
+          .string()
+          .min(REASON_TEXT_MIN)
+          .max(REASON_TEXT_MAX)
+          .regex(XSD_STRING)
+          .optional()
+          .meta({ description: 'xMotivo (TSMotivo, de 15 a 255 caracteres). Obrigatório com o motivo 99 (E0078).' }),
+      })
+      .strict(),
+  })
+  .strict()
+  .meta({
+    id: 'SubstituteServiceInvoice',
+    description: 'Contrato v1 da DPS da nota substituta, com o motivo. Para MEI e ME/EPP, tomador, competência e valor do serviço não podem mudar (E0061).',
+  });
 
 const CancellationBody = z
   .object({
@@ -228,7 +262,7 @@ export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService,
           ...commonErrorResponses,
           ...authErrorResponses,
           404: ProblemSchema.describe('SERVICE_INVOICE_NOT_FOUND (inexistente, de outra aplicação ou de outro ambiente).'),
-          409: ProblemSchema.describe('CANCELLATION_ALREADY_REQUESTED: já há pedido ativo com outro motivo.'),
+          409: ProblemSchema.describe('CANCELLATION_ALREADY_REQUESTED: já há pedido ativo com outro motivo. SUBSTITUTION_IN_PROGRESS: a nota tem substituta em andamento.'),
           422: ProblemSchema.describe('SERVICE_INVOICE_NOT_AUTHORIZED ou NFSE_CHANNEL_NOT_AVAILABLE.'),
         },
       },
@@ -279,6 +313,68 @@ export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService,
       const caller = callerOf(request);
       const environment = caller.environment === 'live' ? 'PRODUCTION' : 'HOMOLOGATION';
       return cancellationJson(await cancellations.get(companyIdOf(request), caller.clientApplicationId, environment, request.params.id));
+    },
+  );
+
+  app.post(
+    '/v1/service-invoices/:id/substitution',
+    {
+      config: { auth: { scope: 'nfse:issue', company: true } },
+      schema: {
+        tags: [TAG],
+        summary: 'Substituir NFS-e',
+        description:
+          'Emite uma NFS-e nova que substitui uma AUTHORIZED (DPS com o grupo `subst`). Devolve 202 com a substituta em PENDING; a original continua AUTHORIZED até a substituta ser autorizada, ' +
+          'e então vira SUBSTITUTED (o autorizador registra o cancelamento por substituição, e105102). Se a substituta for rejeitada, a original segue autorizada. ' +
+          'Mesmo estabelecimento, ambiente e aplicação da original. Repetir a mesma `Idempotency-Key` com o mesmo corpo devolve 200 com a mesma substituta. ' +
+          'O prazo é o do município: se vencido, o autorizador rejeita (E0050).',
+        security: [{ apiKey: [] }],
+        headers: IdempotencyHeaders,
+        params: z.object({ id: z.uuid() }),
+        body: SubstitutionBody,
+        response: {
+          200: ServiceInvoiceResponse.describe('Repetição idempotente: a substituta já aceita.'),
+          202: ServiceInvoiceResponse,
+          ...commonErrorResponses,
+          400: ProblemSchema.describe('VALIDATION_FAILED: corpo fora do contrato, DPS fora do XSD, ou motivo 99 sem descrição (SUBSTITUTION_REASON_TEXT_REQUIRED).'),
+          ...authErrorResponses,
+          403: ProblemSchema.describe('Sem escopo/concessão, ou PRODUCTION_NOT_ENABLED.'),
+          404: ProblemSchema.describe('SERVICE_INVOICE_NOT_FOUND (inexistente, de outra aplicação ou de outro ambiente).'),
+          409: ProblemSchema.describe('SUBSTITUTION_IN_PROGRESS (já há substituta viva), CANCELLATION_IN_PROGRESS, DOCUMENT_IN_PROGRESS ou DOCUMENT_ALREADY_AUTHORIZED (referência externa ocupada).'),
+          422: ProblemSchema.describe(
+            'SERVICE_INVOICE_NOT_AUTHORIZED, NFSE_CHANNEL_NOT_AVAILABLE, SUBSTITUTION_LOCKED_FIELDS (E0061, campo a campo em issues), IDEMPOTENCY_KEY_REUSED, NFSE_SERIES_NOT_AVAILABLE, NFSE_SERIES_REQUIRED.',
+          ),
+        },
+      },
+    },
+    async (request, reply) => {
+      const caller = callerOf(request);
+      const environment = caller.environment === 'live' ? 'PRODUCTION' : 'HOMOLOGATION';
+      const { seriesId, externalReference, substitution, ...dps } = request.body;
+      const requestHash = createHash('sha256')
+        .update(canonical({ environment, substitutes: request.params.id, body: request.body }))
+        .digest('hex');
+      const result = await withIssueFields('body', () =>
+        service.substitute(
+          {
+            companyId: companyIdOf(request),
+            clientApplicationId: caller.clientApplicationId,
+            environment,
+            originalId: request.params.id,
+            seriesId,
+            idempotencyKey: request.headers['idempotency-key'],
+            requestHash,
+            externalReference: externalReference ?? null,
+            reason: { code: substitution.reasonCode, text: substitution.reasonText ?? null },
+            dps,
+          },
+          auditContextOf(request),
+        ),
+      );
+      return reply
+        .status(result.replayed ? 200 : 202)
+        .header('location', `/v1/service-invoices/${result.invoice.id}`)
+        .send(invoiceJson(result.invoice));
     },
   );
 

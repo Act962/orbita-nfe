@@ -32,7 +32,7 @@ export const EVENT_CATALOG: readonly EventTypeDescription[] = [
   {
     type: 'service_invoice.status_changed',
     description:
-      'A NFS-e mudou de estado. `data.status`: AUTHORIZED (autorizada), REJECTED (rejeitada pelo autorizador, `data.rejectionCode`), FAILED (falha local antes de qualquer envio, `data.failureCode`), UNKNOWN (em verificação junto ao autorizador: NÃO reemita; o motor consulta e resolve) ou CANCELLED (cancelamento registrado, `data.cancellationId`).',
+      'A NFS-e mudou de estado. `data.status`: AUTHORIZED (autorizada), REJECTED (rejeitada pelo autorizador, `data.rejectionCode`), FAILED (falha local antes de qualquer envio, `data.failureCode`), UNKNOWN (em verificação junto ao autorizador: NÃO reemita; o motor consulta e resolve), CANCELLED (cancelamento registrado, `data.cancellationId`) ou SUBSTITUTED (substituída por outra NFS-e já autorizada, `data.substitutedById`). Numa nota substituta, `data.substitutesInvoiceId` aponta a original.',
     subscribable: true,
   },
   {

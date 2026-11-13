@@ -23,6 +23,19 @@ beforeAll(() => {
 
 const dps = (overrides: Record<string, unknown> = {}) => sampleDpsData(overrides) as unknown as DpsData;
 
+const input = (layoutPackage: string, data: DpsData = dps()) => ({
+  layoutPackage,
+  dpsId: DPS_ID,
+  tpAmb: '2' as const,
+  dhEmi: '2026-11-12T10:00:00-03:00',
+  verAplic: 'orbita-nfe-teste',
+  series: '1',
+  number: 42,
+  issuerMunicipalityCode: '2211001',
+  issuerCnpj: '11222333000181',
+  dps: data,
+});
+
 const build = (layoutPackage: string, data: DpsData) =>
   buildDpsXml({
     layoutPackage,
@@ -59,6 +72,19 @@ describe('buildDpsXml contra os XSD oficiais', () => {
   ])('totais aproximados %s são válidos nos dois pacotes', async (_name, approximateTaxes) => {
     const data = dps({ values: { serviceAmount: '100.00', issqn: { taxation: '1', retention: '1' }, approximateTaxes } });
     for (const pkg of [PROD, PRODREST]) expect((await catalog.validate(pkg, 'DPS_v1.01.xsd', build(pkg, data))).errors).toEqual([]);
+  }, 30_000);
+
+  it.each([PROD, PRODREST])('%s: substituta com o grupo subst (depois de cLocEmi) é válida; código fora de TSCodJustSubst não', async (pkg) => {
+    const key = `000000022${'1'.repeat(41)}`;
+    const ok = buildDpsXml({ ...input(pkg), substitution: { accessKey: key, reasonCode: '99', reasonText: 'Correção da descrição do serviço' } });
+    expect(ok).toContain(`<cLocEmi>2211001</cLocEmi><subst><chSubstda>${key}</chSubstda><cMotivo>99</cMotivo><xMotivo>Correção da descrição do serviço</xMotivo></subst><prest>`);
+    expect((await catalog.validate(pkg, 'DPS_v1.01.xsd', ok)).errors).toEqual([]);
+    const withoutText = buildDpsXml({ ...input(pkg), substitution: { accessKey: key, reasonCode: '01', reasonText: null } });
+    expect(withoutText).toContain('<cMotivo>01</cMotivo></subst>');
+    expect((await catalog.validate(pkg, 'DPS_v1.01.xsd', withoutText)).errors).toEqual([]);
+    // O leiaute do Anexo I escreve "1 - ..." (1 posição); o XSD exige "01". Quem valida é o XSD.
+    const oneDigit = buildDpsXml({ ...input(pkg), substitution: { accessKey: key, reasonCode: '1', reasonText: null } });
+    expect((await catalog.validate(pkg, 'DPS_v1.01.xsd', oneDigit)).valid).toBe(false);
   }, 30_000);
 
   it('a ordem de cServ segue cada pacote: xDescServ antes de cNBS (produção) e no fim (produção restrita)', () => {

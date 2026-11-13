@@ -75,7 +75,8 @@ class FakePreparer implements DpsPreparer {
     if (mode === 'FAIL') return Promise.resolve({ ok: false, code: 'DPS_SCHEMA_INVALID' });
     if (mode === 'HANG') return new Promise(() => undefined);
     if (mode === 'CRASH_AFTER') crashOnNextNow = true;
-    return Promise.resolve({ ok: true, signedXml: `<DPS><infDPS Id="${invoice.dpsId}"><teste>${this.calls}</teste></infDPS><Signature/></DPS>`, layoutPackage: 'teste/sem-xsd' });
+    const subst = invoice.substitution === null ? '' : `<subst><chSubstda>${invoice.substitution.accessKey}</chSubstda></subst>`;
+    return Promise.resolve({ ok: true, signedXml: `<DPS><infDPS Id="${invoice.dpsId}"><teste>${this.calls}</teste>${subst}</infDPS><Signature/></DPS>`, layoutPackage: 'teste/sem-xsd' });
   }
 }
 
@@ -770,6 +771,176 @@ describe('cancelamento (ADR-0035)', () => {
     await expect(new CompanyTransactions(worker.db).run(companyId, (tx) => tx.execute(sql`delete from service_invoice_cancellations where id = ${cancellation.id}`))).rejects.toThrow();
   });
 });
+
+describe('substituição (ADR-0036)', () => {
+  it('caminho feliz: substituta AUTHORIZED → original SUBSTITUTED na mesma transação; e105102 no autorizador; webhooks ligam as duas', async () => {
+    const original = await authorizedInvoice();
+    const originalKey = (await state(original.id)).nfse_access_key ?? '';
+    const { invoice: replacement, replayed } = await substitute(original.id);
+    expect(replayed).toBe(false);
+    expect(replacement).toMatchObject({ status: 'PENDING', substitution: { invoiceId: original.id, accessKey: originalKey, reasonCode: '99' }, establishmentId });
+    expect(replacement.number).toBeGreaterThan(original.number); // número novo na mesma série
+    expect((await state(original.id)).status).toBe('AUTHORIZED'); // nada muda antes da autorização
+
+    expect(await processor.process(companyId, replacement.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'AUTHORIZED' });
+    expect(await state(original.id)).toMatchObject({ status: 'SUBSTITUTED', events: ['AUTHORIZED', 'SUBSTITUTED'] });
+    expect(await linkOf(original.id)).toEqual({ substituted_by_invoice_id: replacement.id });
+    expect(await statusData(original.id)).toContainEqual(expect.objectContaining({ status: 'SUBSTITUTED', substitutedById: replacement.id }));
+    expect(await statusData(replacement.id)).toEqual([expect.objectContaining({ status: 'AUTHORIZED', substitutesInvoiceId: original.id })]);
+    expect(await gateway.findEvent(originalKey, '105102')).toMatchObject({ kind: 'FOUND' });
+  });
+
+  it('repetição e exclusão: a mesma chave devolve a mesma substituta; outra substituta ou cancelamento com substituta viva → 409; depois, a original não aceita mais nada', async () => {
+    const original = await authorizedInvoice();
+    const first = await substitute(original.id, { idempotencyKey: `subst-fixa-${process.pid}` });
+    const again = await substitute(original.id, { idempotencyKey: `subst-fixa-${process.pid}` });
+    expect(again).toMatchObject({ replayed: true, invoice: { id: first.invoice.id } });
+    expect(await rejectionCode(substitute(original.id))).toBe('SUBSTITUTION_IN_PROGRESS');
+    expect(await rejectionCode(requestCancellation(original.id))).toBe('SUBSTITUTION_IN_PROGRESS');
+
+    await processor.process(companyId, first.invoice.id, WORKER);
+    expect(await rejectionCode(substitute(original.id))).toBe('SERVICE_INVOICE_NOT_AUTHORIZED');
+    expect(await rejectionCode(requestCancellation(original.id))).toBe('SERVICE_INVOICE_NOT_AUTHORIZED');
+    // A repetição do pedido original continua devolvendo a mesma substituta, mesmo com a original SUBSTITUTED.
+    expect((await substitute(original.id, { idempotencyKey: `subst-fixa-${process.pid}` })).invoice.id).toBe(first.invoice.id);
+    // A substituta autorizada pode, ela mesma, ser substituída.
+    expect((await substitute(first.invoice.id)).invoice.substitution?.invoiceId).toBe(first.invoice.id);
+  });
+
+  it('substituta rejeitada pelo autorizador: original continua AUTHORIZED e aceita nova substituição', async () => {
+    const original = await authorizedInvoice();
+    gateway.onSubmit('REJECT').rejectWith('E0050', 'Fora do prazo do município (simulado).');
+    const { invoice: rejected } = await substitute(original.id);
+    expect(await processor.process(companyId, rejected.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'REJECTED' });
+    expect(await state(original.id)).toMatchObject({ status: 'AUTHORIZED', events: ['AUTHORIZED'] });
+    expect((await substitute(original.id)).replayed).toBe(false);
+  });
+
+  it('original já cancelada no autorizador (sem o motor saber) → a substituta é rejeitada (E0046 simulada) e a original não muda', async () => {
+    const original = await authorizedInvoice();
+    const originalKey = (await state(original.id)).nfse_access_key ?? '';
+    await gateway.registerEvent(originalKey, '<pedRegEvento><e101101></e101101></pedRegEvento>');
+    const { invoice } = await substitute(original.id);
+    await processor.process(companyId, invoice.id, WORKER);
+    expect(await state(invoice.id)).toMatchObject({ status: 'REJECTED' });
+    expect((await state(original.id)).status).toBe('AUTHORIZED');
+  });
+
+  it('"processa e derruba": substituta UNKNOWN, original intocada; a consulta autoriza e só então a original vira SUBSTITUTED; sem reenvio', async () => {
+    const original = await authorizedInvoice();
+    gateway.onSubmit('PROCESS_THEN_DROP');
+    const { invoice } = await substitute(original.id);
+    expect(await processor.process(companyId, invoice.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'UNKNOWN' });
+    expect((await state(original.id)).status).toBe('AUTHORIZED');
+    expect(await rejectionCode(substitute(original.id))).toBe('SUBSTITUTION_IN_PROGRESS'); // dúvida não libera outra substituta
+    advance(2 * MIN);
+    expect(await reconciler.reconcile(companyId, invoice.id, WORKER)).toEqual({ kind: 'AUTHORIZED' });
+    expect((await state(original.id)).status).toBe('SUBSTITUTED');
+    expect(gateway.received.get(invoice.dpsId)).toBe(1);
+  });
+
+  it('resolução manual da substituta em UNKNOWN também fecha a original', async () => {
+    const original = await authorizedInvoice();
+    gateway.onSubmit('DROP_BEFORE_PROCESSING');
+    const { invoice } = await substitute(original.id);
+    await processor.process(companyId, invoice.id, WORKER);
+    const request = await desk().request({ companyId, invoiceId: invoice.id, outcome: 'AUTHORIZED', reason: REASON, nfseXml: '<NFSe/>', evidenceSha256: null, operator: 'operador-teste' }, OPERATOR);
+    expect(await resolutions.apply(companyId, request.id, WORKER)).toEqual({ kind: 'APPLIED', outcome: 'AUTHORIZED' });
+    expect((await state(original.id)).status).toBe('SUBSTITUTED');
+  });
+
+  it('recusas antes de numerar: campos travados (E0063, ME/EPP → ME/EPP) campo a campo, motivo 99 sem texto (E0078), cancelamento ativo, nota não autorizada, de outra aplicação', async () => {
+    const original = await authorizedInvoice();
+    const locked = await substitute(original.id, { dps: sampleDpsData({ competenceDate: '2026-11-12', values: { ...sampleDpsData().values, serviceAmount: '150.00' } }) }).catch((e: unknown) => e);
+    expect(locked).toMatchObject({ code: 'SUBSTITUTION_LOCKED_FIELDS', issues: [{ code: 'E0063', field: 'competenceDate' }, { code: 'E0063', field: 'values.serviceAmount' }] });
+    expect(await rejectionCode(substitute(original.id, { reason: { code: '99', text: null } }))).toBe('VALIDATION_FAILED');
+    // Mudança permitida: descrição e motivo 01 sem texto.
+    const allowed = await substitute(original.id, { reason: { code: '01', text: null }, dps: sampleDpsData({ service: { ...sampleDpsData().service, description: 'Descricao corrigida' } }) });
+    expect(allowed.invoice.substitution).toMatchObject({ reasonCode: '01', reasonText: null });
+
+    const cancelled = await authorizedInvoice();
+    await requestCancellation(cancelled.id);
+    expect(await rejectionCode(substitute(cancelled.id))).toBe('CANCELLATION_IN_PROGRESS');
+    const { invoice: pending } = await accept();
+    expect(await rejectionCode(substitute(pending.id))).toBe('SERVICE_INVOICE_NOT_AUTHORIZED');
+    expect(await rejectionCode(substitute(original.id, { clientApplicationId: newId() }))).toBe('SERVICE_INVOICE_NOT_FOUND');
+    expect(await rejectionCode(substitute(newId()))).toBe('SERVICE_INVOICE_NOT_FOUND');
+  });
+
+  it('concorrência: 20 substituições e 1 cancelamento em paralelo na mesma nota → exatamente um vence', async () => {
+    const original = await authorizedInvoice();
+    const results = await Promise.allSettled([
+      ...Array.from({ length: 20 }, () => substitute(original.id)),
+      requestCancellation(original.id),
+    ]);
+    const won = results.filter((r) => r.status === 'fulfilled');
+    expect(won).toHaveLength(1);
+    const codes = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected').map((r) => (r.reason as ApplicationError).code);
+    expect(new Set(codes)).toSatisfy((set: Set<string>) => [...set].every((c) => c === 'SUBSTITUTION_IN_PROGRESS' || c === 'CANCELLATION_IN_PROGRESS'));
+  });
+
+  it('travas no banco: SUBSTITUTED sem substituta autorizada, substituta de nota não autorizada e vínculo reescrito são recusados', async () => {
+    const original = await authorizedInvoice();
+    const asWorker = new CompanyTransactions(worker.db);
+    await expect(
+      asWorker.run(companyId, (tx) => tx.execute(sql`update service_invoices set status = 'SUBSTITUTED', substituted_by_invoice_id = ${original.id} where id = ${original.id}`)),
+    ).rejects.toThrow();
+
+    const { invoice: pending } = await accept();
+    const { invoice: substituteOfOther } = await substitute(original.id);
+    await expect(
+      new CompanyTransactions(t.api.db).run(companyId, (tx) =>
+        tx.execute(sql`insert into service_invoices (id, company_id, establishment_id, client_application_id, environment, series_id, series, number,
+            dps_id, idempotency_key, request_hash, payload, substitutes_invoice_id, substitution_access_key, substitution_reason_code)
+          select ${newId()}, company_id, establishment_id, client_application_id, environment, series_id, series, number + 1000,
+            'DPS' || substr(dps_id, 4, 22) || lpad((number + 1000)::text, 20, '0'), 'direto-' || id, request_hash, payload, ${pending.id}, ${'0'.repeat(50)}, '01'
+          from service_invoices where id = ${pending.id}`),
+      ),
+    ).rejects.toThrow();
+    await processor.process(companyId, substituteOfOther.id, WORKER);
+    await expect(
+      asWorker.run(companyId, (tx) => tx.execute(sql`update service_invoices set substituted_by_invoice_id = ${pending.id} where id = ${original.id}`)),
+    ).rejects.toThrow();
+    await expect(
+      asWorker.run(companyId, (tx) => tx.execute(sql`update service_invoices set substitution_reason_code = '02' where id = ${substituteOfOther.id}`)),
+    ).rejects.toThrow();
+  });
+});
+
+function substitute(originalId: string, overrides: Partial<Parameters<TestApi['modules']['nfse']['substitute']>[0]> = {}) {
+  const idempotencyKey = overrides.idempotencyKey ?? `subst-${process.pid}-${++keySeq}`;
+  return t.modules.nfse.substitute(
+    {
+      companyId,
+      clientApplicationId: app.id,
+      environment: 'HOMOLOGATION',
+      originalId,
+      idempotencyKey,
+      requestHash: createHash('sha256').update(`${originalId}:${idempotencyKey}`).digest('hex'),
+      externalReference: null,
+      reason: { code: '99', text: 'Correcao da descricao do servico' },
+      dps: sampleDpsData(),
+      ...overrides,
+    },
+    API,
+  );
+}
+
+async function linkOf(invoiceId: string) {
+  return new CompanyTransactions(worker.db).run(companyId, async (tx) => {
+    const rows = await tx.execute<{ substituted_by_invoice_id: string | null }>(sql`select substituted_by_invoice_id from service_invoices where id = ${invoiceId}`);
+    return rows.rows[0];
+  });
+}
+
+async function statusData(invoiceId: string) {
+  return new CompanyTransactions(t.api.db).run(companyId, async (tx) => {
+    const rows = await tx.execute<{ data: Record<string, unknown> }>(
+      sql`select data from outbox_events where subject_id = ${invoiceId} and type = 'service_invoice.status_changed' order by occurred_at`,
+    );
+    return rows.rows.map((r) => r.data);
+  });
+}
 
 describe('travas no banco', () => {
   it('UNKNOWN → FAILED e FAILED depois de envio são recusados pelo trigger, mesmo fora da aplicação', async () => {

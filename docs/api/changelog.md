@@ -1,12 +1,30 @@
 ---
 title: Changelog da API
 status: current
-last_updated: 2026-11-12
+last_updated: 2026-11-13
 ---
 
 # Changelog da API
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
+
+## 2026-11-13 — v1 (Fase 2a, etapa 6)
+
+**Adicionado**
+
+- `POST /v1/service-invoices/{id}/substitution` (escopo `nfse:issue`, `Idempotency-Key` obrigatório): substituição de NFS-e autorizada (DPS com o grupo `subst`).
+  - O corpo é o contrato v1 da DPS, sem `establishmentId`, mais `substitution: { reasonCode, reasonText? }`, com os códigos de TSCodJustSubst (`01` a `05` e `99`).
+  - A resposta é a substituta, com `202`; a repetição devolve `200`.
+  - A original vira `SUBSTITUTED` só quando a substituta é autorizada.
+- Na NFS-e, os campos `substitution` (na substituta) e `substitutedById` (na original), e o status `SUBSTITUTED`.
+- No webhook `service_invoice.status_changed`: status `SUBSTITUTED` com `data.substitutedById`, e `data.substitutesInvoiceId` nos eventos da substituta.
+- Novos códigos de erro:
+  - `422 SUBSTITUTION_LOCKED_FIELDS`: campos travados pelo Anexo I, um por `issues[]`;
+  - `400 VALIDATION_FAILED` com `SUBSTITUTION_REASON_TEXT_REQUIRED`: motivo `99` sem descrição;
+  - `409 SUBSTITUTION_IN_PROGRESS` e `409 CANCELLATION_IN_PROGRESS`.
+- O cancelamento passa a responder `409 SUBSTITUTION_IN_PROGRESS` quando a nota tem substituta em andamento.
+
+**Migração:** nenhuma. Quem trata `status` como enumeração fechada deve aceitar o valor novo `SUBSTITUTED`.
 
 ## 2026-11-12 — v1 (Fase 2a, etapa 5)
 
