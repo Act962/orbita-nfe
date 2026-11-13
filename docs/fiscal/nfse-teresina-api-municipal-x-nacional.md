@@ -128,7 +128,7 @@ Observações:
   - Hosts: `adn.nfse.gov.br` e `adn.producaorestrita.nfse.gov.br`.
   - **O motor não emite pelo ADN.**
 
-O Swagger da SEFIN responde **403 sem certificado de cliente** [observado]. A leitura fica para depois, com o A1 real.
+O Swagger da SEFIN responde **403 sem certificado de cliente** [observado]. **Lido em 2026-11-13 com o A1 real** (ADR-0029, complemento): `basePath` `/SefinNacional`, envelope `dpsXmlGZipB64` e consulta de evento por `numSeqEvento` [CONFIRMADO: Swagger da produção restrita].
 
 ### 3.2 Endpoints [CONFIRMADO: Manual de Contribuintes — Emissor Público API, "v1.2 out/2025"]
 | Método | Caminho | Finalidade |
@@ -141,8 +141,8 @@ O Swagger da SEFIN responde **403 sem certificado de cliente** [observado]. A le
 | GET | `/nfse/{chaveAcesso}/eventos[/{tipoEvento}[/{numSeqEvento}]]` | Consulta de eventos |
 | GET | `/parametros_municipais/{codMun}/convenio`, `/{codMun}/{codServico}`, `/{codMun}/{CPF/CNPJ}` | Parâmetros municipais. A combinação de host (SEFIN ou ADN `/parametrizacao`) e caminho é PROVÁVEL |
 
-- **Prefixo de caminho** (`/SefinNacional` ou `/API/SefinNacional`): NÃO CONFIRMADO. Será fechado no Swagger.
-- **Envelope `dpsXmlGZipB64`:** PROVÁVEL para a SEFIN. As regras nacionais E1225 (Base64) e E1226 (descompactação) confirmam o gzip+Base64, e o Guia DSF, que replica o padrão nacional, usa exatamente esse nome. Falta a confirmação no Swagger.
+- **Prefixo de caminho:** `/SefinNacional` [CONFIRMADO: Swagger, 2026-11-13]. O `/API/SefinNacional` é só a página de documentação.
+- **Envelope `dpsXmlGZipB64`:** [CONFIRMADO: Swagger, 2026-11-13]. O dos eventos é `pedidoRegistroEventoXmlGZipB64`.
 
 ### 3.3 Autenticação e certificados [CONFIRMADO: Anexo I, RN_RECEPCAO_DPS]
 - **Certificado da conexão** (E1200–E1209): X.509 v3 ICP-Brasil, que não seja de AC, com KeyUsage "Autenticação Cliente", validade, cadeia, LCR e CNPJ/CPF no OtherName.

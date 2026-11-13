@@ -43,11 +43,28 @@ A SEFIN impõe unicidade de série + número + município + CNPJ pela regra **E0
 
 ## Consequências
 - O adapter de Teresina, se vier, vira um perfil novo mais as validações locais (`cTribMun` obrigatório).
-- Pendências a confirmar no Swagger da SEFIN, com certificado real:
-  - prefixo de caminho (`/SefinNacional` ou `/API/SefinNacional`);
-  - nome exato do campo do envelope;
-  - schema de erro.
-  - Até lá, esses valores existem só no perfil e no simulador, e ficam marcados como provisórios.
+- ~~Pendências a confirmar no Swagger da SEFIN~~: **confirmadas em 2026-11-13** (complemento abaixo).
+
+## Complemento (2026-11-13) — Swagger da SEFIN lido com o A1 real
+Fonte: a especificação Swagger 2.0 "API NFS-e - Sefin Nacional" da produção restrita, lida com mTLS pelo `npm run sefin:docs`. Está guardada em `resources/fiscal/sefin-docs/producao-restrita/2026-11-13/docs-v1.json`, com SHA-256 `ea7a720f…3217`.
+
+- **Conexão:**
+  - host `sefin.producaorestrita.nfse.gov.br` e `basePath` **`/SefinNacional`**. O `/API/SefinNacional` é só o endereço da página de documentação;
+  - "TLS 1.0, TLS 1.1 e TLS 1.2 com autenticação mútua", certificado ICP-Brasil A1 ou A3 com "Autenticação Cliente";
+  - sem certificado, a documentação responde 403; com o A1, responde 200. **O mTLS funcionou.**
+- **Emissão:** `POST /nfse`.
+  - Corpo: `{ "dpsXmlGZipB64" }`.
+  - Resposta 201: `{ tipoAmbiente, versaoAplicativo, dataHoraProcessamento, idDps, chaveAcesso, nfseXmlGZipB64, alertas[] }`.
+  - Respostas 400, 403 e 500: `{ …, idDPS?, erros: [{ codigo, descricao, complemento }] }`, com `erros` no plural.
+- **Chave pela DPS:**
+  - `GET /dps/{id}` responde 200 com `{ idDps, chaveAcesso }`, ou 404 com "Não foi gerada uma NFS-e com o identificador de DPS informado";
+  - `HEAD /dps/{id}` responde 200 ou 404.
+- **Consulta:** `GET /nfse/{chaveAcesso}` responde 200 com `{ chaveAcesso, nfseXmlGZipB64 }`, ou 400, 401, 403 e 404.
+- **Eventos:**
+  - `POST /nfse/{chaveAcesso}/eventos`, com corpo `{ "pedidoRegistroEventoXmlGZipB64" }`. A resposta 201 traz `{ eventoXmlGZipB64 }`; a 400 traz o erro no formato `{ erro: { codigo, descricao, complemento } }`, **no singular**, diferente da emissão.
+  - **Achado:** a consulta de evento é **`GET /nfse/{chave}/eventos/{tipoEvento}/{numSeqEvento}`**, e o `numSeqEvento` é obrigatório. Os tipos aceitos são 101101, 101103, 105102, 105104, 105105, 202201, 202205, 203202, 203206, 204203, 204207, 205204, 205208, 305101, 305102, 305103, 467201 e 907201.
+  - A porta `findEvent(chave, tipo)` vai precisar do número sequencial: 1 no primeiro pedido de cada tipo. O formato do Id do pedido continua a confirmar no primeiro registro real (R-40).
+- **Fora da SEFIN:** DANFSe e parâmetros municipais foram movidos para o ADN (`adn.producaorestrita.nfse.gov.br/danfse` e `/parametrizacao`). A SEFIN responde 501 nesses caminhos.
 
 ## Fontes
 [Diagnóstico](../fiscal/nfse-teresina-api-municipal-x-nacional.md) §1.3, §3.2–3.4, §8 e §9.1.

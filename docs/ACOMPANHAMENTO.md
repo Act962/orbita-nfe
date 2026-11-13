@@ -70,6 +70,33 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Fase 2a, etapa 8 — adapter da SEFIN Nacional (2026-11-13)
+Decisão: [ADR-0038](adr/0038-adapter-sefin-nacional.md).
+- [x] **`NationalNfseGateway`** sobre o transporte mTLS do projeto, com os caminhos, envelopes e respostas do Swagger confirmado:
+  - `POST /nfse`;
+  - `GET /dps/{id}` e depois `GET /nfse/{chave}`;
+  - `POST /nfse/{chave}/eventos`;
+  - `GET /nfse/{chave}/eventos/{tipo}/{seq}`.
+- [x] **Mapeamento seguro:** só `Exxxx` é rejeição. E0014 (DPS) e E0802/E0840 (evento) viram "já existe" e levam à consulta. 5xx, corpo ilegível ou resposta de outra DPS viram `UNKNOWN`. `NOT_SENT` só com prova do transporte.
+- [x] **Porta de consulta de evento** com o `nSeqEvento`; o cancelamento usa 1 (Anexo II).
+- [x] **Perfil com só a produção restrita.** Nota de produção dá `NOT_SENT` local, sem rede.
+- [x] **`NFSE_GATEWAY=sefin`** no worker-fiscal.
+- [x] **Testes:** 16 casos contra uma SEFIN falsa local (HTTPS com mTLS) nos formatos do Swagger; nada sai da máquina.
+- [x] **Primeiro envio real à produção restrita** com o OK do responsável, feito com `npm run sefin:test` (sem banco nem cofre, mas com o mesmo preparador e adapter do worker). Resultado:
+  - 1º envio: `UNKNOWN`. O HTTP/2 do undici 8 não combina com a renegociação TLS da SEFIN; corrigido com HTTP/1.1.
+  - Consulta: `NOT_FOUND`. A DPS não existia, então não houve duplicidade.
+  - Reenvio dos mesmos bytes: **rejeição E0037**. Teresina não está no cadastro de convênio da produção restrita (R-43).
+  - Ajuste: a SEFIN devolve `Codigo`/`Descricao` com inicial maiúscula, diferente do Swagger. As chaves passam a ser lidas sem distinguir maiúsculas de minúsculas.
+- [x] **Provado na SEFIN real:** mTLS, caminhos, envelope, gzip+Base64, XSD e formato das respostas.
+- [ ] **Não provado ainda:** a assinatura (R-31). Ela depende de passar pela E0037 (R-43): perguntar à SEMF/SEFIN, ou testar com um MEI de Teresina ou com uma empresa de município conveniado.
+
+### Primeiro contato com a SEFIN (2026-11-13)
+- [x] Certificado A1 real da empresa de teste (e-CNPJ, AC REDE IDEIA RFB, **vence em 26/11/2026**, não optante do Simples), autorizado pelo responsável para a produção restrita. Fica fora do repositório.
+- [x] `npm run sefin:docs`: lê a documentação da SEFIN na produção restrita com mTLS. Só faz GET, pede a senha no terminal e mantém o certificado só na memória.
+- [x] **O mTLS funcionou** (200 com o A1; sem ele, 403). O Swagger foi guardado com hash em `resources/fiscal/sefin-docs/` e confirmou `basePath`, envelopes e respostas (ADR-0029, complemento; R-33 mitigado).
+- [x] **Achado:** a consulta de evento exige `numSeqEvento` (`GET /nfse/{chave}/eventos/{tipo}/{seq}`), e a porta `findEvent` vai precisar dele.
+- [ ] **Atenção ao enquadramento:** a empresa é não optante. Em Teresina, a nota dela sai pelo emissor municipal (ADR-0028), e na SEFIN uma DPS dela tende a ser rejeitada pela E0039. Com este certificado, a SEFIN serve para validar transporte e assinatura. A nota autorizada da empresa depende do adapter da DSF (Fase 2b).
+
 ### Fase 2a, etapa 7 — regras do Anexo I no aceite (2026-11-13)
 Decisão: [ADR-0037](adr/0037-regras-anexo-i-no-aceite.md). Catálogo: [NFSE-DPS](fiscal/regras/NFSE-DPS.md).
 - [x] **Levantamento:** as regras da aba RN DPS_NFS-e dos dois Anexos I para os campos do contrato v1, confrontadas texto a texto.
@@ -400,7 +427,9 @@ Decisões: [ADR-0032](adr/0032-nucleo-emissao-nfse.md). Fecha o "fluxo completo 
 12. ~~Fase 2a, etapa 5: cancelamento~~ ✔ (ADR-0035)
 13. ~~Fase 2a, etapa 6: substituição~~ ✔ (ADR-0036)
 14. ~~Fase 2a, etapa 7: regras do Anexo I que dependem só da DPS~~ ✔ (ADR-0037)
-15. Fase 2a, etapa 8: contrato v2 da DPS (endereço do tomador, intermediário, `tpImunidade`; depois deduções e IBS/CBS). Prioridade pelo R-42.
+15. ~~Fase 2a, etapa 8: adapter da SEFIN Nacional (produção restrita)~~ ✔ (ADR-0038)
+16. Primeiro envio real à produção restrita (bundle ICP-Brasil + OK do responsável), antes do vencimento do A1 de teste em 26/11/2026.
+17. Fase 2a: contrato v2 da DPS (endereço do tomador, intermediário, `tpImunidade`; depois deduções e IBS/CBS). Prioridade pelo R-42.
 
    A parte fiscal (regras L3, adapter SEFIN real) espera os pré-requisitos do roadmap: CNPJ e A1 reais, contador e gate fiscal 1.
 
@@ -433,6 +462,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-10 | Piloto em Teresina pela SEFIN Nacional (Res. CGSN 191/2026); adapter municipal DSF na Fase 2b conforme demanda | 0017 (revisado) |
 | 2026-11-10 | Canal de NFS-e decidido pela data de competência, por tabela versionada com fonte | 0028 |
 | 2026-11-10 | Cliente único do padrão nacional com perfil de endpoint; reconciliação por Id da DPS antes de reenviar | 0029 |
+| 2026-11-13 | Adapter da SEFIN pelo Swagger lido com o A1: só produção restrita; só `Exxxx` é rejeição; duplicidade (E0014, E0802, E0840) leva à consulta | 0038 |
 | 2026-11-13 | Regras do Anexo I conferidas no aceite só quando dependem apenas da DPS, por ambiente, com o código oficial; lacunas do contrato v1 viram recusa local | 0037 |
 | 2026-11-13 | Substituição como NFS-e nova com `subst`; a original só vira SUBSTITUTED com a substituta autorizada; exclusiva com o cancelamento; campos travados pela matriz do Anexo I (na dúvida, trava a menos) | 0036 |
 | 2026-11-12 | Cancelamento assíncrono com write-ahead e UNKNOWN; um pedido ativo por nota; nota cancelada continua ocupando a referência externa | 0035 |

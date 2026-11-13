@@ -29,6 +29,12 @@ export function allowsNewCancellation(state: CancellationState): boolean {
 /** Tipo do evento de cancelamento (TCInfPedReg, grupo e101101). */
 export const CANCELLATION_EVENT_TYPE = '101101';
 
+/**
+ * `nSeqEvento` do cancelamento: "Para os eventos que ocorrem somente uma vez, como é o caso do
+ * cancelamento, o nSeqEvento = 001" (Anexo II v1.01 de 22/01/2026, aba LEIAUTE, campo nSeqEvento).
+ */
+export const CANCELLATION_EVENT_SEQUENCE = 1;
+
 /** TSCodJustCanc: 1 Erro na Emissão; 2 Serviço não Prestado; 9 Outros. */
 export const CANCELLATION_REASON_CODES = ['1', '2', '9'] as const;
 export type CancellationReasonCode = (typeof CANCELLATION_REASON_CODES)[number];

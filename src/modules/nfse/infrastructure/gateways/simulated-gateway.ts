@@ -96,7 +96,9 @@ export class SimulatedNfseGateway implements NfseGateway {
     return Promise.resolve({ kind: 'REGISTERED', eventXml });
   }
 
-  findEvent(accessKey: string, eventType: string): Promise<EventLookupOutcome> {
+  /** Cada tipo de evento tem um só registro no simulador: o número sequencial é 1. */
+  findEvent(accessKey: string, eventType: string, sequence = 1): Promise<EventLookupOutcome> {
+    if (sequence !== 1) return Promise.resolve({ kind: 'NOT_FOUND' });
     this.eventLookups++;
     const mode = this.eventLookupModes.shift() ?? 'TRUTHFUL';
     if (mode === 'ERROR') return Promise.resolve({ kind: 'ERROR', errorCode: 'UND_ERR_CONNECT_TIMEOUT' });

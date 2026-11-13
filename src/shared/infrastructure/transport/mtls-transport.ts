@@ -102,6 +102,10 @@ export function createMtlsAgent(identity: MtlsIdentity, limits: TransportLimits)
     bodyTimeout: limits.bodyTimeoutMs,
     // Uma requisição por conexão em voo: evita ambiguidade de pipelining.
     pipelining: 1,
+    // HTTP/1.1 sempre. O undici 8 negocia HTTP/2 por padrão, e a SEFIN pede o certificado do
+    // cliente por renegociação TLS, que não existe em HTTP/2. O primeiro envio real (2026-11-13)
+    // terminou em ERR_HTTP2_STREAM_ERROR por isso (ADR-0038).
+    allowH2: false,
   });
 }
 

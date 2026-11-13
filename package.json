@@ -24,6 +24,8 @@
     "audit": "node --env-file-if-exists=.env --import tsx src/main/audit-cli.ts",
     "ops": "node --env-file-if-exists=.env --import tsx src/main/ops-cli.ts",
     "dev:secrets": "node scripts/dev-secrets.mjs",
+    "sefin:docs": "node scripts/sefin-docs-probe.mjs",
+    "sefin:test": "node --import tsx src/main/sefin-test-cli.ts",
     "dev:object-storage": "node --env-file-if-exists=.env scripts/dev-object-storage.mjs",
     "drill:backup": "bash scripts/backup-drill.sh"
   },

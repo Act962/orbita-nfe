@@ -404,7 +404,11 @@ export interface NfseGateway {
   findByDpsId(dpsId: string, context: GatewayContext): Promise<LookupOutcome>;
   /** Pedido de registro de evento assinado (`pedRegEvento`) para a nota `accessKey`. */
   registerEvent(accessKey: string, signedEvent: string, context: GatewayContext): Promise<EventOutcome>;
-  findEvent(accessKey: string, eventType: string, context: GatewayContext): Promise<EventLookupOutcome>;
+  /**
+   * Consulta o evento `eventType` de número sequencial `sequence` (`nSeqEvento`) da nota. A SEFIN
+   * exige o número na rota (`GET /nfse/{chave}/eventos/{tipo}/{seq}`, Swagger de 2026-11-13).
+   */
+  findEvent(accessKey: string, eventType: string, sequence: number, context: GatewayContext): Promise<EventLookupOutcome>;
 }
 
 /** Monta o pedido de cancelamento, assina e valida no XSD (`pedRegEvento_v1.01.xsd`). */

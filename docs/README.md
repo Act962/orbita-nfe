@@ -37,5 +37,5 @@ Fase atual: **Fase 1 — Fundação** (arquitetura aprovada em 2026-11-09; spike
 | — | Regras implementadas: [CNPJ-001](fiscal/regras/CNPJ-001.md), [COMPANY-001](fiscal/regras/COMPANY-001.md), [SERIES-001](fiscal/regras/SERIES-001.md), [SERIES-002](fiscal/regras/SERIES-002.md) (conferida no XSD oficial), [CERT-001](fiscal/regras/CERT-001.md), [PROD-001](fiscal/regras/PROD-001.md) (regra de cadastro) |
 | — | [Riscos e dúvidas abertas](riscos.md) |
 | — | [Roadmap](roadmap.md) |
-| — | [ADRs](adr/) (0001–0037) |
+| — | [ADRs](adr/) (0001–0038) |
 | — | [Acompanhamento do projeto](ACOMPANHAMENTO.md) |

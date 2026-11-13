@@ -12,3 +12,6 @@ coverage/
 *.pem
 *.key
 secrets/
+
+# Saídas locais de testes com o autorizador real (DPS assinada, NFS-e, resultados): não versionar
+.local/

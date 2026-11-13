@@ -1,0 +1,33 @@
+
+<script src="https://sefin.producaorestrita.nfse.gov.br/SefinNacional/scripts/redoc.standalone.min.js"></script>
+<script src="https://sefin.producaorestrita.nfse.gov.br/SefinNacional/scripts/try.js"></script>
+<link href="https://sefin.producaorestrita.nfse.gov.br/SefinNacional/content/redoc-custom.css" rel="stylesheet" />
+<style>
+    .bIbMYr {
+        font-size: 16px !important;
+        color: rgb(51, 51, 51) !important;
+    }
+</style>
+<script>
+    window.onload = function (evt) {
+        {
+            //
+            var elemDiv = document.createElement('div');
+            elemDiv.setAttribute('id', 'barra-superior');
+            document.body.appendChild(elemDiv);
+            //
+            var esp = document.createElement('span');
+            esp.innerText = 'Ambiente de Produção Restrita';
+            document.getElementById('barra-superior').appendChild(esp);
+        };
+    };
+    initTry({
+        openApi: 'https://sefin.producaorestrita.nfse.gov.br/SefinNacional/swagger/docs/v1',
+        redocOptions: {
+            scrollOfset: 50
+        },
+    })
+</script>
+<body style="margin:0px">
+    <div id="redoc-container"></div>
+</body>

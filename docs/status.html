@@ -82,7 +82,7 @@
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">666 ✓</div>
+    <div class="value">683 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -169,7 +169,11 @@
     <li><span class="tag done">Pronto</span><div>Cancelamento de nota autorizada (<code>POST …/cancellation</code>), com o mesmo cuidado da emissão: nunca “cancelado ou não?” depois de uma queda<small>Achado: os dois pacotes oficiais divergem no formato da chave e do Id do evento; o sistema segue o XSD de cada um e não escolhe (R-40).</small></div></li>
     <li><span class="tag done">Pronto</span><div>Substituição de nota autorizada (<code>POST …/substitution</code>): a original só muda quando a substituta é autorizada, e nunca nascem duas substitutas<small>Achado: o Anexo I da produção restrita reescreveu, em forma de tabela, quais campos não podem mudar; o sistema segue a tabela e, na dúvida, deixa a decisão para a Receita (R-41).</small></div></li>
     <li><span class="tag done">Pronto</span><div>35 regras oficiais da Receita (Anexo I) conferidas antes de numerar, cada uma com o código de rejeição e a fonte; a nota que seria rejeitada volta na hora, com todos os problemas<small>Achado: com o contrato atual não dá para emitir com tomador por CNPJ, com retenção do ISS nem com imunidade, porque a regra oficial exige dados que o contrato ainda não tem (R-42).</small></div></li>
-    <li><span class="tag doing">Próximo</span><div>Contrato v2 da DPS: endereço do tomador, intermediário e tipo de imunidade (destrava o B2B)</div></li>
+    <li><span class="tag done">Pronto</span><div>Primeiro contato real com a SEFIN (produção restrita): o certificado A1 foi aceito na conexão e a documentação oficial da API foi lida e guardada<small>Caminhos, formato do envio e das respostas confirmados (R-33). O certificado de teste vence em 26/11/2026.</small></div></li>
+    <li><span class="tag done">Pronto</span><div>Conexão real com a SEFIN Nacional (produção restrita), feita a partir da documentação oficial lida com o certificado: envio, consulta, cancelamento e consulta de evento<small>Só a produção restrita está ligada; notas de produção não saem. Falta o primeiro envio de teste, que precisa da cadeia de certificados ICP-Brasil e do seu OK.</small></div></li>
+    <li><span class="tag done">Pronto</span><div>Primeiro envio de teste à SEFIN real: a nota de teste chegou, passou pela recepção (formato, compactação e schema) e foi recusada por uma regra de cadastro<small>A SEFIN de testes não tem Teresina no cadastro de municípios conveniados (E0037). Por isso ainda não dá para provar a assinatura nem ter uma nota autorizada de teste de Teresina (R-43). Nenhuma nota foi duplicada.</small></div></li>
+    <li><span class="tag block">Você</span><div>Perguntar à SEMF/SEFIN se Teresina será cadastrada no ambiente de testes, ou conseguir o certificado de um MEI de Teresina para o teste</div></li>
+    <li><span class="tag todo">Depois</span><div>Contrato v2 da DPS: endereço do tomador, intermediário e tipo de imunidade (destrava o B2B)</div></li>
     <li><span class="tag block">Você</span><div>Envio real à produção restrita (precisa do CNPJ e do certificado A1)</div></li>
   </ul>
 </div>
@@ -217,8 +221,8 @@
 <h2>Riscos em acompanhamento</h2>
 <div class="card">
   <ul class="check">
+    <li><span class="tag block">Alto</span><div>Ambiente de testes da SEFIN sem Teresina no cadastro de convênio: assinatura ainda não provada (R-43)</div></li>
     <li><span class="tag block">Alto</span><div>Contrato atual não emite para tomador com CNPJ, com retenção nem com imunidade; contrato v2 é a próxima etapa (R-42)</div></li>
-    <li><span class="tag block">Alto</span><div>Swagger da SEFIN só abre com certificado: caminhos da API ainda não confirmados (R-33)</div></li>
     <li><span class="tag doing">Médio</span><div>Enquadramento do Simples da empresa-piloto a confirmar com o contador (R-30)</div></li>
     <li><span class="tag doing">Médio</span><div>Algoritmo de assinatura da SEFIN só documentado pela DSF (R-31)</div></li>
     <li><span class="tag doing">Médio</span><div>Uma VPS só: depende de backup e restauração testados (R-17)</div></li>

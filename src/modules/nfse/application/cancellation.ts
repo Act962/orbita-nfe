@@ -3,7 +3,7 @@ import type { AuditContext } from '../../../shared/application/audit.js';
 import { BusinessRuleError, ConflictError, InternalError, NotFoundError } from '../../../shared/application/errors.js';
 import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-of-work.js';
 import { retryDelaySeconds } from '../../../shared/domain/backoff.js';
-import { CANCELLATION_EVENT_TYPE, type CancellationReasonCode, type CancellationState } from '../domain/cancellation.js';
+import { CANCELLATION_EVENT_SEQUENCE, CANCELLATION_EVENT_TYPE, type CancellationReasonCode, type CancellationState } from '../domain/cancellation.js';
 import { afterLookup, DEFAULT_RECONCILIATION_POLICY, nextStep, type LookupResult, type ReconciliationPolicy } from '../domain/reconciliation.js';
 import type {
   CancellationPreparer,
@@ -344,7 +344,7 @@ export class CancellationReconciler {
     let lookup: EventLookupOutcome;
     try {
       lookup = await this.credentials.withCredential(companyId, invoice.establishmentId, (credential) =>
-        this.gateway.findEvent(accessKey, CANCELLATION_EVENT_TYPE, { environment: invoice.environment, credential }),
+        this.gateway.findEvent(accessKey, CANCELLATION_EVENT_TYPE, CANCELLATION_EVENT_SEQUENCE, { environment: invoice.environment, credential }),
       );
     } catch (error) {
       lookup = { kind: 'ERROR', errorCode: error instanceof BusinessRuleError ? error.code : 'LOOKUP_EXCEPTION' };

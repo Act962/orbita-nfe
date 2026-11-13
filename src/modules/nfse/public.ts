@@ -31,6 +31,7 @@ export type {
   EstablishmentReader,
   IssuerCredential,
   NfseDocumentVerifier,
+  GatewayContext,
   NfseGateway,
   NfseVerification,
   ServiceInvoiceCancellation,
@@ -44,7 +45,11 @@ export type {
 } from './application/ports.js';
 export { nfseApiUnitOfWork, nfseWorkerUnitOfWork, NFSE_CONSTRAINTS } from './infrastructure/persistence/repositories.js';
 export { SimulatedNfseGateway, type LookupMode, type SubmitMode } from './infrastructure/gateways/simulated-gateway.js';
+export { NationalNfseGateway, SEFIN_NACIONAL, type NationalEndpointProfile } from './infrastructure/gateways/national/national-gateway.js';
 export { XmlDpsPreparer, XmlDpsValidator, formatDhEmi } from './infrastructure/dps/xml-dps-preparer.js';
+export { buildDpsId } from './domain/dps-id.js';
+export { checkDpsRules } from './domain/dps-rules.js';
+export { brasiliaDate } from './domain/dps.js';
 export { buildDpsXml, LAYOUT_PROFILES } from './infrastructure/dps/dps-xml.js';
 export type { DpsData } from './domain/dps.js';
 export { registerNfseRoutes } from './presentation/http/routes.js';

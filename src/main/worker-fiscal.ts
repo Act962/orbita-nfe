@@ -1,5 +1,13 @@
 import { loadPrivateKek, X509TrustStore } from '../modules/certificates/public.js';
-import { SimulatedNfseGateway, XmlCancellationPreparer, XmlDpsPreparer, XmlNfseVerifier, type UnknownAlertSink } from '../modules/nfse/public.js';
+import {
+  NationalNfseGateway,
+  SEFIN_NACIONAL,
+  SimulatedNfseGateway,
+  XmlCancellationPreparer,
+  XmlDpsPreparer,
+  XmlNfseVerifier,
+  type UnknownAlertSink,
+} from '../modules/nfse/public.js';
 import { createDatabase } from '../shared/infrastructure/database/database.js';
 import { createLogger } from '../shared/infrastructure/logging/logger.js';
 import { composeFiscalWorker } from './compose.js';
@@ -9,7 +17,8 @@ import { runWorker } from './worker-runtime.js';
 
 /**
  * worker-fiscal (ADR-0021): único processo com a KEK privada dos certificados. Consome só a
- * lane `fiscal` (RLS da tabela de jobs). Não faz requisições a URLs de terceiros.
+ * lane `fiscal` (RLS da tabela de jobs). A única saída de rede é o autorizador fiscal
+ * (NFSE_GATEWAY=sefin), com mTLS e o certificado do estabelecimento; nunca URLs de clientes.
  */
 const config = loadFiscalWorkerConfig();
 const logger = createLogger({ level: config.LOG_LEVEL, service: 'worker-fiscal' });
@@ -27,18 +36,19 @@ const alerts: UnknownAlertSink = {
   },
 };
 
-const schemas = config.NFSE_GATEWAY === 'simulator' ? loadFiscalSchemas() : undefined;
+const schemas = config.NFSE_GATEWAY === 'none' ? undefined : loadFiscalSchemas();
 const nfse =
   schemas === undefined
     ? undefined
     : {
-        gateway: new SimulatedNfseGateway(),
+        gateway: config.NFSE_GATEWAY === 'sefin' ? new NationalNfseGateway(SEFIN_NACIONAL) : new SimulatedNfseGateway(),
         preparer: new XmlDpsPreparer(schemas, `orbita-nfe-${config.APP_VERSION}`),
         verifier: new XmlNfseVerifier(schemas),
         alerts,
         cancellationPreparer: new XmlCancellationPreparer(schemas, `orbita-nfe-${config.APP_VERSION}`),
       };
-if (nfse !== undefined) logger.warn('NFS-e com autorizador SIMULADO (NFSE_GATEWAY=simulator): nada é enviado a órgão nenhum');
+if (config.NFSE_GATEWAY === 'simulator') logger.warn('NFS-e com autorizador SIMULADO (NFSE_GATEWAY=simulator): nada é enviado a órgão nenhum');
+if (config.NFSE_GATEWAY === 'sefin') logger.warn({ endpoints: SEFIN_NACIONAL.baseUrls }, 'NFS-e com a SEFIN Nacional REAL (NFSE_GATEWAY=sefin): só a produção restrita está configurada');
 
 const { handlers } = composeFiscalWorker({
   db: database.db,
