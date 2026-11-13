@@ -70,6 +70,25 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Fase 2a, etapa 7 — regras do Anexo I no aceite (2026-11-13)
+Decisão: [ADR-0037](adr/0037-regras-anexo-i-no-aceite.md). Catálogo: [NFSE-DPS](fiscal/regras/NFSE-DPS.md).
+- [x] **Levantamento:** as regras da aba RN DPS_NFS-e dos dois Anexos I para os campos do contrato v1, confrontadas texto a texto.
+- [x] **Critério de entrada:** nível 1 ou 2, só dados da DPS, texto claro. Ficam fora, com o motivo no catálogo:
+  - regras de cadastro (CNPJ, CPF, CNC, Simples);
+  - regras de parametrização do município;
+  - regras que dependem de tabelas que o motor não tem.
+- [x] **35 regras** em `domain/dps-rules.ts`, cada uma com o código de rejeição oficial e os ambientes. Produção segue o Anexo de 09/02/2026 e homologação o de 20/10/2026; o que difere entre eles vale só onde está escrito.
+- [x] **No aceite e na substituição, antes de numerar:** `422 NFSE_RULES_VIOLATED` com todas as violações e o campo de cada uma; nada é gravado.
+- [x] **Achado (R-42):** pelo Anexo I, tomador por CNPJ exige o endereço nacional (E0235). Retenção exige endereço ou intermediário (E0237, E0264), e imunidade exige `tpImunidade` (E0592). Nada disso existe no contrato v1, então esses casos agora são recusados localmente em vez de rejeitados pela SEFIN. Isso torna o contrato v2 a próxima prioridade.
+- [x] **Testes:**
+  - cada regra violada e não violada nos dois ambientes;
+  - limites inclusivos e todas as violações de uma vez;
+  - ponta a ponta HTTP sem número consumido.
+- [ ] Próximas etapas:
+  - contrato v2 (endereço do tomador, intermediário, `tpImunidade`; depois deduções e IBS/CBS);
+  - CPF-001 com fonte;
+  - adapter da SEFIN (com o A1).
+
 ### Fase 2a, etapa 6 — substituição de NFS-e (2026-11-13)
 Decisão: [ADR-0036](adr/0036-substituicao-nfse.md).
 - [x] **API:**
@@ -380,7 +399,8 @@ Decisões: [ADR-0032](adr/0032-nucleo-emissao-nfse.md). Fecha o "fluxo completo 
 11. ~~Fase 2a, etapa 4: roteamento Teresina (ADR-0028)~~ ✔
 12. ~~Fase 2a, etapa 5: cancelamento~~ ✔ (ADR-0035)
 13. ~~Fase 2a, etapa 6: substituição~~ ✔ (ADR-0036)
-14. Fase 2a, etapa 7: regras L2/L3 catalogadas com fonte e contrato v2 (endereço, intermediário, deduções, IBS/CBS).
+14. ~~Fase 2a, etapa 7: regras do Anexo I que dependem só da DPS~~ ✔ (ADR-0037)
+15. Fase 2a, etapa 8: contrato v2 da DPS (endereço do tomador, intermediário, `tpImunidade`; depois deduções e IBS/CBS). Prioridade pelo R-42.
 
    A parte fiscal (regras L3, adapter SEFIN real) espera os pré-requisitos do roadmap: CNPJ e A1 reais, contador e gate fiscal 1.
 
@@ -413,6 +433,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-10 | Piloto em Teresina pela SEFIN Nacional (Res. CGSN 191/2026); adapter municipal DSF na Fase 2b conforme demanda | 0017 (revisado) |
 | 2026-11-10 | Canal de NFS-e decidido pela data de competência, por tabela versionada com fonte | 0028 |
 | 2026-11-10 | Cliente único do padrão nacional com perfil de endpoint; reconciliação por Id da DPS antes de reenviar | 0029 |
+| 2026-11-13 | Regras do Anexo I conferidas no aceite só quando dependem apenas da DPS, por ambiente, com o código oficial; lacunas do contrato v1 viram recusa local | 0037 |
 | 2026-11-13 | Substituição como NFS-e nova com `subst`; a original só vira SUBSTITUTED com a substituta autorizada; exclusiva com o cancelamento; campos travados pela matriz do Anexo I (na dúvida, trava a menos) | 0036 |
 | 2026-11-12 | Cancelamento assíncrono com write-ahead e UNKNOWN; um pedido ativo por nota; nota cancelada continua ocupando a referência externa | 0035 |
 | 2026-11-12 | Roteamento implementado como dado versionado; município = do estabelecimento; conflito entre linhas recusa (sem precedência implícita) | 0028 |

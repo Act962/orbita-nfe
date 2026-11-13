@@ -150,6 +150,8 @@ Content-Type: application/json
   - `FAILED`: falha local antes de qualquer envio, com `failureCode`;
   - `UNKNOWN`: **em verificação. Não reemita.** O motor consulta o autorizador e resolve sozinho.
 - **Erros:** um corpo fora do contrato ou uma DPS que não passa no XSD oficial dá `400 VALIDATION_FAILED`, sem consumir número.
+- **Regras do Anexo I (ADR-0037):** o motor confere antes de numerar as regras oficiais que só dependem da DPS (por exemplo, competência futura, alíquota acima de 5%, regime especial com retenção). A violação dá `422 NFSE_RULES_VIOLATED`, com todas as regras de uma vez em `issues[]` (`code` é o código de rejeição do Anexo, como `E0015`; `field` é o campo). O catálogo completo está em [NFSE-DPS](../fiscal/regras/NFSE-DPS.md).
+  - **Limite do contrato v1:** tomador identificado por CNPJ (E0235), retenção pelo tomador (E0237) ou pelo intermediário (E0264), e imunidade em produção (E0592) exigem grupos da DPS que só entram no contrato v2. Até lá, esses casos são recusados no aceite, em vez de rejeitados pela SEFIN.
 - **Canal de emissão (ADR-0028):** o canal é escolhido pela tabela de roteamento, pelo município do estabelecimento, `opSimpNac`, `regApTribSN` e a **competência**. Hoje só a SEFIN Nacional está disponível. Sem canal, a resposta é `422 NFSE_CHANNEL_NOT_AVAILABLE`, sem consumir número, e o motivo vai em `issues[].code`:
   - `ROUTE_CHANNEL_NOT_SUPPORTED`: em Teresina, competência anterior a 11/2026 ou prestador não optante; use o emissor municipal;
   - `ROUTE_PENDING_CONFIRMATION`: ME/EPP fora do sublimite em Teresina, canal ainda a confirmar;

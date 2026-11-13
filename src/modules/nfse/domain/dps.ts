@@ -68,6 +68,14 @@ export interface DpsData {
   };
 }
 
+/**
+ * Data (AAAA-MM-DD) em horário de Brasília (UTC−03:00), o mesmo fuso do dhEmi (ADR-0033 item 4,
+ * provisório: R-38).
+ */
+export function brasiliaDate(at: Date): string {
+  return new Date(at.getTime() - 3 * 3_600_000).toISOString().slice(0, 10);
+}
+
 /** tpAmb (TSTipoAmbiente): 1 - Produção; 2 - Homologação. */
 export function tpAmbOf(environment: 'PRODUCTION' | 'HOMOLOGATION'): '1' | '2' {
   return environment === 'PRODUCTION' ? '1' : '2';

@@ -8,6 +8,17 @@ last_updated: 2026-11-13
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
 
+## 2026-11-13 — v1 (Fase 2a, etapa 7)
+
+**Adicionado**
+
+- Regras do Anexo I no aceite de `POST /v1/service-invoices` e de `POST /v1/service-invoices/{id}/substitution` (ADR-0037).
+  - A violação devolve `422 NFSE_RULES_VIOLATED`, sem consumir número.
+  - Todas as violações vêm de uma vez em `issues[]`, com `code` (código de rejeição do Anexo, ex.: `E0235`), `field` e `ruleId: "NFSE-DPS"`.
+  - Catálogo: [NFSE-DPS](../fiscal/regras/NFSE-DPS.md).
+
+**Migração:** pedidos que o autorizador rejeitaria passam a ser recusados no aceite. Com o contrato v1, o tomador identificado por CNPJ, a retenção do ISSQN (`retention` 2 ou 3) e a imunidade (`taxation` 2, em produção) são recusados, porque a DPS exige grupos que só entram no contrato v2 (endereço do tomador, intermediário, tipo de imunidade).
+
 ## 2026-11-13 — v1 (Fase 2a, etapa 6)
 
 **Adicionado**

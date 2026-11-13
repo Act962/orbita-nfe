@@ -1,7 +1,8 @@
 import { clientApplicationOf, type AuditContext } from '../../../shared/application/audit.js';
 import { BusinessRuleError, ConflictError, ForbiddenError, InternalError, NotFoundError, ValidationFailedError } from '../../../shared/application/errors.js';
 import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-of-work.js';
-import type { DpsData } from '../domain/dps.js';
+import { brasiliaDate, type DpsData } from '../domain/dps.js';
+import { checkDpsRules, DPS_RULE_SET_VERSION } from '../domain/dps-rules.js';
 import { buildDpsId } from '../domain/dps-id.js';
 import { route, SUPPORTED_CHANNELS, type RoutingTable } from '../domain/routing.js';
 import { checkSubstitutionReason, lockedFieldChanges, type SubstitutionReason } from '../domain/substitution.js';
@@ -53,6 +54,7 @@ export class ServiceInvoiceService {
     private readonly routing: RoutingTable,
     /** Sem validador (testes do núcleo), o aceite não pré-valida no XSD. */
     private readonly validator?: DpsValidator,
+    private readonly now: () => Date = () => new Date(),
   ) {}
 
   async accept(input: AcceptServiceInvoice, context: AuditContext): Promise<AcceptResult> {
@@ -176,8 +178,19 @@ export class ServiceInvoiceService {
     if (establishment === undefined) throw new NotFoundError('ESTABLISHMENT_NOT_FOUND', 'Estabelecimento não encontrado.');
     if (establishment.status !== 'ACTIVE') throw new BusinessRuleError('ESTABLISHMENT_INACTIVE', 'O estabelecimento está inativo.');
 
-    // Canal pela competência (ADR-0028), antes de numerar: sem canal, nada é consumido.
+    // Canal pela competência (ADR-0028), antes de numerar: sem canal, nada é consumido. Vem antes
+    // das regras porque a recusa de canal é mais específica (ex.: ROUTE_REGIME_REQUIRED × E0166).
     const channel = this.channelFor(establishment.municipalityCode, input.dps);
+
+    // Regras do Anexo I que só dependem da DPS (ADR-0037), antes de numerar: todas de uma vez.
+    const violations = checkDpsRules(input.dps, { environment: input.environment, providerCnpj: establishment.cnpj, issueDate: brasiliaDate(this.now()) });
+    if (violations.length > 0) {
+      throw new BusinessRuleError(
+        'NFSE_RULES_VIOLATED',
+        `A DPS viola regras do Anexo I do Sistema Nacional NFS-e (${DPS_RULE_SET_VERSION}); o autorizador a rejeitaria.`,
+        violations.map((v) => ({ code: v.code, field: v.field, message: v.message, ruleId: 'NFSE-DPS' })),
+      );
+    }
 
     if (input.environment === 'PRODUCTION' && !(await r.production.isEnabled(establishment.id))) {
       throw new ForbiddenError('PRODUCTION_NOT_ENABLED', 'A NFS-e não está habilitada para produção neste estabelecimento (PROD-001).');

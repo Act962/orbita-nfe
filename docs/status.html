@@ -73,16 +73,16 @@
   <div class="card kpi">
     <div class="label">Fase atual</div>
     <div class="value">2a · NFS-e Nacional</div>
-    <div class="note">Emissão, cancelamento e substituição prontos (etapas 1 a 6)</div>
+    <div class="note">Emissão, cancelamento, substituição e regras oficiais (etapas 1 a 7)</div>
   </div>
   <div class="card kpi">
     <div class="label">Próxima etapa</div>
-    <div class="value">Regras fiscais</div>
-    <div class="note">Regras catalogadas com fonte e contrato v2 da DPS</div>
+    <div class="value">Contrato v2</div>
+    <div class="note">Endereço do tomador, intermediário e imunidade na DPS</div>
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">624 ✓</div>
+    <div class="value">666 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -106,7 +106,7 @@
   </div>
   <div class="phase">
     <div class="id">2a</div>
-    <div><h3>NFS-e Nacional (Simples, Teresina) · 8–12 semanas</h3><p>Emissão pela SEFIN Nacional: DPS, assinatura, envio, consulta, cancelamento, piloto.</p><div class="bar"><span style="width:72%"></span></div></div>
+    <div><h3>NFS-e Nacional (Simples, Teresina) · 8–12 semanas</h3><p>Emissão pela SEFIN Nacional: DPS, assinatura, envio, consulta, cancelamento, piloto.</p><div class="bar"><span style="width:78%"></span></div></div>
     <span class="tag doing">Em andamento</span>
   </div>
   <div class="phase">
@@ -168,7 +168,8 @@
     <li><span class="tag done">Pronto</span><div>Roteamento pela competência (Teresina): tabela versionada com a fonte de cada regra; sem canal, a nota é recusada antes de numerar<small>Achado: MEI de Teresina com competência anterior a 11/2026 cai em duas regras conflitantes; o sistema recusa em vez de escolher (R-39).</small></div></li>
     <li><span class="tag done">Pronto</span><div>Cancelamento de nota autorizada (<code>POST …/cancellation</code>), com o mesmo cuidado da emissão: nunca “cancelado ou não?” depois de uma queda<small>Achado: os dois pacotes oficiais divergem no formato da chave e do Id do evento; o sistema segue o XSD de cada um e não escolhe (R-40).</small></div></li>
     <li><span class="tag done">Pronto</span><div>Substituição de nota autorizada (<code>POST …/substitution</code>): a original só muda quando a substituta é autorizada, e nunca nascem duas substitutas<small>Achado: o Anexo I da produção restrita reescreveu, em forma de tabela, quais campos não podem mudar; o sistema segue a tabela e, na dúvida, deixa a decisão para a Receita (R-41).</small></div></li>
-    <li><span class="tag doing">Próximo</span><div>Regras fiscais catalogadas com fonte e contrato v2 da DPS (endereço, intermediário, deduções)</div></li>
+    <li><span class="tag done">Pronto</span><div>35 regras oficiais da Receita (Anexo I) conferidas antes de numerar, cada uma com o código de rejeição e a fonte; a nota que seria rejeitada volta na hora, com todos os problemas<small>Achado: com o contrato atual não dá para emitir com tomador por CNPJ, com retenção do ISS nem com imunidade, porque a regra oficial exige dados que o contrato ainda não tem (R-42).</small></div></li>
+    <li><span class="tag doing">Próximo</span><div>Contrato v2 da DPS: endereço do tomador, intermediário e tipo de imunidade (destrava o B2B)</div></li>
     <li><span class="tag block">Você</span><div>Envio real à produção restrita (precisa do CNPJ e do certificado A1)</div></li>
   </ul>
 </div>
@@ -192,7 +193,7 @@
     <h2>Próximos passos (desenvolvimento)</h2>
     <div class="card">
       <ol>
-        <li>Regras fiscais com fonte e contrato v2 da DPS</li>
+        <li>Contrato v2 da DPS (endereço do tomador, intermediário, imunidade)</li>
         <li>Envio real à produção restrita (precisa do A1)</li>
         <li>Piloto controlado em produção</li>
       </ol>
@@ -216,6 +217,7 @@
 <h2>Riscos em acompanhamento</h2>
 <div class="card">
   <ul class="check">
+    <li><span class="tag block">Alto</span><div>Contrato atual não emite para tomador com CNPJ, com retenção nem com imunidade; contrato v2 é a próxima etapa (R-42)</div></li>
     <li><span class="tag block">Alto</span><div>Swagger da SEFIN só abre com certificado: caminhos da API ainda não confirmados (R-33)</div></li>
     <li><span class="tag doing">Médio</span><div>Enquadramento do Simples da empresa-piloto a confirmar com o contador (R-30)</div></li>
     <li><span class="tag doing">Médio</span><div>Algoritmo de assinatura da SEFIN só documentado pela DSF (R-31)</div></li>
@@ -239,7 +241,8 @@
     <li><span class="tag done">Enviado</span><div><code>6b9094e</code> Fase 2a, etapa 3: resolução manual de nota “indeterminada” e alertas (CI verde)</div></li>
     <li><span class="tag done">Enviado</span><div><code>a6bc405</code> Fase 2a, etapa 4: roteamento pela competência (CI verde)</div></li>
     <li><span class="tag done">Enviado</span><div><code>0b50c98</code> Fase 2a, etapa 5: cancelamento de NFS-e (CI verde)</div></li>
-    <li><span class="tag done">Enviado</span><div><code>1301b1b</code> Fase 2a, etapa 6: substituição de NFS-e</div></li>
+    <li><span class="tag done">Enviado</span><div><code>1301b1b</code> Fase 2a, etapa 6: substituição de NFS-e (CI verde)</div></li>
+    <li><span class="tag doing">Local</span><div>Fase 2a, etapa 7: regras oficiais do Anexo I no aceite (ainda sem commit)</div></li>
   </ul>
 </div>
 

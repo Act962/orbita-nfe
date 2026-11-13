@@ -174,6 +174,34 @@ describe('POST /v1/service-invoices → worker → GET', () => {
   });
 });
 
+describe('regras do Anexo I no aceite (ADR-0037)', () => {
+  it('violações → 422 NFSE_RULES_VIOLATED com todas as regras e campos, antes de numerar', async () => {
+    const body = {
+      establishmentId,
+      ...sampleDpsData({
+        competenceDate: '2099-01-01',
+        taker: { document: { type: 'CNPJ', value: cnpjOf(root) }, name: 'Tomador igual ao prestador' },
+      }),
+    };
+    const res = await post(body, 'regras-1');
+    expect(res.statusCode, res.body).toBe(422);
+    expect(problemCode(res)).toBe('NFSE_RULES_VIOLATED');
+    const issues = res.json<{ issues: { code: string; field: string; ruleId: string }[] }>().issues;
+    expect(issues.map((i) => [i.code, i.field])).toEqual([
+      ['E0015', 'body.competenceDate'],
+      ['E0202', 'body.taker.document'],
+      ['E0235', 'body.taker'],
+    ]);
+    expect(issues.every((i) => i.ruleId === 'NFSE-DPS')).toBe(true);
+    const written = await new CompanyTransactions(t.api.db).run(companyId, (tx) =>
+      tx.execute<{ n: number }>(sql`select count(*)::int as n from service_invoices where idempotency_key = 'regras-1'`),
+    );
+    expect(written.rows[0]?.n).toBe(0);
+    // A mesma DPS sem as violações é aceita.
+    expect((await post({ establishmentId, ...sampleDpsData() }, 'regras-2')).statusCode).toBe(202);
+  });
+});
+
 describe('roteamento pela competência (ADR-0028)', () => {
   const invoiceRow = (idempotencyKey: string) =>
     new CompanyTransactions(t.api.db).run(companyId, async (tx) => {

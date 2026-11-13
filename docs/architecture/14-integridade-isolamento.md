@@ -19,6 +19,7 @@ Regras:
 - Erros de validação retornam todos os problemas de uma vez, com `ruleId`, campo e mensagem.
 - Validar localmente não significa estar conforme: só a autorização oficial (L6) confere validade.
 - O especialista fiscal revisa o catálogo de regras ao fim do modelamento de cada modalidade (*gate* fiscal).
+- **NFS-e (2026-11-13, ADR-0037):** o catálogo [NFSE-DPS](../fiscal/regras/NFSE-DPS.md) traz as regras do Anexo I que dependem só da DPS, uma por código de rejeição, separadas por ambiente. Ele está em `domain/dps-rules.ts` e roda no aceite, antes de numerar. Na API, cada violação traz `code` (o código do Anexo), `field` e `ruleId`.
 
 ## A2. Imutabilidade
 - Após a aceitação, dados fiscais do documento (payload, série, número, ambiente, roteamento, versões) são **imutáveis**. Garantido em duas camadas: no agregado e por **trigger** no PostgreSQL que bloqueia UPDATE dessas colunas.

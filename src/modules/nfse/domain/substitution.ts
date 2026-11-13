@@ -1,5 +1,6 @@
 import { err, ok, type Result } from '../../../shared/domain/result.js';
 import type { DpsData } from './dps.js';
+import { hundredths } from './dps-rules.js';
 
 /**
  * Substituição de NFS-e (ADR-0036). A substituta é uma DPS nova com o grupo `subst`
@@ -99,10 +100,5 @@ export function lockedFieldChanges(original: DpsData, replacement: DpsData, envi
 
 /** "1500" e "1500.00" são o mesmo valor (TSDec15V2 aceita as duas formas). */
 function sameAmount(a: string, b: string): boolean {
-  return cents(a) === cents(b);
-}
-
-function cents(value: string): bigint {
-  const [units = '0', fraction = ''] = value.split('.');
-  return BigInt(units) * 100n + BigInt(fraction.padEnd(2, '0').slice(0, 2));
+  return hundredths(a) === hundredths(b);
 }

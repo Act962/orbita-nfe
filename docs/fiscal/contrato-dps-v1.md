@@ -2,6 +2,8 @@
 
 Decisão: [ADR-0033](../adr/0033-contrato-dps-v1.md).
 
+> **Limite conhecido (2026-11-13, ADR-0037):** o Anexo I exige grupos que este contrato não tem. Sem eles, quatro casos são recusados no aceite: tomador identificado por CNPJ (E0235, endereço nacional do tomador), retenção pelo tomador (E0237) ou pelo intermediário (E0264), e imunidade em produção (E0592, `tpImunidade`). Eles entram no contrato v2 (R-42). As regras conferidas no aceite estão em [NFSE-DPS](regras/NFSE-DPS.md).
+
 Fonte de estrutura, enumerações e padrões: XSD oficiais da NFS-e Nacional, versionados com hash em `resources/fiscal/schemas/nfse-nacional/`:
 - `1.01-20260209`: produção;
 - `1.01-20261020-prodrest`: produção restrita.
