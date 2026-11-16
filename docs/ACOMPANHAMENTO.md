@@ -83,6 +83,13 @@ Decisão: [ADR-0039](adr/0039-adapter-emissor-municipal-teresina.md). Motivo: a 
 - [x] **Canal da DSF aceito:** não optante em Teresina e competência anterior a 11/2026. Cancelamento e substituição continuam só na SEFIN.
 - [x] **Configuração:** `NFSE_GATEWAY=real` liga os dois adapters, só em homologação. Comando de teste: `npm run sefin:test -- send … --channel dsf`.
 - [ ] Primeiro envio à homologação da DSF, com o A1 da empresa de teste. A 1ª tentativa (2026-11-13 20:20 UTC) deu `NOT_SENT`, porque o **certificado TLS do servidor da DSF venceu** às 19:59 UTC do mesmo dia. Nada saiu, e a verificação não é desligada. Tentar de novo depois da renovação.
+  - **2ª tentativa (2026-11-16):** a conexão funcionou, e a DSF respondeu `L0022`: a série precisa estar entre 10001 e 49999.
+    - Correções: códigos locais `Lxxxx` e o campo `mensagem` no adapter; regra **THE-002** no aceite; série de teste 49999.
+    - Próximo: reenviar com a série 49999.
+  - **3ª a 5ª tentativas (2026-11-16):** a série passou e todas voltaram **E0314**: código de tributação municipal "não administrado" na homologação.
+    - Foram testados dois pares da tabela oficial da Prefeitura (registrada com hash) e o par e a competência do XML modelo da SEMF. A homologação da DSF não reconhece os códigos (R-44).
+    - **Pergunta à SEMF/DSF** no diagnóstico §10, item 10. Testes suspensos até a resposta.
+    - Provados na DSF: mTLS, envelope, XSD, formato dos erros e regra de série. Ainda não provados: a assinatura e uma nota autorizada.
 
 ### Fase 2a, etapa 8 — adapter da SEFIN Nacional (2026-11-13)
 Decisão: [ADR-0038](adr/0038-adapter-sefin-nacional.md).

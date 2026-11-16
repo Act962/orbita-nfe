@@ -355,6 +355,19 @@ sequenceDiagram
 
 ---
 
+## 9.1 Pesquisa externa de conferência (2026-11-16)
+Fontes de terceiros. Servem para corroborar, **não como prova** (regra do projeto).
+
+| Ponto | O que a pesquisa mostrou | Confere com o motor? |
+|---|---|---|
+| Simples Nacional (ME/EPP) a partir de 01/11/2026 | Res. CGSN 191/2026: emissão obrigatória pelo Emissor Nacional, web ou API. Data de competência decide o sistema (Fenacon, Agência Brasil, Contadores.cnt.br) | Sim (ADR-0028) |
+| Teresina e o Ambiente Nacional | Focus NFe, guia atual de Teresina: provedor "Dsf", formato "Nacional", e "não opera no Ambiente Nacional"; certificado digital; cancelamento ativo. O guia antigo (ABRASF/SOAP) aparece como descontinuado. Não distingue regime | Sim: o não optante sai pela DSF no leiaute nacional (ADR-0039); o guia não trata do Simples, que a Res. 191 manda para o nacional |
+| Código de tributação municipal | Exemplo da Focus para Teresina: `codigo_tributacao_nacional_iss` 070901 e `codigo_tributacao_municipal_iss` 001. O par existe na tabela oficial como `070901001` | Sim: confirma a leitura cTribNac (6) + cTribMun (3) e que o cTribMun é usado em Teresina (THE-001) |
+| E0314 | Suporte de integradores: código não administrado pelo município de incidência na competência. Em alguns municípios se deixa o cTribMun em branco; um artigo liga a E0314 a município não habilitado no Ambiente Nacional | Em aberto (R-44): os pares válidos da tabela são recusados só na homologação da DSF |
+| Homologação de Teresina | Focus: homologação "Sim", sem endereço; Nota Gateway (25/08/2026): a SEMF publicou documentação da API e webservices de homologação e produção | Sim: o host `nfse2-the.dsfweb.com.br` respondeu como DSF (ADR-0039) |
+
+Conclusão: o desenho confere com o que outros integradores praticam. O SEFIN Nacional serve ao Simples, por força da Res. 191, e a DSF, no leiaute nacional, serve aos demais. O bloqueio atual (E0314 na homologação) não aparece explicado em nenhuma fonte pública e continua como pergunta à SEMF (§10, item 10).
+
 ## 10. Dúvidas para a SEMF (e para a DSF, por intermédio dela)
 
 1. Confirmar por escrito que, desde 01/11/2026, a ME/EPP do Simples **não** emite mais no sistema municipal (competência ≥ 11/2026). Pedir também a posição da SEMF sobre o art. 1º da Portaria 20/2026 ("obrigatório e exclusivo") diante da Res. CGSN 191/2026.
@@ -366,6 +379,11 @@ sequenceDiagram
 7. Existe endpoint de lote na API ou só no portal?
 8. Teresina pretende aderir ao Emissor Nacional? Pedir os parâmetros municipais de 2211001 (alíquotas, cTribMun, retenções).
 9. Para a empresa-piloto: há inscrição no CNC/cadastro municipal que torne a IM obrigatória na DPS nacional (regras 198–201)?
+10. **(2026-11-16, ADR-0039) Homologação da DSF e E0314.** A homologação (`nfse2-the.dsfweb.com.br`) recusa com E0314 ("código de tributação municipal … não administrado pelo município de incidência … na data de competência") os pares `010301`/`001` e `010101`/`001`. Os dois estão no "Relatório Atividade" oficial do portal, e o primeiro é o do XML modelo da SEMF, testado inclusive com o mesmo `dCompet` do modelo (2026-06-30). Perguntas:
+    - quais códigos de tributação a homologação administra;
+    - se o prestador precisa estar cadastrado na homologação com a atividade;
+    - se há outra condição para a E0314.
+    - Os itens 4 e 5 ficaram respondidos em parte: o corpo do erro é `erros[].codigo/mensagem`, com códigos locais `Lxxxx` (ex.: L0022, série 10001–49999) e nacionais `Exxxx` (ex.: E0314).
 
 Para o contador:
 - `opSimpNac` e `regApTribSN` da empresa-piloto (o sublimite afeta a E0039);

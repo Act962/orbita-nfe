@@ -222,10 +222,41 @@ describe('roteamento pela competência (ADR-0028)', () => {
     ).rejects.toThrow();
   });
 
+  /** Filial com a série 10001, a faixa que a DSF aceita por API (THE-002), e o próprio certificado. */
+  let dsfEstablishmentId: string;
+  beforeAll(async () => {
+    dsfEstablishmentId = await createEstablishment(t.app, key, companyId, cnpjOf(root, '0002'));
+    const series = await t.app.inject({
+      method: 'POST',
+      url: `/v1/establishments/${dsfEstablishmentId}/document-series`,
+      headers: bearer(key, companyId),
+      payload: { kind: 'NFSE_DPS', environment: 'HOMOLOGATION', series: '10001' },
+    });
+    expect(series.statusCode, series.body).toBe(201);
+    const pfx = pki.pfx({ cnpj: cnpjOf(root, '0002'), password: 'senha-nfse-dsf' });
+    const upload = await t.app.inject({
+      method: 'POST',
+      url: `/v1/establishments/${dsfEstablishmentId}/certificates`,
+      headers: bearer(key, companyId),
+      payload: { pfx: pfx.toString('base64'), password: 'senha-nfse-dsf' },
+    });
+    expect((await fiscalWorker().vault.validate(companyId, upload.json<{ id: string }>().id, WORKER)).kind).toBe('ACTIVATED');
+  });
+
+  it('canal da DSF com série fora de 10001–49999 → 422 THE-002 antes de numerar', async () => {
+    const service = { ...sampleDpsData().service, municipalTaxCode: '001' };
+    const res = await post({ establishmentId, ...sampleDpsData({ provider: { simplesNacionalOption: '1', specialTaxRegime: '0' }, service }) }, 'rota-dsf-serie');
+    expect(res.statusCode, res.body).toBe(422);
+    expect(problemCode(res)).toBe('NFSE_RULES_VIOLATED');
+    expect(res.json<{ issues: unknown[] }>().issues).toEqual([expect.objectContaining({ code: 'THE-002', field: 'body.seriesId', ruleId: 'NFSE-TERESINA-DSF' })]);
+    expect(await invoiceRow('rota-dsf-serie')).toBeUndefined();
+  });
+
   it.each([
     ['não optante em Teresina', { provider: { simplesNacionalOption: '1', specialTaxRegime: '0' } }, 'rota-dsf-nao-optante'],
     ['competência anterior a 11/2026', { competenceDate: '2026-10-31' }, 'rota-dsf-competencia'],
   ])('%s → canal do emissor municipal (DSF, ADR-0039): cTribMun obrigatório (THE-001); com ele, aceita no canal DSF e o worker monta no pacote de 09/02/2026', async (_name, overrides, keyBase) => {
+    const establishmentId = dsfEstablishmentId;
     const without = await post({ establishmentId, ...sampleDpsData(overrides) }, `${keyBase}-sem`);
     expect(without.statusCode, without.body).toBe(422);
     expect(problemCode(without)).toBe('NFSE_RULES_VIOLATED');

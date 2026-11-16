@@ -50,7 +50,7 @@ export { NationalNfseGateway, SEFIN_NACIONAL, TERESINA_DSF, type NationalEndpoin
 export { XmlDpsPreparer, XmlDpsValidator, formatDhEmi } from './infrastructure/dps/xml-dps-preparer.js';
 export { buildDpsId } from './domain/dps-id.js';
 export { checkDpsRules } from './domain/dps-rules.js';
-export { checkChannelRules } from './domain/channel-rules.js';
+export { checkChannelRules, checkChannelSeries, TERESINA_DSF_SERIES } from './domain/channel-rules.js';
 export { layoutEnvironmentOf } from './domain/routing.js';
 export { brasiliaDate } from './domain/dps.js';
 export { buildDpsXml, LAYOUT_PROFILES } from './infrastructure/dps/dps-xml.js';

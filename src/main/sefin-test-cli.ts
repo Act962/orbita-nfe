@@ -7,7 +7,9 @@ import {
   brasiliaDate,
   buildDpsId,
   checkChannelRules,
+  checkChannelSeries,
   checkDpsRules,
+  TERESINA_DSF_SERIES,
   layoutEnvironmentOf,
   NationalNfseGateway,
   SEFIN_NACIONAL,
@@ -34,7 +36,7 @@ import { loadFiscalSchemas } from './fiscal-resources.js';
  *
  * Garantias:
  * - só HOMOLOGATION (tpAmb = 2); o perfil nem tem URL de produção;
- * - DPS com dados FICTÍCIOS: R$ 1,00, sem tomador, série de teste 900, descrição que diz ser teste;
+ * - DPS com dados FICTÍCIOS: R$ 1,00, sem tomador, série de teste (900 SEFIN, 49999 DSF), descrição que diz ser teste;
  * - a senha é pedida no terminal, sem eco; certificado e chave só na memória;
  * - grava em `.local/sefin-teste/` (fora do git) só a DPS assinada e o resultado (códigos);
  * - nunca reenvia sozinho: depois de UNKNOWN, use `lookup` com o Id da DPS.
@@ -42,10 +44,11 @@ import { loadFiscalSchemas } from './fiscal-resources.js';
  * Sem `process.exit` depois do prompt: no Windows, sair com o stdin recém-fechado derruba o
  * Node (assert do libuv em async.c). O código de saída vai em `process.exitCode`.
  */
-const TEST_SERIES = '900';
+/** Série de teste: 900 na SEFIN; 49999 na DSF, que só aceita 10001–49999 por API (THE-002). */
+const TEST_SERIES = { sefin: '900', dsf: String(TERESINA_DSF_SERIES.max) } as const;
 const OUT = join('.local', 'sefin-teste');
 const USAGE =
-  'uso: sefin:test send <cert.p12> --municipality <IBGE 7> --simples <1|2|3> [--regime <1|2|3>] [--channel sefin|dsf]\n' +
+  'uso: sefin:test send <cert.p12> --municipality <IBGE 7> --simples <1|2|3> [--regime <1|2|3>] [--channel sefin|dsf] [--ctribnac 6 --ctribmun 3] [--competence AAAA-MM-DD]\n' +
   '     sefin:test lookup <cert.p12> --dps <Id da DPS>\n' +
   '     sefin:test resend <cert.p12> --file <dps-assinada.xml>   (só depois de lookup NOT_FOUND)\n';
 
@@ -65,6 +68,11 @@ const { positionals, values } = parseArgs({
     dps: { type: 'string' },
     file: { type: 'string' },
     channel: { type: 'string', default: 'sefin' },
+    // Par de teste (cTribNac 6 dígitos / cTribMun 3 dígitos); na DSF, tirado da tabela da Prefeitura.
+    ctribnac: { type: 'string' },
+    ctribmun: { type: 'string' },
+    // Competência (AAAA-MM-DD) para isolar regras que dependem da data; padrão: hoje (UTC-03:00).
+    competence: { type: 'string' },
   },
 });
 const CHANNELS = {
@@ -165,13 +173,19 @@ async function send(context: GatewayContext, cnpj: string): Promise<void> {
   // o par cTribNac 010301 / cTribMun 001 é o do XML modelo da SEMF (diagnóstico §1.6), só como
   // valor de teste.
   const dsf = context.channel === 'MUNICIPAL_TERESINA_DSF';
+  const nationalTaxCode = values.ctribnac ?? (dsf ? '010301' : '010101');
+  const municipalTaxCode = values.ctribmun ?? (dsf ? '001' : undefined);
+  if (!/^[0-9]{6}$/.test(nationalTaxCode)) fail('--ctribnac: 6 dígitos.');
+  if (municipalTaxCode !== undefined && !/^[0-9]{3}$/.test(municipalTaxCode)) fail('--ctribmun: 3 dígitos.');
+  const competenceDate = values.competence ?? brasiliaDate(new Date());
+  if (!/^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.test(competenceDate)) fail('--competence: AAAA-MM-DD.');
   const dps: DpsData = {
-    competenceDate: brasiliaDate(new Date()),
+    competenceDate,
     provider: { simplesNacionalOption: simples, ...(regime === undefined ? {} : { simplesNacionalRegime: regime }), specialTaxRegime: '0' },
     service: {
       municipalityCode: municipality,
-      nationalTaxCode: dsf ? '010301' : '010101',
-      ...(dsf ? { municipalTaxCode: '001' } : {}),
+      nationalTaxCode,
+      ...(municipalTaxCode === undefined ? {} : { municipalTaxCode }),
       description: 'TESTE DE INTEGRACAO EM HOMOLOGACAO - SEM VALOR FISCAL',
     },
     values: { serviceAmount: '1.00', issqn: { taxation: '1', retention: '1' }, approximateTaxes: { kind: 'AMOUNTS', federal: '0.00', state: '0.00', municipal: '0.00' } },
@@ -182,15 +196,18 @@ async function send(context: GatewayContext, cnpj: string): Promise<void> {
   ];
   if (violations.length > 0) fail(`A DPS de teste viola regras do Anexo I: ${violations.map((v) => `${v.code} (${v.field})`).join(', ')}`);
 
+  const series = dsf ? TEST_SERIES.dsf : TEST_SERIES.sefin;
+  const seriesViolation = checkChannelSeries(context.channel, series);
+  if (seriesViolation !== undefined) fail(`Série de teste inválida para o canal: ${seriesViolation.code}`);
   const number = Math.floor(Date.now() / 1000) % 1_000_000_000;
-  const dpsId = buildDpsId({ municipalityCode: municipality, registration: { kind: 'CNPJ', value: cnpj }, series: TEST_SERIES, number });
+  const dpsId = buildDpsId({ municipalityCode: municipality, registration: { kind: 'CNPJ', value: cnpj }, series, number });
   if (!dpsId.ok) fail(`Id da DPS inválido: ${dpsId.error}`);
 
   const invoice = {
     id: '00000000-0000-0000-0000-000000000000',
     environment: 'HOMOLOGATION',
     dpsId: dpsId.value,
-    series: TEST_SERIES,
+    series,
     number,
     payload: dps,
     routingChannel: context.channel,

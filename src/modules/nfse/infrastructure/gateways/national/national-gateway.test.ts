@@ -198,4 +198,19 @@ describe('perfis', () => {
     expect(await dsf.findEvent(KEY, '101101', 1, context())).toEqual({ kind: 'ERROR', errorCode: 'EVENT_LOOKUP_NOT_SUPPORTED' });
     expect(seen).toEqual([]);
   });
+
+  it('DSF: formato REAL da homologação (2026-11-16) — código local Lxxxx e `mensagem` → REJECTED; na SEFIN, Lxxxx não é rejeição', async () => {
+    // Corpo copiado da resposta da homologação da DSF ao envio do motor.
+    const raw =
+      '{"tipoAmbiente":"2","versaoAplicativo":"1.01","dataHoraProcessamento":"2026-11-16T08:08:32.690150986-03:00","idDps":"' +
+      DPS_ID +
+      '","erros":[{"codigo":"L0022","mensagem":"A série informada na DPS deve estar dentro da faixa reservada para esse fim (de 10001 a 49999). As séries de 00001 a 10000 são de uso exclusivo do sistema municipal gerador de NFS-e."}]}';
+    next['POST /nfse'] = { status: 400, raw };
+    expect(await gateway(`${origin}/notafiscal-ws`, TERESINA_DSF).submit(DPS, context())).toEqual({
+      kind: 'REJECTED',
+      code: 'L0022',
+      message: 'L0022: A série informada na DPS deve estar dentro da faixa reservada para esse fim (de 10001 a 49999). As séries de 00001 a 10000 são de uso exclusivo do sistema municipal gerador de NFS-e.',
+    });
+    expect(await gateway().submit(DPS, context())).toEqual({ kind: 'UNKNOWN', errorCode: 'HTTP_400' });
+  });
 });

@@ -30,6 +30,8 @@ export interface NationalEndpointProfile {
     /** Ausente = o autorizador não oferece consulta de evento. */
     readonly eventLookup?: (accessKey: string, eventType: string, sequence: number) => string;
   };
+  /** Códigos de rejeição que o autorizador usa. Fora deste padrão, a resposta não é rejeição. */
+  readonly rejectionCode: RegExp;
   /** ACs confiáveis para o certificado do SERVIDOR. Ausente = repositório padrão do Node. */
   readonly serverTrustPem?: string;
 }
@@ -49,6 +51,8 @@ export const SEFIN_NACIONAL: NationalEndpointProfile = {
     events: (key) => `/nfse/${key}/eventos`,
     eventLookup: (key, type, sequence) => `/nfse/${key}/eventos/${type}/${sequence}`,
   },
+  // Anexos I e II nacionais.
+  rejectionCode: /^E[0-9]{4}$/,
 };
 
 /**
@@ -68,6 +72,8 @@ export const TERESINA_DSF: NationalEndpointProfile = {
     nfse: (key) => `/nfse/${key}`,
     events: (key) => `/nfse/${key}/eventos`,
   },
+  // Nacionais (Anexo I) e locais `Lxxxx`: a homologação respondeu `L0022` em 2026-11-16 (ADR-0039).
+  rejectionCode: /^[EL][0-9]{4}$/,
 };
 
 export const DEFAULT_NATIONAL_LIMITS: TransportLimits & { readonly maxXmlBytes: number } = {
@@ -84,12 +90,13 @@ const EVENT_ALREADY_EXISTS = new Set(['E0802', 'E0840']);
 
 const ACCESS_KEY = /^[0-9A-Z]{50}$/;
 const DPS_ID = /^DPS[0-9A-Z]{42}$/;
-const REJECTION_CODE = /^E[0-9]{4}$/;
 const MESSAGE_MAX = 2000;
 
 interface AuthorizerMessage {
   readonly codigo?: unknown;
   readonly descricao?: unknown;
+  /** A DSF usa `mensagem` no lugar de `descricao` (observado em 2026-11-16). */
+  readonly mensagem?: unknown;
   readonly complemento?: unknown;
 }
 
@@ -124,7 +131,7 @@ export class NationalNfseGateway implements NfseGateway {
       return { kind: 'AUTHORIZED', accessKey, nfseXml };
     }
     if (outcome.status === 400 || outcome.status === 403) {
-      const messages = authorizerMessages(json);
+      const messages = authorizerMessages(json, this.profile.rejectionCode);
       if (messages.some((m) => DPS_ALREADY_EXISTS.has(m.code))) return { kind: 'ALREADY_EXISTS' };
       const first = messages[0];
       if (first !== undefined) return { kind: 'REJECTED', code: first.code, message: describe(messages) };
@@ -167,7 +174,7 @@ export class NationalNfseGateway implements NfseGateway {
       return eventXml === undefined ? { kind: 'UNKNOWN', errorCode: 'RESPONSE_UNREADABLE' } : { kind: 'REGISTERED', eventXml };
     }
     if (outcome.status === 400) {
-      const messages = authorizerMessages(json);
+      const messages = authorizerMessages(json, this.profile.rejectionCode);
       if (messages.some((m) => EVENT_ALREADY_EXISTS.has(m.code))) return { kind: 'ALREADY_EXISTS' };
       const first = messages[0];
       if (first !== undefined) return { kind: 'REJECTED', code: first.code, message: describe(messages) };
@@ -250,15 +257,18 @@ function stringField(json: unknown, name: string): string | undefined {
  * `erros[].Codigo`/`Descricao`, com inicial maiúscula, embora o Swagger documente `codigo`; o 404
  * do `GET /dps` traz `erro.codigo`, em minúsculas. Por isso as chaves são lidas sem distinguir caixa.
  */
-function authorizerMessages(json: unknown): { code: string; text: string }[] {
+function authorizerMessages(json: unknown, rejectionCode: RegExp): { code: string; text: string }[] {
   const record = lowerKeys(json);
   if (record === undefined) return [];
   const list: unknown[] = Array.isArray(record.erros) ? record.erros : record.erro === undefined ? [] : [record.erro];
   return list
     .map((m) => lowerKeys(m) as AuthorizerMessage | undefined)
     .filter((m): m is AuthorizerMessage => m !== undefined)
-    .map((m) => ({ code: typeof m.codigo === 'string' ? m.codigo.trim() : '', text: [m.descricao, m.complemento].filter((t) => typeof t === 'string' && t !== '').join(' — ') }))
-    .filter((m) => REJECTION_CODE.test(m.code));
+    .map((m) => ({
+      code: typeof m.codigo === 'string' ? m.codigo.trim() : '',
+      text: [m.descricao, m.mensagem, m.complemento].filter((t) => typeof t === 'string' && t !== '').join(' — '),
+    }))
+    .filter((m) => rejectionCode.test(m.code));
 }
 
 /** Objeto com as chaves em minúsculas (só o primeiro nível). */

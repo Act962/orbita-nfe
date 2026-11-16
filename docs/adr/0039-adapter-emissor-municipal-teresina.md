@@ -50,6 +50,31 @@ O emissor municipal segue o contrato do padrão nacional. Fonte: Guia de Utiliza
 - **Decisão:** a verificação do servidor **não é desligada** (`rejectUnauthorized: true`, transporte mTLS). Espera-se a DSF renovar o certificado e tenta-se de novo.
 - **Achado para depois:** o host de produção da DSF (`nfseapi.teresina.pi.gov.br`, GoDaddy) tem certificado válido até 05/05/2027, mas o Node não monta a cadeia (`UNABLE_TO_GET_ISSUER_CERT`). Isso precisa ser resolvido quando o perfil de produção for configurado, com a AC intermediária no `serverTrustPem` do perfil, e não desligando a verificação.
 
+## Segunda tentativa (2026-11-16): primeira resposta da DSF
+- O certificado TLS do servidor foi renovado, e a conexão mTLS funcionou.
+- A homologação respondeu **400** com `{"tipoAmbiente":"2","versaoAplicativo":"1.01", …, "erros":[{"codigo":"L0022","mensagem":"A série informada na DPS deve estar dentro da faixa reservada para esse fim (de 10001 a 49999). As séries de 00001 a 10000 são de uso exclusivo do sistema municipal gerador de NFS-e."}]}`. A DPS de teste usava a série 900.
+- **Achados:**
+  1. A DSF usa **códigos locais `Lxxxx`** e o campo **`mensagem`**. O adapter tratou a resposta como `UNKNOWN`, o que era seguro.
+     - **Correção:** o perfil declara o padrão dos códigos de rejeição. A SEFIN continua `E\d{4}`; a DSF é `[EL]\d{4}`. O texto é lido de `descricao` ou de `mensagem`.
+  2. **Regra de série da DSF: 10001 a 49999 por API.** Entrou no aceite como **THE-002**, com recusa antes de numerar. A série de teste da DSF passa a ser 49999.
+  3. `tipoAmbiente` vem como texto (`"2"`). O adapter não usa esse campo.
+- **Ainda não provado:** a assinatura. A L0022 é uma regra de série, e a DSF respondeu um único erro.
+- **3ª tentativa (série 49999):** passou da L0022 e voltou **`E0314`**: "O código de tributação municipal informado não existe ou não está administrado pelo município de incidência do ISSQN na data de competência informada na DPS". A DSF usa também os códigos nacionais.
+  - O par enviado foi **010301 / 001**. Ele **consta** na tabela oficial da Prefeitura ("Relatório Atividade", SHA-256 `976d6c8d…865d`, em [fontes oficiais](../fiscal/fontes-oficiais.md)), cujo código de 9 dígitos é cTribNac (6) + cTribMun (3): `010301001`, "Reprodução de software em qualquer suporte".
+  - Hipótese a confirmar: a parametrização da homologação difere da tabela de produção. Próximo teste: o par `010101001` ("Análise e desenvolvimento de sistemas"), com `--ctribnac 010101 --ctribmun 001`.
+- **4ª tentativa (par 010101 / 001, também da tabela oficial):** `E0314` de novo.
+  - O 1º par é o mesmo do XML modelo da SEMF, cujo `dCompet` é 2026-06-30, e a mensagem cita "na data de competência". Próximo teste para isolar a data: `--competence 2026-06-30`.
+  - Se ainda for E0314, a pergunta vai para a SEMF/DSF: quais códigos a homologação administra.
+- **5ª tentativa (par e competência iguais aos do XML modelo da SEMF, 010301 / 001 / 2026-06-30):** `E0314` de novo.
+  - **Conclusão:** a homologação da DSF não reconhece os códigos de tributação de Teresina, nem os do modelo oficial. Não é questão de data nem do par escolhido.
+  - Pergunta enviada à lista da SEMF (diagnóstico §10, item 10) e risco R-44. Os testes param até a resposta.
+- **O que ficou provado na DSF:**
+  - mTLS com o certificado da empresa;
+  - envelope, gzip+Base64 e XSD de 09/02/2026, porque a DSF passou a avaliar regras de negócio;
+  - formato dos erros;
+  - regra de série L0022.
+- **Ainda não provado:** a assinatura e uma nota autorizada.
+
 ## Consequências
 - O motor aceita e prepara notas do emissor municipal de Teresina e pode transmiti-las à homologação da DSF, com a mesma disciplina de `UNKNOWN`, reconciliação e reenvio dos mesmos bytes.
 - Ficam a confirmar no primeiro envio: o pacote de leiaute, o formato dos erros e os códigos de duplicidade da DSF.

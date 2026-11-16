@@ -4,7 +4,7 @@ import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-o
 import { brasiliaDate, type DpsData } from '../domain/dps.js';
 import { checkDpsRules, DPS_RULE_SET_VERSION } from '../domain/dps-rules.js';
 import { buildDpsId } from '../domain/dps-id.js';
-import { checkChannelRules } from '../domain/channel-rules.js';
+import { checkChannelRules, checkChannelSeries } from '../domain/channel-rules.js';
 import { layoutEnvironmentOf, route, SUPPORTED_CHANNELS, type RoutingTable } from '../domain/routing.js';
 import { checkSubstitutionReason, lockedFieldChanges, type SubstitutionReason } from '../domain/substitution.js';
 import type { DpsValidator, FiscalEnvironment, NfseApiRepositories, ServiceInvoice, SubstitutionOf } from './ports.js';
@@ -214,6 +214,12 @@ export class ServiceInvoiceService {
         throw new BusinessRuleError('NFSE_SERIES_NOT_AVAILABLE', 'Não há série de DPS ativa (ou a informada não é ativa) para o estabelecimento neste ambiente.');
       }
       throw new BusinessRuleError('NFSE_SERIES_REQUIRED', 'O estabelecimento tem mais de uma série de DPS ativa neste ambiente: informe a série.');
+    }
+
+    // THE-002: a série tem de servir ao canal (ADR-0039), antes de numerar.
+    const seriesViolation = checkChannelSeries(channel, series.series);
+    if (seriesViolation !== undefined) {
+      throw new BusinessRuleError('NFSE_RULES_VIOLATED', 'A série de DPS não serve ao canal de emissão desta nota.', [{ ...seriesViolation, ruleId: 'NFSE-TERESINA-DSF' }]);
     }
 
     const number = await r.series.allocate(series.id);
