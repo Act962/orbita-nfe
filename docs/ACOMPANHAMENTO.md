@@ -70,6 +70,12 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Substituição pela DSF e E0065 (2026-11-23)
+Decisão: [ADR-0046](adr/0046-substituicao-dsf-e0065.md).
+- [x] **Substituição de nota da DSF** pela API. A substituta sai pela DSF; a original é fechada quando a substituta é autorizada, como na SEFIN.
+- [x] **Achado, E0065:** a substituta podia ser roteada para outro autorizador. Agora é recusada no aceite (422) e no banco (migration 0021: original e substituta no mesmo canal).
+- [ ] **Cancelamento pela DSF:** continua fechado. Sem consulta de evento, um reenvio não distingue E0802 (nosso evento existe) de E0840 (outro evento vinculado). Pergunta à SEMF no diagnóstico §10, item 11.
+
 ### Prestação no exterior (2026-11-23)
 Decisão: [ADR-0045](adr/0045-prestacao-exterior.md).
 - [x] `service.countryCode` (cPaisPrestacao) como alternativa a `municipalityCode`, com exatamente um dos dois, como no choice do XSD.
@@ -546,6 +552,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-10 | Piloto em Teresina pela SEFIN Nacional (Res. CGSN 191/2026); adapter municipal DSF na Fase 2b conforme demanda | 0017 (revisado) |
 | 2026-11-10 | Canal de NFS-e decidido pela data de competência, por tabela versionada com fonte | 0028 |
 | 2026-11-10 | Cliente único do padrão nacional com perfil de endpoint; reconciliação por Id da DPS antes de reenviar | 0029 |
+| 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |
 | 2026-11-23 | Prestação no exterior (`service.countryCode`), com exatamente um local da prestação; E0318 (cNBS) incluída | 0045 |
 | 2026-11-23 | Tomador no exterior e exportação: NIF/cNaoNIF, endExt reconhecido por `countryCode`, comExt e cPaisResult; correção das regras E1388/E0293 que faltavam desde o contrato v2 | 0044 |
 | 2026-11-23 | Exigibilidade suspensa e benefício municipal por acréscimos opcionais em `values.issqn`; regras de cadastro do benefício ficam com o autorizador | 0043 |

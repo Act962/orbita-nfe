@@ -384,6 +384,10 @@ Conclusão: o desenho confere com o que outros integradores praticam. O SEFIN Na
     - se o prestador precisa estar cadastrado na homologação com a atividade;
     - se há outra condição para a E0314.
     - Os itens 4 e 5 ficaram respondidos em parte: o corpo do erro é `erros[].codigo/mensagem`, com códigos locais `Lxxxx` (ex.: L0022, série 10001–49999) e nacionais `Exxxx` (ex.: E0314).
+11. **(2026-11-23, ADR-0046) Cancelamento pela API da DSF.** O Guia V7 não tem consulta de evento. Para reconciliar com segurança um pedido de cancelamento cuja resposta se perdeu:
+    - a DSF pretende oferecer `GET /nfse/{chave}/eventos`, como a SEFIN?
+    - ao reenviar o **mesmo** pedido (mesmo Id), qual código a DSF devolve: E0802 (Id já existente), E0840 ou outro?
+    - a resposta ao `GET /nfse/{chave}` mostra que a nota foi cancelada?
 
 Para o contador:
 - `opSimpNac` e `regApTribSN` da empresa-piloto (o sublimite afeta a E0039);

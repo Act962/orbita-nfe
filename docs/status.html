@@ -82,7 +82,7 @@
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">768 ✓</div>
+    <div class="value">770 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -174,7 +174,7 @@
     <li><span class="tag done">Pronto</span><div>Primeiro envio de teste à SEFIN real: a nota de teste chegou, passou pela recepção (formato, compactação e schema) e foi recusada por uma regra de cadastro<small>A SEFIN de testes não tem Teresina no cadastro de municípios conveniados (E0037). Por isso ainda não dá para provar a assinatura nem ter uma nota autorizada de teste de Teresina (R-43). Nenhuma nota foi duplicada.</small></div></li>
     <li><span class="tag block">Você</span><div>Perguntar à SEMF/SEFIN se Teresina será cadastrada no ambiente de testes, ou conseguir o certificado de um MEI de Teresina para o teste</div></li>
     <li><span class="tag block">Você</span><div>Perguntar à SEMF/DSF por que a homologação recusa os códigos de serviço da tabela oficial (E0314); texto pronto no acompanhamento</div></li>
-    <li><span class="tag done">Pronto</span><div>Conexão com o emissor municipal de Teresina (DSF), o canal real da empresa de teste (não optante): o sistema escolhe sozinho o emissor certo pela nota<small>Só o ambiente de homologação da DSF está ligado; cancelamento e substituição por esse canal ficam para depois.</small></div></li>
+    <li><span class="tag done">Pronto</span><div>Conexão com o emissor municipal de Teresina (DSF), o canal real da empresa de teste (não optante): o sistema escolhe sozinho o emissor certo pela nota<small>Só o ambiente de homologação da DSF está ligado. A substituição por esse canal já funciona (23/11); o cancelamento ainda não, porque a DSF não tem consulta de evento.</small></div></li>
     <li><span class="tag doing">Próximo</span><div>Primeiro envio de teste à homologação da DSF, antes de o certificado vencer em 26/11<small>16/11: a conexão, o formato e o arquivo da nota foram aceitos, e a regra de série foi incorporada. Mas o ambiente de testes da DSF recusa os códigos de serviço de Teresina, até os do exemplo oficial da Prefeitura. Precisamos de resposta da SEMF/DSF (R-44).</small></div></li>
     <li><span class="tag done">Pronto</span><div>Contrato v2 da DPS: endereço do tomador, intermediário e tipo de imunidade. Notas para empresas, com retenção do ISS e com imunidade passam a ser aceitas<small>Os campos novos são opcionais: quem já integra não muda nada.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Descontos e retenções federais (PIS/COFINS, INSS, IR e CSLL) na nota, com mais 8 regras oficiais conferidas antes de numerar (46 no total)<small>Os valores são sempre seus; o sistema só confere os limites da Receita. Achado: a dedução da base do ISS mudou de formato entre o ambiente de testes e o de produção, então fica para uma etapa própria (R-45).</small></div></li>
@@ -182,6 +182,7 @@
 <li><span class="tag done">Pronto</span><div>Exigibilidade suspensa (decisão judicial ou processo administrativo) e benefício municipal na nota, com mais 6 regras oficiais (58 no total)<small>O número do benefício é o que a Prefeitura cadastrou no Sistema Nacional; tipo, vigência e limite são conferidos pela Receita.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Exportação de serviço e cliente no exterior: identificação pelo NIF, endereço fora do Brasil e dados de comércio exterior, com mais 18 regras oficiais (76 no total)<small>Achado: faltavam duas regras do contrato v2 para o intermediário com CNPJ (exige endereço no Brasil). Elas entraram agora; quem enviar sem o endereço passa a ser avisado na hora, em vez de receber a rejeição da Receita.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Serviço prestado no exterior (país no lugar do município), com mais 2 regras oficiais (78 no total)<small>Achado: na exportação, o código NBS do serviço é obrigatório (E0318); a regra faltava e entrou agora.</small></div></li>
+<li><span class="tag done">Pronto</span><div>Substituição de nota emitida pela DSF<small>Achado: uma substituta que mudasse o enquadramento podia ser mandada a outro autorizador, com a chave de uma nota que ele não emitiu. Agora isso é recusado na hora e travado no banco (regra oficial E0065). O cancelamento pela DSF espera resposta da SEMF.</small></div></li>
     <li><span class="tag block">Você</span><div>Envio real à produção restrita (precisa do CNPJ e do certificado A1)</div></li>
   </ul>
 </div>

@@ -8,6 +8,18 @@ last_updated: 2026-11-13
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
 
+## 2026-11-23 — v1 (substituição pela DSF e E0065)
+
+**Adicionado:**
+
+- `POST /v1/service-invoices/{id}/substitution` passa a aceitar nota emitida pelo emissor municipal de Teresina (DSF). A substituta sai pela DSF.
+
+**Corrigido** (pode recusar pedido que antes era aceito):
+
+- E0065: a substituta que, pela tabela de roteamento, sairia por outro autorizador que não o da original (por exemplo, ao mudar de ME/EPP para não optante) é recusada com `422 NFSE_RULES_VIOLATED`, antes de numerar. Vale para a SEFIN e para a DSF.
+
+**Sem mudança:** o cancelamento de nota da DSF continua indisponível (`NFSE_CHANNEL_NOT_AVAILABLE`); faça-o no emissor municipal.
+
 ## 2026-11-23 — v1 (prestação no exterior)
 
 **Adicionado:**

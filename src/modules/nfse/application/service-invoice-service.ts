@@ -136,8 +136,10 @@ export class ServiceInvoiceService {
     if (original.status !== 'AUTHORIZED') {
       throw new BusinessRuleError('SERVICE_INVOICE_NOT_AUTHORIZED', `Só NFS-e autorizada pode ser substituída (a nota está em ${original.status}).`);
     }
-    // E0065: a substituta sai pelo mesmo ambiente gerador; só o canal nacional é suportado.
-    if (original.routingChannel !== 'NATIONAL_SEFIN' || original.nfseAccessKey === null) {
+    // A substituição é uma DPS com chSubstda, no mesmo canal da original (E0065, conferida em create).
+    // Vale para a SEFIN e para a DSF (ADR-0046); canal sem adapter não chega aqui, porque a original
+    // não teria sido autorizada.
+    if (!(SUPPORTED_CHANNELS as readonly string[]).includes(originalChannel(original)) || original.nfseAccessKey === null) {
       throw new BusinessRuleError('NFSE_CHANNEL_NOT_AVAILABLE', 'A substituição desta nota não está disponível pelo canal em que ela foi emitida.');
     }
     const cancellation = await r.cancellations.findActive(original.id);
@@ -162,10 +164,17 @@ export class ServiceInvoiceService {
       reasonCode: input.reason.code,
       reasonText: input.reason.text,
     };
-    return this.create(r, { ...input, establishmentId: original.establishmentId }, substitution, context);
+    return this.create(r, { ...input, establishmentId: original.establishmentId }, substitution, context, originalChannel(original));
   }
 
-  private async create(r: NfseApiRepositories, input: AcceptServiceInvoice, substitution: SubstitutionOf | null, context: AuditContext): Promise<AcceptResult> {
+  private async create(
+    r: NfseApiRepositories,
+    input: AcceptServiceInvoice,
+    substitution: SubstitutionOf | null,
+    context: AuditContext,
+    /** Canal da original, na substituição (E0065). */
+    requiredChannel?: string,
+  ): Promise<AcceptResult> {
     if (input.externalReference !== null) {
       const occupied = await r.invoices.findActiveByExternalReference(input.clientApplicationId, input.externalReference);
       if (occupied !== undefined) {
@@ -182,6 +191,19 @@ export class ServiceInvoiceService {
     // Canal pela competência (ADR-0028), antes de numerar: sem canal, nada é consumido. Vem antes
     // das regras porque a recusa de canal é mais específica (ex.: ROUTE_REGIME_REQUIRED × E0166).
     const channel = this.channelFor(establishment.municipalityCode, input.dps);
+    // E0065 (Anexo I, nível 1, os dois ambientes): a substituta não pode sair de outro ambiente
+    // gerador. Se o roteamento da substituta der outro canal, ela iria com a chave de uma nota de
+    // outro autorizador.
+    if (requiredChannel !== undefined && channel !== requiredChannel) {
+      throw new BusinessRuleError('NFSE_RULES_VIOLATED', 'A substituta seria emitida por outro autorizador que não o da nota original.', [
+        {
+          code: 'E0065',
+          field: 'provider.simplesNacionalOption',
+          message: `A nota original foi emitida pelo canal ${requiredChannel}; pela tabela de roteamento, esta substituta iria para ${channel}. Não pode haver substituição entre ambientes geradores diferentes.`,
+          ruleId: 'NFSE-DPS',
+        },
+      ]);
+    }
 
     // Regras do Anexo I que só dependem da DPS (ADR-0037), pelo Anexo que o canal usa (ADR-0039),
     // e regras próprias do canal; antes de numerar, todas de uma vez.
@@ -329,5 +351,8 @@ function replay(existing: ServiceInvoice, input: Pick<AcceptServiceInvoice, 'req
   }
   return { invoice: existing, replayed: true };
 }
+
+/** Canal gravado na nota; nota anterior à migration 0015 conta como SEFIN (ADR-0039 item 2). */
+const originalChannel = (invoice: Pick<ServiceInvoice, 'routingChannel'>): string => invoice.routingChannel ?? 'NATIONAL_SEFIN';
 
 const notFound = () => new NotFoundError('SERVICE_INVOICE_NOT_FOUND', 'NFS-e não encontrada.');

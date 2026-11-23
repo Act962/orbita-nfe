@@ -148,6 +148,13 @@
       "when": 1794569218184,
       "tag": "0020_security_service_invoice_substitutions",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795437841929,
+      "tag": "0021_security_substitution_same_channel",
+      "breakpoints": true
     }
   ]
 }

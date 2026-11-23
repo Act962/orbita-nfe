@@ -849,6 +849,34 @@ describe('substituição (ADR-0036)', () => {
     expect((await state(original.id)).status).toBe('SUBSTITUTED');
   });
 
+  it('E0065: substituta que o roteamento mandaria para outro canal (SEFIN → DSF, ME/EPP → não optante) é recusada antes de numerar', async () => {
+    const original = await authorizedInvoice();
+    const notOptant = sampleDpsData({ provider: { simplesNacionalOption: '1', specialTaxRegime: '0' } });
+    const error = await substitute(original.id, { dps: notOptant }).catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: 'NFSE_RULES_VIOLATED', issues: [expect.objectContaining({ code: 'E0065', ruleId: 'NFSE-DPS' })] });
+    expect((await state(original.id)).status).toBe('AUTHORIZED');
+  });
+
+  it('nota emitida pela DSF (ADR-0046): a substituta sai pela DSF e, autorizada, fecha a original', async () => {
+    const dsfEstablishment = await createEstablishment(t.app, key, companyId, cnpjOf(root, '0009'));
+    await activateCertificate(dsfEstablishment, cnpjOf(root, '0009'));
+    await createSeries(dsfEstablishment, '10002');
+    const dsfDps = (description: string) =>
+      sampleDpsData({ provider: { simplesNacionalOption: '1', specialTaxRegime: '0' }, service: { ...sampleDpsData().service, municipalTaxCode: '001', description } });
+    const { invoice: original } = await accept({ establishmentId: dsfEstablishment, dps: dsfDps('Servico original') });
+    expect(original.routingChannel).toBe('MUNICIPAL_TERESINA_DSF');
+    expect(await processor.process(companyId, original.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'AUTHORIZED' });
+
+    const { invoice: replacement } = await substitute(original.id, { dps: dsfDps('Servico corrigido') });
+    expect(replacement).toMatchObject({ routingChannel: 'MUNICIPAL_TERESINA_DSF', establishmentId: dsfEstablishment, series: '10002' });
+    expect(await processor.process(companyId, replacement.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'AUTHORIZED' });
+    expect((await state(original.id)).status).toBe('SUBSTITUTED');
+    // O cancelamento pela DSF continua fechado (sem consulta de evento, ADR-0046).
+    const other = await accept({ establishmentId: dsfEstablishment, dps: dsfDps('Outra nota') });
+    await processor.process(companyId, other.invoice.id, WORKER);
+    expect(await rejectionCode(requestCancellation(other.invoice.id))).toBe('NFSE_CHANNEL_NOT_AVAILABLE');
+  });
+
   it('recusas antes de numerar: campos travados (E0063, ME/EPP → ME/EPP) campo a campo, motivo 99 sem texto (E0078), cancelamento ativo, nota não autorizada, de outra aplicação', async () => {
     const original = await authorizedInvoice();
     const locked = await substitute(original.id, { dps: sampleDpsData({ competenceDate: '2026-11-12', values: { ...sampleDpsData().values, serviceAmount: '150.00' } }) }).catch((e: unknown) => e);
@@ -897,6 +925,20 @@ describe('substituição (ADR-0036)', () => {
           from service_invoices where id = ${pending.id}`),
       ),
     ).rejects.toThrow();
+    // E0065 no banco (migration 0021): substituta de outro canal que o da original é recusada.
+    const target = await authorizedInvoice();
+    const targetKey = (await state(target.id)).nfse_access_key ?? '';
+    const insertOtherChannel = (channel: string) =>
+      new CompanyTransactions(t.api.db).run(companyId, (tx) =>
+        tx.execute(sql`insert into service_invoices (id, company_id, establishment_id, client_application_id, environment, series_id, series, number,
+            dps_id, idempotency_key, request_hash, payload, routing_channel, substitutes_invoice_id, substitution_access_key, substitution_reason_code)
+          select ${newId()}, company_id, establishment_id, client_application_id, environment, series_id, series, number + 2000,
+            'DPS' || substr(dps_id, 4, 22) || lpad((number + 2000)::text, 20, '0'), 'canal-' || id || ${channel}, request_hash, payload, ${channel}, ${target.id}, ${targetKey}, '01'
+          from service_invoices where id = ${target.id}`),
+      ).catch((e: unknown) => {
+        throw new Error(String((e as { cause?: { message?: string; constraint?: string } }).cause?.constraint ?? (e as { cause?: { message?: string } }).cause?.message ?? e));
+      });
+    await expect(insertOtherChannel('MUNICIPAL_TERESINA_DSF')).rejects.toThrow('ck_service_invoices_substitution_original');
     await processor.process(companyId, substituteOfOther.id, WORKER);
     await expect(
       asWorker.run(companyId, (tx) => tx.execute(sql`update service_invoices set substituted_by_invoice_id = ${pending.id} where id = ${original.id}`)),

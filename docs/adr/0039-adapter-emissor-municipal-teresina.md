@@ -38,7 +38,7 @@ O emissor municipal segue o contrato do padrão nacional. Fonte: Guia de Utiliza
    - O código é do contribuinte; o motor só confere se ele veio.
 5. **`MUNICIPAL_TERESINA_DSF` entra em `SUPPORTED_CHANNELS`.** As duas linhas da tabela que apontam para a DSF passam a ser aceitas.
    - O MEI com competência anterior continua `ROUTE_AMBIGUOUS` (R-39).
-6. **Cancelamento e substituição continuam só no canal da SEFIN.**
+6. **Cancelamento e substituição continuam só no canal da SEFIN.** *(Revisto no [ADR-0046](0046-substituicao-dsf-e0065.md): a substituição passou a valer para a DSF; o cancelamento continua fechado.)*
    - Sem consulta de evento, um cancelamento em `UNKNOWN` na DSF não teria como ser reconciliado.
    - A substituição fica para quando o fluxo for testado na DSF.
 7. **Configuração:** `NFSE_GATEWAY=real`, que substitui o `sefin` do ADR-0038. Liga os dois adapters, só com as URLs de homologação.
