@@ -170,6 +170,38 @@ describe('buildDpsXml contra os XSD oficiais', () => {
     }
   }, 30_000);
 
+  it.each([PROD, PRODREST])('%s: exportação (ADR-0044) — NIF, cNaoNIF, endExt, comExt e cPaisResult válidos no XSD, na ordem do leiaute', async (pkg) => {
+    const foreign = { countryCode: 'PT', postalCode: '1000-001', city: 'Lisboa', region: 'Lisboa', street: 'Rua & Cia', number: '1', district: 'Centro' };
+    const foreignTrade = {
+      mode: '1',
+      relationship: '0',
+      currencyCode: '978',
+      amountInCurrency: '180.00',
+      providerSupport: '01',
+      takerSupport: '01',
+      temporaryGoods: '3',
+      exportRegistration: 'RE123',
+      shareWithMdic: true,
+    };
+    const data = dps({
+      provider: { simplesNacionalOption: '1', specialTaxRegime: '0' },
+      taker: { document: { type: 'NIF', value: 'PT123456789' }, name: 'Cliente no exterior', address: foreign },
+      intermediary: { document: { type: 'NO_NIF', reason: '1' }, name: 'Agente', address: { ...foreign, countryCode: 'US' } },
+      service: { municipalityCode: '2211001', nationalTaxCode: '010101', description: 'Serviço exportado', foreignTrade },
+      values: { serviceAmount: '1000.00', issqn: { taxation: '3', retention: '1', resultCountryCode: 'PT' }, approximateTaxes: { kind: 'AMOUNTS', federal: '0.00', state: '0.00', municipal: '0.00' } },
+    });
+    const xml = build(pkg, data);
+    expect((await catalog.validate(pkg, 'DPS_v1.01.xsd', xml)).errors).toEqual([]);
+    expect(xml).toContain(
+      '<toma><NIF>PT123456789</NIF><xNome>Cliente no exterior</xNome><end><endExt><cPais>PT</cPais><cEndPost>1000-001</cEndPost><xCidade>Lisboa</xCidade><xEstProvReg>Lisboa</xEstProvReg></endExt><xLgr>Rua &amp; Cia</xLgr>',
+    );
+    expect(xml).toContain('<interm><cNaoNIF>1</cNaoNIF><xNome>Agente</xNome><end><endExt><cPais>US</cPais>');
+    expect(xml).toContain(
+      '</cServ><comExt><mdPrestacao>1</mdPrestacao><vincPrest>0</vincPrest><tpMoeda>978</tpMoeda><vServMoeda>180.00</vServMoeda><mecAFComexP>01</mecAFComexP><mecAFComexT>01</mecAFComexT><movTempBens>3</movTempBens><nRE>RE123</nRE><mdic>1</mdic></comExt></serv>',
+    );
+    expect(xml).toContain('<tribISSQN>3</tribISSQN><cPaisResult>PT</cPaisResult><tpRetISSQN>1</tpRetISSQN>');
+  }, 30_000);
+
   it.each([PROD, PRODREST])('%s: substituta com o grupo subst (depois de cLocEmi) é válida; código fora de TSCodJustSubst não', async (pkg) => {
     const key = `000000022${'1'.repeat(41)}`;
     const ok = buildDpsXml({ ...input(pkg), substitution: { accessKey: key, reasonCode: '99', reasonText: 'Correção da descrição do serviço' } });

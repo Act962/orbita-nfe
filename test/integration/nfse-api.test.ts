@@ -294,6 +294,42 @@ describe('descontos, dedução, exigibilidade suspensa, benefício municipal e t
   });
 });
 
+describe('tomador no exterior e exportação (ADR-0044)', () => {
+  const taker = {
+    document: { type: 'NIF', value: 'PT123456789' },
+    name: 'Cliente no exterior',
+    address: { countryCode: 'PT', postalCode: '1000-001', city: 'Lisboa', region: 'Lisboa', street: 'Rua Ficticia', number: '1', district: 'Centro' },
+  };
+  const foreignTrade = { mode: '1', relationship: '0', currencyCode: '978', amountInCurrency: '180.00', providerSupport: '01', takerSupport: '01', temporaryGoods: '1', shareWithMdic: false };
+  const exportBody = (service: Record<string, unknown>) => ({
+    establishmentId,
+    ...sampleDpsData({
+      taker,
+      service: { ...sampleDpsData().service, ...service },
+      values: { serviceAmount: '1000.00', issqn: { taxation: '3', retention: '1', resultCountryCode: 'PT' }, approximateTaxes: { kind: 'AMOUNTS', federal: '0.00', state: '0.00', municipal: '0.00' } },
+    }),
+  });
+
+  it('sem comExt → 422 E0330; com ele → 202 e o worker monta NIF, endExt, comExt e cPaisResult válidos no XSD', async () => {
+    const without = await post(exportBody({}), 'exp-sem');
+    expect(without.statusCode, without.body).toBe(422);
+    expect(without.json<{ issues: { code: string; field: string }[] }>().issues.map((i) => [i.code, i.field])).toEqual([['E0330', 'body.service.foreignTrade']]);
+
+    const res = await post(exportBody({ foreignTrade }), 'exp-com');
+    expect(res.statusCode, res.body).toBe(202);
+    const id = res.json<{ id: string }>().id;
+    expect(await fiscalWorker().processor.process(companyId, id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'AUTHORIZED' });
+    const stored = await new CompanyTransactions(worker.db).run(companyId, (tx) =>
+      tx.execute<{ signed_dps: string; layout_package: string }>(sql`select signed_dps, layout_package from service_invoices where id = ${id}`),
+    );
+    const row = stored.rows[0];
+    expect(row?.signed_dps).toContain('<toma><NIF>PT123456789</NIF><xNome>Cliente no exterior</xNome><end><endExt><cPais>PT</cPais>');
+    expect(row?.signed_dps).toContain('<comExt><mdPrestacao>1</mdPrestacao>');
+    expect(row?.signed_dps).toContain('<tribISSQN>3</tribISSQN><cPaisResult>PT</cPaisResult>');
+    expect((await catalog.validate(row?.layout_package ?? '', 'DPS_v1.01.xsd', row?.signed_dps ?? '')).errors).toEqual([]);
+  }, 60_000);
+});
+
 describe('roteamento pela competência (ADR-0028)', () => {
   const invoiceRow = (idempotencyKey: string) =>
     new CompanyTransactions(t.api.db).run(companyId, async (tx) => {

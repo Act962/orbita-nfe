@@ -29,6 +29,20 @@ const PROCESS = '1'.repeat(30);
 const cpfTaker = { document: { type: 'CPF', value: '12345678909' }, name: 'Tomador' } as const;
 const ADDRESS = { municipalityCode: '2211001', postalCode: '64000000', street: 'Rua Fictícia', number: '100', district: 'Centro' } as const;
 const intermediary = (value: string) => ({ document: { type: 'CNPJ', value }, name: 'Intermediário' }) as const;
+const FOREIGN = { countryCode: 'PT', postalCode: '1000-001', city: 'Lisboa', region: 'Lisboa', street: 'Rua Fictícia', number: '1', district: 'Centro' } as const;
+const foreignTaker = { document: { type: 'NIF', value: 'PT123456789' }, name: 'Cliente no exterior', address: FOREIGN } as const;
+const TRADE: NonNullable<DpsData['service']['foreignTrade']> = {
+  mode: '1',
+  relationship: '0',
+  currencyCode: '978',
+  amountInCurrency: '180.00',
+  providerSupport: '01',
+  takerSupport: '01',
+  temporaryGoods: '1',
+  shareWithMdic: false,
+};
+/** Com o grupo comExt (E0330), opcionalmente alterado. */
+const exported = (d: DpsData, change: Partial<typeof TRADE> = {}): DpsData => ({ ...d, service: { ...d.service, foreignTrade: { ...TRADE, ...change } } });
 
 describe('regras do Anexo I conferidas no aceite (ADR-0037)', () => {
   it('a DPS de base não viola nenhuma regra nos dois ambientes', () => {
@@ -99,6 +113,28 @@ describe('regras do Anexo I conferidas no aceite (ADR-0037)', () => {
     ['E0535', { ...issqn(notOptant(), { municipalBenefit: { id: BM_ID } }), provider: { simplesNacionalOption: '1', specialTaxRegime: '9' } }, ['PRODUCTION', 'HOMOLOGATION']],
     ['E0574', issqn(base, { municipalBenefit: { id: BM_ID, reduction: { kind: 'AMOUNT', amount: '1000.01' } } }), ['PRODUCTION', 'HOMOLOGATION']],
     ['E0586', issqn(base, { municipalBenefit: { id: BM_ID, reduction: { kind: 'PERCENTAGE', rate: '0.00' } } }), ['PRODUCTION', 'HOMOLOGATION']],
+    // Tomador e intermediário no exterior, comércio exterior (ADR-0044).
+    ['E1388', { ...base, intermediary: { ...intermediary(OTHER_CNPJ), address: FOREIGN } }, ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0293', { ...issqn(base, { retention: '3' }), intermediary: { document: { type: 'CPF', value: '12345678909' }, name: 'I' } }, ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0223', exported({ ...base, taker: { document: { type: 'CPF', value: '12345678909' }, name: 'T', address: FOREIGN } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0226', exported({ ...base, taker: { document: { type: 'NO_NIF', reason: '0' }, name: 'T', address: FOREIGN } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0242', { ...base, taker: { document: { type: 'NIF', value: 'X1' }, name: 'T' } }, ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0242', { ...base, taker: { document: { type: 'NO_NIF', reason: '1' }, name: 'T' } }, ['HOMOLOGATION']],
+    ['E0246', exported({ ...base, taker: { ...foreignTaker, address: { ...FOREIGN, countryCode: 'BR' } } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0246', exported({ ...base, taker: { ...foreignTaker, address: { ...FOREIGN, countryCode: 'ZZ' } } }), ['HOMOLOGATION']],
+    ['E0281', exported({ ...base, intermediary: { ...intermediary(OTHER_CNPJ), address: FOREIGN } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0286', exported({ ...base, intermediary: { document: { type: 'NO_NIF', reason: '0' }, name: 'I', address: FOREIGN } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0298', { ...base, intermediary: { document: { type: 'NIF', value: 'X2' }, name: 'I' } }, ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0299', exported({ ...base, intermediary: { document: { type: 'NIF', value: 'X2' }, name: 'I', address: { ...FOREIGN, countryCode: 'BR' } } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0330', { ...base, taker: foreignTaker }, ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0330', issqn(notOptant(), { taxation: '3' }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0333', exported({ ...base, taker: foreignTaker }, { mode: '0' }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0341', exported({ ...base, taker: foreignTaker }, { providerSupport: '00' }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0343', exported({ ...base, taker: foreignTaker }, { takerSupport: '00' }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0345', exported({ ...base, taker: foreignTaker }, { temporaryGoods: '0' }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0352', exported({ ...base, taker: foreignTaker }, { temporaryGoods: '2' }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0354', exported({ ...base, taker: foreignTaker }, { exportRegistration: 'RE1' }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0356', exported({ ...base, taker: foreignTaker }, { temporaryGoods: '3' }), ['PRODUCTION', 'HOMOLOGATION']],
     ['E0699', values(base, { federalTaxes: { socialSecurityWithheld: '0' } }), ['PRODUCTION', 'HOMOLOGATION']],
     ['E0700', values(base, { federalTaxes: { incomeTaxWithheld: '1000.00' } }), ['PRODUCTION', 'HOMOLOGATION']],
     ['E0701', values(base, { federalTaxes: { contributionsWithheld: '0.00' } }), ['PRODUCTION', 'HOMOLOGATION']],
@@ -121,7 +157,9 @@ describe('regras do Anexo I conferidas no aceite (ADR-0037)', () => {
     const cnpjTaker = { document: { type: 'CNPJ', value: OTHER_CNPJ }, name: 'X', address: ADDRESS } as const;
     expect(codes({ ...base, taker: cnpjTaker }, 'PRODUCTION')).toEqual([]);
     expect(codes({ ...issqn(base, { retention: '2' }), taker: { ...cpfTaker, address: ADDRESS } }, 'PRODUCTION')).toEqual([]);
-    expect(codes({ ...issqn(base, { retention: '3' }), intermediary: intermediary(OTHER_CNPJ) }, 'PRODUCTION')).toEqual([]);
+    // ADR-0044: intermediário com CNPJ e com retenção também exige o endereço nacional (E1388, E0293).
+    expect(codes({ ...issqn(base, { retention: '3' }), intermediary: intermediary(OTHER_CNPJ) }, 'PRODUCTION')).toEqual(['E1388', 'E0293']);
+    expect(codes({ ...issqn(base, { retention: '3' }), intermediary: { ...intermediary(OTHER_CNPJ), address: ADDRESS } }, 'PRODUCTION')).toEqual([]);
     expect(codes(issqn(base, { taxation: '2', immunityType: '1' }), 'PRODUCTION')).toEqual([]);
   });
 
@@ -161,6 +199,28 @@ describe('regras do Anexo I conferidas no aceite (ADR-0037)', () => {
       municipalBenefit: { id: BM_ID, reduction: { kind: 'PERCENTAGE', rate: '100.00' } },
     });
     expect(codes(percentages, 'PRODUCTION')).toEqual([]);
+  });
+
+  it('exportação completa passa: tomador por NIF ou cNaoNIF 1/2 com endereço no exterior, intermediário no Brasil com endereço, comExt e cPaisResult', () => {
+    const ok = exported({
+      ...issqn(notOptant(), { taxation: '3', resultCountryCode: 'PT' }),
+      taker: foreignTaker,
+      intermediary: { ...intermediary(OTHER_CNPJ), address: ADDRESS },
+    });
+    expect(codes(ok, 'PRODUCTION')).toEqual([]);
+    expect(codes(ok, 'HOMOLOGATION')).toEqual([]);
+    for (const reason of ['1', '2'] as const) {
+      const noNif = { ...ok, taker: { document: { type: 'NO_NIF', reason }, name: 'T', address: FOREIGN } } as const;
+      expect(codes(noNif, 'HOMOLOGATION')).toEqual([]);
+    }
+    expect(codes(exported({ ...base, taker: foreignTaker }, { temporaryGoods: '2', importDeclaration: 'DI1' }))).toEqual([]);
+    expect(codes(exported({ ...base, taker: foreignTaker }, { temporaryGoods: '3', exportRegistration: 'RE1' }))).toEqual([]);
+  });
+
+  it('tomador e intermediário por NIF não servem para a retenção (E0204, E0264)', () => {
+    expect(codes(exported({ ...issqn(base, { retention: '2' }), taker: foreignTaker }))).toEqual(expect.arrayContaining(['E0204', 'E0237']));
+    const foreignIntermediary = { document: { type: 'NIF', value: 'X2' }, name: 'I', address: FOREIGN } as const;
+    expect(codes(exported({ ...issqn(base, { retention: '3' }), intermediary: foreignIntermediary }))).toEqual(expect.arrayContaining(['E0264', 'E0293']));
   });
 
   it('E0428 confere só a parte que depende da DPS: o ISSQN retido, calculado pelo autorizador, não entra', () => {

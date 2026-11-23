@@ -19,7 +19,12 @@ Decisão: [ADR-0033](../adr/0033-contrato-dps-v1.md).
 >
 > **Exigibilidade suspensa e benefício municipal (2026-11-23, [ADR-0043](../adr/0043-exigibilidade-suspensa-beneficio-municipal.md)):**
 > - `values.issqn.suspension` (exigSusp: `type` = `tpSusp`, `processNumber` = `nProcesso`);
-> - `values.issqn.municipalBenefit` (BM: `id` = `nBM`, `reduction` = `vRedBCBM` ou `pRedBCBM`). As regras conferidas no aceite estão em [NFSE-DPS](regras/NFSE-DPS.md).
+> - `values.issqn.municipalBenefit` (BM: `id` = `nBM`, `reduction` = `vRedBCBM` ou `pRedBCBM`).
+>
+> **Tomador no exterior e exportação (2026-11-23, [ADR-0044](../adr/0044-tomador-exterior-exportacao.md)):**
+> - `document.type` `NIF` (`value`) e `NO_NIF` (`reason` = `cNaoNIF`), no tomador e no intermediário;
+> - `address` no exterior (endExt: `countryCode` = `cPais`, `postalCode` = `cEndPost`, `city` = `xCidade`, `region` = `xEstProvReg`, e o logradouro como no nacional);
+> - `service.foreignTrade` (comExt) e `values.issqn.resultCountryCode` (cPaisResult). As regras conferidas no aceite estão em [NFSE-DPS](regras/NFSE-DPS.md).
 
 Fonte de estrutura, enumerações e padrões: XSD oficiais da NFS-e Nacional, versionados com hash em `resources/fiscal/schemas/nfse-nacional/`:
 - `1.01-20260209`: produção;

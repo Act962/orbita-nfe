@@ -82,7 +82,7 @@
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">734 ✓</div>
+    <div class="value">760 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -180,6 +180,7 @@
 <li><span class="tag done">Pronto</span><div>Descontos e retenções federais (PIS/COFINS, INSS, IR e CSLL) na nota, com mais 8 regras oficiais conferidas antes de numerar (46 no total)<small>Os valores são sempre seus; o sistema só confere os limites da Receita. Achado: a dedução da base do ISS mudou de formato entre o ambiente de testes e o de produção, então fica para uma etapa própria (R-45).</small></div></li>
 <li><span class="tag done">Pronto</span><div>Dedução da base do ISS por percentual ou por valor, com mais 6 regras oficiais (52 no total)<small>O sistema monta a dedução no formato que cada autorizador espera, então a mesma requisição serve para a DSF e para a SEFIN. A dedução por documentos fica para depois.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Exigibilidade suspensa (decisão judicial ou processo administrativo) e benefício municipal na nota, com mais 6 regras oficiais (58 no total)<small>O número do benefício é o que a Prefeitura cadastrou no Sistema Nacional; tipo, vigência e limite são conferidos pela Receita.</small></div></li>
+<li><span class="tag done">Pronto</span><div>Exportação de serviço e cliente no exterior: identificação pelo NIF, endereço fora do Brasil e dados de comércio exterior, com mais 18 regras oficiais (76 no total)<small>Achado: faltavam duas regras do contrato v2 para o intermediário com CNPJ (exige endereço no Brasil). Elas entraram agora; quem enviar sem o endereço passa a ser avisado na hora, em vez de receber a rejeição da Receita.</small></div></li>
     <li><span class="tag block">Você</span><div>Envio real à produção restrita (precisa do CNPJ e do certificado A1)</div></li>
   </ul>
 </div>
@@ -204,7 +205,7 @@
     <div class="card">
       <ol>
         <li>Primeira nota de teste autorizada (SEMF/DSF ou MEI de Teresina)</li>
-        <li>Tomador no exterior e exportação, dedução por documentos e IBS/CBS (2027)</li>
+        <li>Prestação no exterior, dedução por documentos e IBS/CBS (2027)</li>
         <li>Piloto controlado em produção</li>
       </ol>
     </div>

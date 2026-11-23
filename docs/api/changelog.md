@@ -8,6 +8,21 @@ last_updated: 2026-11-13
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
 
+## 2026-11-23 — v1 (tomador no exterior e exportação)
+
+**Adicionado** (campos opcionais):
+
+- `taker.document` e `intermediary.document`: tipos `NIF` (`value`) e `NO_NIF` (`reason`: 1 dispensado; 2 não exigência).
+- `taker.address` e `intermediary.address`: endereço no exterior, com `countryCode`, `postalCode`, `city`, `region`, `street`, `number`, `complement` e `district`.
+- `service.foreignTrade`: grupo de comércio exterior (modo de prestação, vínculo, moeda, valor na moeda, mecanismos de apoio, movimentação temporária de bens, nDI, nRE e `shareWithMdic`).
+- `values.issqn.resultCountryCode`: país do resultado do serviço.
+- Regras novas no aceite: E0223, E0226, E0242, E0246, E0281, E0286, E0298, E0299, E0330, E0333, E0341, E0343, E0345, E0352, E0354 e E0356.
+
+**Corrigido** (pode recusar DPS que antes era aceita):
+
+- E1388 e E0293: o intermediário com CNPJ, e o intermediário com retenção do ISSQN, agora exigem `intermediary.address` nacional, como o Anexo I determina. Antes, essa DPS iria para o autorizador e seria rejeitada lá.
+- E0204 e E0264: a retenção exige tomador ou intermediário identificado por CNPJ ou CPF (NIF não serve).
+
 ## 2026-11-23 — v1 (exigibilidade suspensa e benefício municipal)
 
 **Adicionado** (campos opcionais em `values.issqn`):

@@ -70,6 +70,17 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Tomador no exterior e exportação (2026-11-23)
+Decisão: [ADR-0044](adr/0044-tomador-exterior-exportacao.md).
+- [x] **Contrato:** NIF e cNaoNIF no tomador e no intermediário, endereço no exterior (endExt), `service.foreignTrade` (comExt) e `values.issqn.resultCountryCode` (cPaisResult). Os grupos são iguais nos dois XSD.
+- [x] **XML** na ordem do leiaute, validado nos dois XSD.
+- [x] **Regras do aceite:**
+  - tomador: E0223, E0226, E0242 e E0246 (as duas últimas por ambiente);
+  - intermediário: E0281, E0286, E0298 e E0299;
+  - comércio exterior: E0330, E0333, E0341, E0343, E0345, E0352, E0354 e E0356.
+- [x] **Achado, lacuna do contrato v2 corrigida:** E1388 e E0293 (intermediário com CNPJ ou com retenção exige endereço nacional) não eram conferidas. E0204 e E0264 passam a exigir CNPJ ou CPF de fato.
+- [ ] Depois: prestação no exterior (`cPaisPrestacao`), dedução por documentos e IBS/CBS.
+
 ### Exigibilidade suspensa e benefício municipal (2026-11-23)
 Decisão: [ADR-0043](adr/0043-exigibilidade-suspensa-beneficio-municipal.md).
 - [x] **`values.issqn.suspension`** (exigSusp) e **`values.issqn.municipalBenefit`** (BM, com redução por valor ou percentual). Os grupos são iguais nos dois XSD.
@@ -79,7 +90,7 @@ Decisão: [ADR-0043](adr/0043-exigibilidade-suspensa-beneficio-municipal.md).
   - E0574 e E0586 (parcial);
   - E0427 passa a somar o `vRedBCBM`.
 - [x] **Fora, com o motivo no catálogo:** as regras que dependem do cadastro do benefício (E0536–E0579) e as da alíquota mínima de 2% (E0575, E0587).
-- [ ] Depois: tomador no exterior e exportação, dedução por documentos e IBS/CBS.
+- [x] Tomador no exterior e exportação: feito no ADR-0044.
 
 ### Dedução da base do ISSQN (2026-11-16)
 Decisão: [ADR-0042](adr/0042-deducao-base-issqn.md).
@@ -529,6 +540,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-10 | Piloto em Teresina pela SEFIN Nacional (Res. CGSN 191/2026); adapter municipal DSF na Fase 2b conforme demanda | 0017 (revisado) |
 | 2026-11-10 | Canal de NFS-e decidido pela data de competência, por tabela versionada com fonte | 0028 |
 | 2026-11-10 | Cliente único do padrão nacional com perfil de endpoint; reconciliação por Id da DPS antes de reenviar | 0029 |
+| 2026-11-23 | Tomador no exterior e exportação: NIF/cNaoNIF, endExt reconhecido por `countryCode`, comExt e cPaisResult; correção das regras E1388/E0293 que faltavam desde o contrato v2 | 0044 |
 | 2026-11-23 | Exigibilidade suspensa e benefício municipal por acréscimos opcionais em `values.issqn`; regras de cadastro do benefício ficam com o autorizador | 0043 |
 | 2026-11-16 | Dedução da base do ISSQN no contrato por percentual ou valor; o perfil de leiaute de cada pacote monta `vDedRed` ou `vAjusteBC`; documentos adiados | 0042 |
 | 2026-11-16 | Descontos e tributos federais por acréscimos opcionais; E0428 conferida só na parte que depende da DPS; deduções adiadas pela diferença entre os pacotes (R-45) | 0041 |

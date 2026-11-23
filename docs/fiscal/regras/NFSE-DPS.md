@@ -34,12 +34,29 @@ O código da regra é o código de rejeição do Anexo. Na API, cada violação 
 | E0175 | os dois | 2 | `opSimpNac` 3 e `regApTribSN` 1 → `regEspTrib` = 0 | `provider.specialTaxRegime` |
 | E0188 | os dois | 1 | CNPJ do tomador com DV inválido ([CNPJ-001](CNPJ-001.md)) | `taker.document` |
 | E0202 | os dois | 2 | CNPJ do tomador igual ao do prestador (CNPJ completo) | `taker.document` |
-| E0204 | os dois | 2 | `tpRetISSQN` 2 → tomador identificado por CNPJ ou CPF | `taker` |
+| E0204 | os dois | 2 | `tpRetISSQN` 2 → tomador identificado por CNPJ ou CPF (NIF e cNaoNIF não servem, ADR-0044) | `taker` |
 | E0235 | os dois | 1 | Tomador por CNPJ (com `tpEmit` 1) → `toma/end/endNac` obrigatório | `taker.address` |
 | E0237 | os dois | 1 | `tpRetISSQN` 2 → `toma/end/endNac` obrigatório | `taker.address` |
+| E0223 | os dois | 2 | Tomador com `endExt` → NIF ou cNaoNIF (ADR-0044) | `taker.document` |
+| E0226 | os dois | 2 | cNaoNIF do tomador = 0 não é aceito | `taker.document.reason` |
+| E0242 | produção | 1 | Tomador por NIF → `endExt` obrigatório | `taker.address` |
+| E0242 | produção restrita | 1 | Tomador por NIF **ou cNaoNIF** → `endExt` obrigatório | `taker.address` |
+| E0246 | produção | 1 | `cPais` do tomador ≠ BR. **Parcial:** a existência do código na tabela ISO2 fica com o autorizador | `taker.address.countryCode` |
+| E0246 | produção restrita | 1 | `cPais` do tomador ≠ BR e ≠ ZZ (Obs. 2: ZZ não é aceito na Sefin Nacional). **Parcial**, como acima | `taker.address.countryCode` |
 | E0248 | os dois | 1 | CNPJ do intermediário com DV inválido (v2) | `intermediary.document` |
 | E0262 | os dois | 2 | Raiz do CNPJ do intermediário igual à do prestador, 8 posições (v2) | `intermediary.document` |
 | E0264 | os dois | 2 | `tpRetISSQN` 3 → intermediário identificado por CNPJ ou CPF | `intermediary` |
+| E1388 | os dois | 1 | Intermediário por CNPJ (com `tpEmit` 1) → `interm/end/endNac` obrigatório (lacuna do v2, ADR-0044) | `intermediary.address` |
+| E0293 | os dois | 1 | `tpRetISSQN` 3 → `interm/end/endNac` obrigatório (lacuna do v2, ADR-0044) | `intermediary.address` |
+| E0281 | os dois | 2 | Intermediário com `endExt` → NIF ou cNaoNIF | `intermediary.document` |
+| E0286 | os dois | 2 | cNaoNIF do intermediário = 0 não é aceito | `intermediary.document.reason` |
+| E0298 | os dois | 1 | Intermediário por NIF → `endExt` obrigatório | `intermediary.address` |
+| E0299 | os dois | 1 | `cPais` do intermediário ≠ BR (parcial, como a E0246) | `intermediary.address.countryCode` |
+| E0330 | os dois | 1 | Tomador ou intermediário no exterior, ou `tribISSQN` 3 → `comExt` obrigatório (`cPaisPrestacao` não existe no contrato) | `service.foreignTrade` |
+| E0333, E0341, E0343, E0345 | os dois | 2 | `mdPrestacao` 0, `mecAFComexP` 00, `mecAFComexT` 00 e `movTempBens` 0 ("desconhecido") não são aceitos | `service.foreignTrade.*` |
+| E0352 | os dois | 2 | `movTempBens` 2 → `nDI` obrigatório | `service.foreignTrade.importDeclaration` |
+| E0354 | os dois | 2 | `movTempBens` 1 → sem `nDI` e sem `nRE` | `service.foreignTrade` |
+| E0356 | os dois | 2 | `movTempBens` 3 → `nRE` obrigatório | `service.foreignTrade.exportRegistration` |
 | E1402 | os dois | — | `cTribNac` 200101 → `cLocPrestacao` não pode ser 0000000 | `service.municipalityCode` |
 | E0309 | produção restrita | 1 | `cTribNac` 99.03.xx ou 99.04.01 é rejeitado (só existe nesse Anexo) | `service.nationalTaxCode` |
 | E0313 | produção restrita | 3* | MEI não informa `cTribMun` (só existe nesse Anexo) | `service.municipalTaxCode` |
@@ -114,6 +131,9 @@ Antes destas regras, o motor aceitava esses casos e o autorizador os rejeitaria.
 | E0686, E0692 | Alíquota do PIS e da COFINS entre 0 e 100%: o formato TSDec2V2 já limita a 99,99 |
 | E0612–E0640 (`pAliq` por convênio) | Dependem da situação do convênio do município de incidência e de benefício municipal |
 | E0655–E0665 | Regras de retenção parametrizadas pelo município |
+| E0590, E0591 | `cPaisResult` conforme a incidência do serviço (LC 116/03) e o local da prestação |
+| E0529, E0530 | Cenários da planilha "EXPORTACAO_EMISSÃO_NFS-e" |
+| E0222, E0224, E0280, E0284, E0331 | Tratam de `tpEmit` 2 ou 3 (tomador ou intermediário emitente, importação); o motor sempre emite como prestador |
 | E0008, E1294 | `dhEmi` é montado pelo motor no momento do envio |
 
 ## Pendências

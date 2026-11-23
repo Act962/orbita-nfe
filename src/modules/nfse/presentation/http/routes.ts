@@ -9,7 +9,13 @@ import type { ServiceInvoiceService } from '../../application/service-invoice-se
 import type { ServiceInvoice, ServiceInvoiceCancellation } from '../../application/ports.js';
 import { CANCELLATION_REASON_CODES, CANCELLATION_STATES, REASON_TEXT_MAX, REASON_TEXT_MIN } from '../../domain/cancellation.js';
 import {
+  FOREIGN_TRADE_MODES,
+  FOREIGN_TRADE_PROVIDER_SUPPORT,
+  FOREIGN_TRADE_RELATIONSHIPS,
+  FOREIGN_TRADE_TAKER_SUPPORT,
   ISSQN_IMMUNITY_TYPES,
+  NO_NIF_REASONS,
+  TEMPORARY_GOODS_MOVEMENTS,
   ISSQN_RETENTIONS,
   ISSQN_SUSPENSION_TYPES,
   ISSQN_TAXATIONS,
@@ -49,18 +55,40 @@ const AddressSchema = z
   .strict()
   .meta({ id: 'NationalAddress', description: 'Endereço nacional (TCEndereco/endNac).' });
 
-/** TCInfoPessoa: tomador ou intermediário identificado por CNPJ ou CPF. */
+/** TCEndereco com endExt (ADR-0044): reconhecido pela presença de `countryCode`. */
+const ForeignAddressSchema = z
+  .object({
+    countryCode: z.string().regex(/^[A-Z]{2}$/).meta({ description: 'cPais: país (ISO 3166-1 alfa-2), diferente de BR (E0246).' }),
+    postalCode: xsdText(1, 11).meta({ description: 'cEndPost: código postal no exterior.' }),
+    city: xsdText(1, 60).meta({ description: 'xCidade.' }),
+    region: xsdText(1, 60).meta({ description: 'xEstProvReg: estado, província ou região.' }),
+    street: xsdText(1, 255).meta({ description: 'xLgr: logradouro.' }),
+    number: xsdText(1, 60).meta({ description: 'nro: número.' }),
+    complement: xsdText(1, 156).optional().meta({ description: 'xCpl: complemento.' }),
+    district: xsdText(1, 60).meta({ description: 'xBairro: bairro.' }),
+  })
+  .strict()
+  .meta({ id: 'ForeignAddress', description: 'Endereço no exterior (TCEndereco/endExt, ADR-0044).' });
+
+/** TCInfoPessoa: tomador ou intermediário identificado por CNPJ, CPF, NIF ou cNaoNIF. */
 const PartySchema = (role: string) =>
   z
     .object({
       document: z.discriminatedUnion('type', [
         z.object({ type: z.literal('CNPJ'), value: z.string().regex(/^[0-9A-Z]{12}[0-9]{2}$/) }).strict(),
         z.object({ type: z.literal('CPF'), value: z.string().regex(/^[0-9]{11}$/) }).strict(),
+        z.object({ type: z.literal('NIF'), value: xsdText(1, 40).meta({ description: 'NIF: identificação fiscal no exterior.' }) }).strict(),
+        z
+          .object({
+            type: z.literal('NO_NIF'),
+            reason: z.enum(NO_NIF_REASONS).meta({ description: 'cNaoNIF: 1 - dispensado do NIF; 2 - não exigência do NIF. O 0 não é aceito (E0226/E0286).' }),
+          })
+          .strict(),
       ]),
       name: z.string().min(1).max(300).meta({ description: `xNome do ${role}.` }),
       municipalRegistration: z.string().min(1).max(15).regex(XSD_STRING).optional(),
-      address: AddressSchema.optional().meta({
-        description: `Endereço nacional do ${role} (contrato v2). Obrigatório para tomador com CNPJ (E0235) e com retenção pelo tomador (E0237).`,
+      address: z.union([AddressSchema, ForeignAddressSchema]).optional().meta({
+        description: `Endereço do ${role}: nacional (contrato v2) ou no exterior (com countryCode, ADR-0044). O nacional é obrigatório com CNPJ (E0235, E1388) e com retenção (E0237, E0293); o exterior, com NIF (E0242, E0298).`,
       }),
       phone: z.string().regex(/^[0-9]{6,20}$/).optional().meta({ description: 'fone (TSTelefone): de 6 a 20 dígitos.' }),
       email: z.string().min(1).max(80).regex(XSD_STRING).optional(),
@@ -142,6 +170,25 @@ const DpsBody = z
         municipalTaxCode: z.string().regex(/^[0-9]{3}$/).optional().meta({ description: 'cTribMun (3 dígitos).' }),
         nbsCode: z.string().regex(/^[0-9]{9}$/).optional().meta({ description: 'cNBS (9 dígitos).' }),
         description: z.string().min(1).max(2000).refine((v) => /\S/.test(v), 'A descrição não pode ser só espaços.').meta({ description: 'xDescServ.' }),
+        foreignTrade: z
+          .object({
+            mode: z.enum(FOREIGN_TRADE_MODES).meta({ description: 'mdPrestacao: 1 transfronteiriço; 2 consumo no Brasil; 3 presença comercial no exterior; 4 movimento temporário de pessoas físicas. O 0 não é aceito (E0333).' }),
+            relationship: z.enum(FOREIGN_TRADE_RELATIONSHIPS).meta({ description: 'vincPrest: vínculo entre as partes (0 sem vínculo; 1 a 6 e 9 conforme o XSD).' }),
+            currencyCode: z.string().regex(/^[0-9]{3}$/).meta({ description: 'tpMoeda: código numérico da moeda (3 dígitos).' }),
+            amountInCurrency: money('vServMoeda'),
+            providerSupport: z.enum(FOREIGN_TRADE_PROVIDER_SUPPORT).meta({ description: 'mecAFComexP: mecanismo de apoio do prestador (01 nenhum; 02 a 08 conforme o XSD). O 00 não é aceito (E0341).' }),
+            takerSupport: z.enum(FOREIGN_TRADE_TAKER_SUPPORT).meta({ description: 'mecAFComexT: mecanismo de apoio do tomador (01 nenhum; 02 a 26 conforme o XSD). O 00 não é aceito (E0343).' }),
+            temporaryGoods: z.enum(TEMPORARY_GOODS_MOVEMENTS).meta({ description: 'movTempBens: 1 não; 2 vinculada a DI; 3 vinculada a declaração de exportação. O 0 não é aceito (E0345).' }),
+            importDeclaration: xsdText(1, 12).optional().meta({ description: 'nDI: obrigatório com temporaryGoods 2 (E0352).' }),
+            exportRegistration: xsdText(1, 12).optional().meta({ description: 'nRE: obrigatório com temporaryGoods 3 (E0356).' }),
+            shareWithMdic: z.boolean().meta({ description: 'mdic: compartilhar a NFS-e com a Secretaria de Comércio Exterior.' }),
+          })
+          .strict()
+          .optional()
+          .meta({
+            id: 'ForeignTrade',
+            description: 'Comércio exterior (comExt, ADR-0044). Obrigatório com tomador ou intermediário no exterior e com exportação (E0330). Os valores são do contribuinte.',
+          }),
       })
       .strict(),
     values: z
@@ -166,6 +213,9 @@ const DpsBody = z
             rate: z.string().regex(DEC1V2).optional().meta({ description: 'pAliq (%), ex.: "2.00".' }),
             immunityType: z.enum(ISSQN_IMMUNITY_TYPES).optional().meta({
               description: 'tpImunidade (contrato v2), só com taxation 2 (imunidade): 1 a 5 = alíneas a a e do art. 150, VI, da CF88. O 0 não é aceito (E0593). Escolha do contribuinte.',
+            }),
+            resultCountryCode: z.string().regex(/^[A-Z]{2}$/).optional().meta({
+              description: 'cPaisResult (ADR-0044): país onde ocorreu o resultado do serviço, na exportação. Quando ele é obrigatório depende da incidência do serviço (E0590/E0591, conferidas pelo autorizador).',
             }),
             suspension: z
               .object({

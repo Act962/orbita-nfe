@@ -1,4 +1,4 @@
-import type { DpsData, NationalAddress, Party } from '../../domain/dps.js';
+import { isForeignAddress, type DpsData, type ForeignTrade, type Party, type PartyAddress } from '../../domain/dps.js';
 
 /**
  * Montagem determinística do XML da DPS (ADR-0014, ADR-0033) a partir do contrato v1.
@@ -78,11 +78,14 @@ export function buildDpsXml(input: DpsXmlInput): string {
     xDescServ: el('xDescServ', dps.service.description),
     cNBS: opt('cNBS', dps.service.nbsCode),
   };
-  const serv = group('serv', group('locPrest', el('cLocPrestacao', dps.service.municipalityCode)) + group('cServ', layout.serviceOrder.map((k) => serviceParts[k]).join('')));
+  const serv = group('serv', group('locPrest', el('cLocPrestacao', dps.service.municipalityCode)) + group('cServ', layout.serviceOrder.map((k) => serviceParts[k]).join('')) +
+      // TCServ: locPrest, cServ, comExt?, ... (ADR-0044).
+      (dps.service.foreignTrade === undefined ? '' : foreignTrade(dps.service.foreignTrade)),
+  );
 
   const issqn = dps.values.issqn;
   // Ordem de TCTribMunicipal: tribISSQN, cPaisResult?, tpImunidade?, exigSusp?, BM?, tpRetISSQN, pAliq?.
-  // Iguais nos dois pacotes (ADR-0043). cPaisResult fica fora do contrato (exportação).
+  // Iguais nos dois pacotes (ADR-0043, ADR-0044).
   const exigSusp = issqn.suspension === undefined ? '' : group('exigSusp', el('tpSusp', issqn.suspension.type) + el('nProcesso', issqn.suspension.processNumber));
   const bm = issqn.municipalBenefit;
   const bmGroup =
@@ -95,7 +98,7 @@ export function buildDpsXml(input: DpsXmlInput): string {
         );
   const tribMun = group(
     'tribMun',
-    el('tribISSQN', issqn.taxation) + opt('tpImunidade', issqn.immunityType) + exigSusp + bmGroup + el('tpRetISSQN', issqn.retention) + opt('pAliq', issqn.rate),
+    el('tribISSQN', issqn.taxation) + opt('cPaisResult', issqn.resultCountryCode) + opt('tpImunidade', issqn.immunityType) + exigSusp + bmGroup + el('tpRetISSQN', issqn.retention) + opt('pAliq', issqn.rate),
   );
   const taxes = dps.values.approximateTaxes;
   const totTrib = group(
@@ -170,12 +173,36 @@ export function buildDpsXml(input: DpsXmlInput): string {
  * pacotes (o de produção restrita só torna o xNome opcional; o contrato sempre o exige).
  */
 function party(p: Party): string {
-  return el(p.document.type, p.document.value) + opt('IM', p.municipalRegistration) + el('xNome', p.name) + (p.address === undefined ? '' : address(p.address)) + opt('fone', p.phone) + opt('email', p.email);
+  const id = p.document.type === 'NO_NIF' ? el('cNaoNIF', p.document.reason) : el(p.document.type, p.document.value);
+  return id + opt('IM', p.municipalRegistration) + el('xNome', p.name) + (p.address === undefined ? '' : address(p.address)) + opt('fone', p.phone) + opt('email', p.email);
 }
 
-/** TCEndereco com endNac: endNac(cMun, CEP), xLgr, nro, xCpl?, xBairro. */
-function address(a: NationalAddress): string {
-  return group('end', group('endNac', el('cMun', a.municipalityCode) + el('CEP', a.postalCode)) + el('xLgr', a.street) + el('nro', a.number) + opt('xCpl', a.complement) + el('xBairro', a.district));
+/**
+ * TCEndereco: choice endNac(cMun, CEP) | endExt(cPais, cEndPost, xCidade, xEstProvReg), seguida de
+ * xLgr, nro, xCpl?, xBairro. Igual nos dois pacotes.
+ */
+function address(a: PartyAddress): string {
+  const where = isForeignAddress(a)
+    ? group('endExt', el('cPais', a.countryCode) + el('cEndPost', a.postalCode) + el('xCidade', a.city) + el('xEstProvReg', a.region))
+    : group('endNac', el('cMun', a.municipalityCode) + el('CEP', a.postalCode));
+  return group('end', where + el('xLgr', a.street) + el('nro', a.number) + opt('xCpl', a.complement) + el('xBairro', a.district));
+}
+
+/** TCComExterior (ADR-0044), na ordem do XSD; igual nos dois pacotes. */
+function foreignTrade(f: ForeignTrade): string {
+  return group(
+    'comExt',
+    el('mdPrestacao', f.mode) +
+      el('vincPrest', f.relationship) +
+      el('tpMoeda', f.currencyCode) +
+      el('vServMoeda', f.amountInCurrency) +
+      el('mecAFComexP', f.providerSupport) +
+      el('mecAFComexT', f.takerSupport) +
+      el('movTempBens', f.temporaryGoods) +
+      opt('nDI', f.importDeclaration) +
+      opt('nRE', f.exportRegistration) +
+      el('mdic', f.shareWithMdic ? '1' : '0'),
+  );
 }
 
 /** Elemento folha: o valor é SEMPRE escapado (nunca vira marcação). */

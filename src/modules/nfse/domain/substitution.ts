@@ -1,5 +1,5 @@
 import { err, ok, type Result } from '../../../shared/domain/result.js';
-import type { DpsData } from './dps.js';
+import type { DpsData, PartyDocument } from './dps.js';
 import { hundredths } from './dps-rules.js';
 
 /**
@@ -91,11 +91,16 @@ export function lockedFieldChanges(original: DpsData, replacement: DpsData, envi
     if (original.taker !== undefined) {
       const before = original.taker.document;
       const after = replacement.taker?.document;
-      if (after?.type !== before.type || after.value !== before.value) changed.push('taker.document');
+      if (after === undefined || documentKey(after) !== documentKey(before)) changed.push('taker.document');
     }
     if (!sameAmount(replacement.values.serviceAmount, original.values.serviceAmount)) changed.push('values.serviceAmount');
   }
   return changed.map((field) => ({ rule, field }));
+}
+
+/** Identificação do tomador comparável (independe da ordem das chaves no JSON guardado). */
+function documentKey(d: PartyDocument): string {
+  return d.type === 'NO_NIF' ? `NO_NIF:${d.reason}` : `${d.type}:${d.value}`;
 }
 
 /** "1500" e "1500.00" são o mesmo valor (TSDec15V2 aceita as duas formas). */

@@ -1,5 +1,5 @@
 import { Cnpj } from '../../../shared/domain/cnpj.js';
-import type { DpsData } from './dps.js';
+import { isForeignAddress, isNationalAddress, type DpsData, type Party } from './dps.js';
 
 /**
  * Regras do Anexo I (aba RN DPS_NFS-e) conferidas antes de numerar (L3, doc 14 §A1).
@@ -50,6 +50,14 @@ const notTaxable = (d: DpsData) => d.values.issqn.taxation !== '1'; // 2 Imunida
 const option = (d: DpsData) => d.provider.simplesNacionalOption;
 const specialRegime = (d: DpsData) => d.provider.specialTaxRegime !== '0';
 const retained = (d: DpsData) => d.values.issqn.retention !== '1';
+/** Identificado por CNPJ ou CPF (E0204, E0264). */
+const federallyIdentified = (p: Party | undefined) => p !== undefined && (p.document.type === 'CNPJ' || p.document.type === 'CPF');
+/** Identificado por NIF ou cNaoNIF (E0223, E0242, E0281). */
+const abroadIdentified = (p: Party | undefined) => p !== undefined && (p.document.type === 'NIF' || p.document.type === 'NO_NIF');
+const foreignCountry = (p: Party | undefined) => {
+  const a = p?.address;
+  return isForeignAddress(a) ? a.countryCode : undefined;
+};
 /** "Maior que zero e menor que o valor do serviço" (E0431, E0432, E0699–E0701); ausente não viola. */
 const betweenZeroAndService = (d: DpsData, value: string | undefined) =>
   value !== undefined && (hundredths(value) === 0n || hundredths(value) >= hundredths(d.values.serviceAmount));
@@ -119,21 +127,64 @@ export const DPS_RULES: readonly DpsRule[] = [
     environments: BOTH,
     field: 'taker',
     message: 'Com retenção pelo tomador (tpRetISSQN = 2), o tomador deve ser identificado por CNPJ ou CPF.',
-    violated: (d) => d.values.issqn.retention === '2' && d.taker === undefined,
+    violated: (d) => d.values.issqn.retention === '2' && !federallyIdentified(d.taker),
   },
   {
     code: 'E0235',
     environments: BOTH,
     field: 'taker.address',
     message: 'Tomador identificado por CNPJ exige o endereço nacional do tomador (toma/end/endNac).',
-    violated: (d) => d.taker?.document.type === 'CNPJ' && d.taker.address === undefined,
+    violated: (d) => d.taker?.document.type === 'CNPJ' && !isNationalAddress(d.taker.address),
   },
   {
     code: 'E0237',
     environments: BOTH,
     field: 'taker.address',
     message: 'Com retenção pelo tomador (tpRetISSQN = 2), o endereço nacional do tomador é obrigatório.',
-    violated: (d) => d.values.issqn.retention === '2' && d.taker !== undefined && d.taker.address === undefined,
+    violated: (d) => d.values.issqn.retention === '2' && d.taker !== undefined && !isNationalAddress(d.taker.address),
+  },
+  // ------------------------------------------------------------------ tomador no exterior (ADR-0044)
+  {
+    code: 'E0223',
+    environments: BOTH,
+    field: 'taker.document',
+    message: 'Com endereço no exterior, o tomador deve ser identificado por NIF ou pelo motivo de não ter NIF (cNaoNIF).',
+    violated: (d) => isForeignAddress(d.taker?.address) && !abroadIdentified(d.taker),
+  },
+  {
+    code: 'E0226',
+    environments: BOTH,
+    field: 'taker.document.reason',
+    message: 'O motivo 0 (não informado na nota de origem) para a falta do NIF do tomador não é permitido.',
+    violated: (d) => d.taker?.document.type === 'NO_NIF' && d.taker.document.reason === '0',
+  },
+  {
+    code: 'E0242',
+    environments: PRODUCTION_ONLY,
+    field: 'taker.address',
+    message: 'Tomador identificado por NIF exige o endereço no exterior (toma/end/endExt).',
+    violated: (d) => d.taker?.document.type === 'NIF' && !isForeignAddress(d.taker.address),
+  },
+  {
+    code: 'E0242',
+    environments: HOMOLOGATION_ONLY,
+    field: 'taker.address',
+    message: 'Tomador identificado por NIF ou cNaoNIF exige o endereço no exterior (toma/end/endExt).',
+    violated: (d) => abroadIdentified(d.taker) && !isForeignAddress(d.taker?.address),
+  },
+  {
+    code: 'E0246',
+    environments: PRODUCTION_ONLY,
+    field: 'taker.address.countryCode',
+    message: 'O país do endereço no exterior do tomador não pode ser o Brasil (BR).',
+    violated: (d) => foreignCountry(d.taker) === 'BR',
+  },
+  {
+    code: 'E0246',
+    environments: HOMOLOGATION_ONLY,
+    field: 'taker.address.countryCode',
+    message: 'O país do endereço no exterior do tomador não pode ser o Brasil (BR) nem ZZ (sem informação) na Sefin Nacional.',
+    violated: (d) => ['BR', 'ZZ'].includes(foreignCountry(d.taker) ?? ''),
   },
   // ------------------------------------------------------------------ intermediário (contrato v2)
   {
@@ -155,7 +206,102 @@ export const DPS_RULES: readonly DpsRule[] = [
     environments: BOTH,
     field: 'intermediary',
     message: 'Com retenção pelo intermediário (tpRetISSQN = 3), o intermediário deve ser identificado por CNPJ ou CPF.',
-    violated: (d) => d.values.issqn.retention === '3' && d.intermediary === undefined,
+    violated: (d) => d.values.issqn.retention === '3' && !federallyIdentified(d.intermediary),
+  },
+  {
+    code: 'E1388',
+    environments: BOTH,
+    field: 'intermediary.address',
+    message: 'Intermediário identificado por CNPJ exige o endereço nacional do intermediário (interm/end/endNac).',
+    violated: (d) => d.intermediary?.document.type === 'CNPJ' && !isNationalAddress(d.intermediary.address),
+  },
+  {
+    code: 'E0293',
+    environments: BOTH,
+    field: 'intermediary.address',
+    message: 'Com retenção pelo intermediário (tpRetISSQN = 3), o endereço nacional do intermediário é obrigatório.',
+    violated: (d) => d.values.issqn.retention === '3' && d.intermediary !== undefined && !isNationalAddress(d.intermediary.address),
+  },
+  {
+    code: 'E0281',
+    environments: BOTH,
+    field: 'intermediary.document',
+    message: 'Com endereço no exterior, o intermediário deve ser identificado por NIF ou pelo motivo de não ter NIF (cNaoNIF).',
+    violated: (d) => isForeignAddress(d.intermediary?.address) && !abroadIdentified(d.intermediary),
+  },
+  {
+    code: 'E0286',
+    environments: BOTH,
+    field: 'intermediary.document.reason',
+    message: 'O motivo 0 (não informado na nota de origem) para a falta do NIF do intermediário não é permitido.',
+    violated: (d) => d.intermediary?.document.type === 'NO_NIF' && d.intermediary.document.reason === '0',
+  },
+  {
+    code: 'E0298',
+    environments: BOTH,
+    field: 'intermediary.address',
+    message: 'Intermediário identificado por NIF exige o endereço no exterior (interm/end/endExt).',
+    violated: (d) => d.intermediary?.document.type === 'NIF' && !isForeignAddress(d.intermediary.address),
+  },
+  {
+    code: 'E0299',
+    environments: BOTH,
+    field: 'intermediary.address.countryCode',
+    message: 'O país do endereço no exterior do intermediário não pode ser o Brasil (BR).',
+    violated: (d) => foreignCountry(d.intermediary) === 'BR',
+  },
+  // ------------------------------------------------------------------ comércio exterior (ADR-0044)
+  {
+    // cPaisPrestacao (prestação no exterior) não existe no contrato; os outros gatilhos sim.
+    code: 'E0330',
+    environments: BOTH,
+    field: 'service.foreignTrade',
+    message: 'Com tomador ou intermediário no exterior, ou com exportação de serviço (tribISSQN = 3), o grupo de comércio exterior (comExt) é obrigatório.',
+    violated: (d) =>
+      d.service.foreignTrade === undefined && (isForeignAddress(d.taker?.address) || isForeignAddress(d.intermediary?.address) || d.values.issqn.taxation === '3'),
+  },
+  ...(
+    [
+      ['E0333', 'mode', 'O modo de prestação 0 (desconhecido) não é permitido.'],
+      ['E0341', 'providerSupport', 'O mecanismo de apoio ao comércio exterior do prestador 00 (desconhecido) não é permitido.'],
+      ['E0343', 'takerSupport', 'O mecanismo de apoio ao comércio exterior do tomador 00 (desconhecido) não é permitido.'],
+      ['E0345', 'temporaryGoods', 'O vínculo com a movimentação temporária de bens 0 (desconhecido) não é permitido.'],
+    ] as const
+  ).map(
+    ([code, key, message]): DpsRule => ({
+      code,
+      environments: BOTH,
+      field: `service.foreignTrade.${key}`,
+      message,
+      violated: (d) => {
+        const value = d.service.foreignTrade?.[key];
+        return value !== undefined && /^0+$/.test(value);
+      },
+    }),
+  ),
+  {
+    code: 'E0352',
+    environments: BOTH,
+    field: 'service.foreignTrade.importDeclaration',
+    message: 'Com movimentação temporária vinculada a declaração de importação (2), o número da DI (nDI) é obrigatório.',
+    violated: (d) => d.service.foreignTrade?.temporaryGoods === '2' && d.service.foreignTrade.importDeclaration === undefined,
+  },
+  {
+    code: 'E0354',
+    environments: BOTH,
+    field: 'service.foreignTrade',
+    message: 'Sem movimentação temporária de bens (1), nDI e nRE não podem ser informados.',
+    violated: (d) => {
+      const f = d.service.foreignTrade;
+      return f?.temporaryGoods === '1' && (f.importDeclaration !== undefined || f.exportRegistration !== undefined);
+    },
+  },
+  {
+    code: 'E0356',
+    environments: BOTH,
+    field: 'service.foreignTrade.exportRegistration',
+    message: 'Com movimentação temporária vinculada a declaração de exportação (3), o número do RE (nRE) é obrigatório.',
+    violated: (d) => d.service.foreignTrade?.temporaryGoods === '3' && d.service.foreignTrade.exportRegistration === undefined,
   },
   // ------------------------------------------------------------------ serviço
   {
