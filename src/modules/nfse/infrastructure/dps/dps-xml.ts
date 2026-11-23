@@ -78,7 +78,10 @@ export function buildDpsXml(input: DpsXmlInput): string {
     xDescServ: el('xDescServ', dps.service.description),
     cNBS: opt('cNBS', dps.service.nbsCode),
   };
-  const serv = group('serv', group('locPrest', el('cLocPrestacao', dps.service.municipalityCode)) + group('cServ', layout.serviceOrder.map((k) => serviceParts[k]).join('')) +
+  // TCLocPrest: choice cLocPrestacao | cPaisPrestacao (ADR-0045); o aceite garante exatamente um.
+  const locPrest =
+    dps.service.countryCode === undefined ? el('cLocPrestacao', dps.service.municipalityCode ?? '') : el('cPaisPrestacao', dps.service.countryCode);
+  const serv = group('serv', group('locPrest', locPrest) +group('cServ', layout.serviceOrder.map((k) => serviceParts[k]).join('')) +
       // TCServ: locPrest, cServ, comExt?, ... (ADR-0044).
       (dps.service.foreignTrade === undefined ? '' : foreignTrade(dps.service.foreignTrade)),
   );

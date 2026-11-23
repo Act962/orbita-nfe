@@ -70,6 +70,12 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Prestação no exterior (2026-11-23)
+Decisão: [ADR-0045](adr/0045-prestacao-exterior.md).
+- [x] `service.countryCode` (cPaisPrestacao) como alternativa a `municipalityCode`, com exatamente um dos dois, como no choice do XSD.
+- [x] Regras: E0304 (parcial) e E0318; a E0330 passa a ter o gatilho do `cPaisPrestacao`.
+- [x] **Achado:** a E0318 (cNBS obrigatório com tomador ou intermediário no exterior) faltava no ADR-0044.
+
 ### Tomador no exterior e exportação (2026-11-23)
 Decisão: [ADR-0044](adr/0044-tomador-exterior-exportacao.md).
 - [x] **Contrato:** NIF e cNaoNIF no tomador e no intermediário, endereço no exterior (endExt), `service.foreignTrade` (comExt) e `values.issqn.resultCountryCode` (cPaisResult). Os grupos são iguais nos dois XSD.
@@ -79,7 +85,7 @@ Decisão: [ADR-0044](adr/0044-tomador-exterior-exportacao.md).
   - intermediário: E0281, E0286, E0298 e E0299;
   - comércio exterior: E0330, E0333, E0341, E0343, E0345, E0352, E0354 e E0356.
 - [x] **Achado, lacuna do contrato v2 corrigida:** E1388 e E0293 (intermediário com CNPJ ou com retenção exige endereço nacional) não eram conferidas. E0204 e E0264 passam a exigir CNPJ ou CPF de fato.
-- [ ] Depois: prestação no exterior (`cPaisPrestacao`), dedução por documentos e IBS/CBS.
+- [x] Prestação no exterior: feita no ADR-0045.
 
 ### Exigibilidade suspensa e benefício municipal (2026-11-23)
 Decisão: [ADR-0043](adr/0043-exigibilidade-suspensa-beneficio-municipal.md).
@@ -540,6 +546,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-10 | Piloto em Teresina pela SEFIN Nacional (Res. CGSN 191/2026); adapter municipal DSF na Fase 2b conforme demanda | 0017 (revisado) |
 | 2026-11-10 | Canal de NFS-e decidido pela data de competência, por tabela versionada com fonte | 0028 |
 | 2026-11-10 | Cliente único do padrão nacional com perfil de endpoint; reconciliação por Id da DPS antes de reenviar | 0029 |
+| 2026-11-23 | Prestação no exterior (`service.countryCode`), com exatamente um local da prestação; E0318 (cNBS) incluída | 0045 |
 | 2026-11-23 | Tomador no exterior e exportação: NIF/cNaoNIF, endExt reconhecido por `countryCode`, comExt e cPaisResult; correção das regras E1388/E0293 que faltavam desde o contrato v2 | 0044 |
 | 2026-11-23 | Exigibilidade suspensa e benefício municipal por acréscimos opcionais em `values.issqn`; regras de cadastro do benefício ficam com o autorizador | 0043 |
 | 2026-11-16 | Dedução da base do ISSQN no contrato por percentual ou valor; o perfil de leiaute de cada pacote monta `vDedRed` ou `vAjusteBC`; documentos adiados | 0042 |

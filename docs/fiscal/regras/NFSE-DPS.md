@@ -52,7 +52,9 @@ O código da regra é o código de rejeição do Anexo. Na API, cada violação 
 | E0286 | os dois | 2 | cNaoNIF do intermediário = 0 não é aceito | `intermediary.document.reason` |
 | E0298 | os dois | 1 | Intermediário por NIF → `endExt` obrigatório | `intermediary.address` |
 | E0299 | os dois | 1 | `cPais` do intermediário ≠ BR (parcial, como a E0246) | `intermediary.address.countryCode` |
-| E0330 | os dois | 1 | Tomador ou intermediário no exterior, ou `tribISSQN` 3 → `comExt` obrigatório (`cPaisPrestacao` não existe no contrato) | `service.foreignTrade` |
+| E0330 | os dois | 1 | Tomador ou intermediário no exterior, `cPaisPrestacao` (ADR-0045) ou `tribISSQN` 3 → `comExt` obrigatório | `service.foreignTrade` |
+| E0318 | os dois | 2 | Tomador ou intermediário no exterior, ou `cPaisPrestacao` → `cNBS` obrigatório (ADR-0045) | `service.nbsCode` |
+| E0304 | os dois | 1 | `cPaisPrestacao` ≠ BR. **Parcial:** a existência na tabela ISO2 fica com o autorizador | `service.countryCode` |
 | E0333, E0341, E0343, E0345 | os dois | 2 | `mdPrestacao` 0, `mecAFComexP` 00, `mecAFComexT` 00 e `movTempBens` 0 ("desconhecido") não são aceitos | `service.foreignTrade.*` |
 | E0352 | os dois | 2 | `movTempBens` 2 → `nDI` obrigatório | `service.foreignTrade.importDeclaration` |
 | E0354 | os dois | 2 | `movTempBens` 1 → sem `nDI` e sem `nRE` | `service.foreignTrade` |

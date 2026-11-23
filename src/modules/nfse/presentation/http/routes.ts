@@ -165,7 +165,16 @@ const DpsBody = z
       .meta({ description: 'Intermediário (interm, contrato v2). Obrigatório com retenção pelo intermediário (E0264).' }),
     service: z
       .object({
-        municipalityCode: z.string().regex(/^[0-9]{7}$/).meta({ description: 'cLocPrestacao: município da prestação (IBGE).' }),
+        municipalityCode: z
+          .string()
+          .regex(/^[0-9]{7}$/)
+          .optional()
+          .meta({ description: 'cLocPrestacao: município da prestação (IBGE). Obrigatório, salvo na prestação no exterior (countryCode).' }),
+        countryCode: z
+          .string()
+          .regex(/^[A-Z]{2}$/)
+          .optional()
+          .meta({ description: 'cPaisPrestacao (ADR-0045): país da prestação no exterior (ISO2, diferente de BR, E0304). Exige foreignTrade (E0330) e nbsCode (E0318).' }),
         nationalTaxCode: z.string().regex(/^[0-9]{6}$/).meta({ description: 'cTribNac (6 dígitos). Escolha do contribuinte/contador.' }),
         municipalTaxCode: z.string().regex(/^[0-9]{3}$/).optional().meta({ description: 'cTribMun (3 dígitos).' }),
         nbsCode: z.string().regex(/^[0-9]{9}$/).optional().meta({ description: 'cNBS (9 dígitos).' }),
@@ -190,7 +199,12 @@ const DpsBody = z
             description: 'Comércio exterior (comExt, ADR-0044). Obrigatório com tomador ou intermediário no exterior e com exportação (E0330). Os valores são do contribuinte.',
           }),
       })
-      .strict(),
+      .strict()
+      // TCLocPrest é um choice: exatamente um entre cLocPrestacao e cPaisPrestacao.
+      .refine((s) => (s.municipalityCode === undefined) !== (s.countryCode === undefined), {
+        message: 'Informe exatamente um local da prestação: municipalityCode (no Brasil) ou countryCode (no exterior).',
+        path: ['municipalityCode'],
+      }),
     values: z
       .object({
         serviceAmount: money('vServ'),

@@ -41,8 +41,11 @@ const TRADE: NonNullable<DpsData['service']['foreignTrade']> = {
   temporaryGoods: '1',
   shareWithMdic: false,
 };
-/** Com o grupo comExt (E0330), opcionalmente alterado. */
-const exported = (d: DpsData, change: Partial<typeof TRADE> = {}): DpsData => ({ ...d, service: { ...d.service, foreignTrade: { ...TRADE, ...change } } });
+/** Com o grupo comExt (E0330) e o cNBS (E0318), o comExt opcionalmente alterado. */
+const exported = (d: DpsData, change: Partial<typeof TRADE> = {}): DpsData => ({
+  ...d,
+  service: { ...d.service, nbsCode: '115011000', foreignTrade: { ...TRADE, ...change } },
+});
 
 describe('regras do Anexo I conferidas no aceite (ADR-0037)', () => {
   it('a DPS de base não viola nenhuma regra nos dois ambientes', () => {
@@ -128,6 +131,11 @@ describe('regras do Anexo I conferidas no aceite (ADR-0037)', () => {
     ['E0299', exported({ ...base, intermediary: { document: { type: 'NIF', value: 'X2' }, name: 'I', address: { ...FOREIGN, countryCode: 'BR' } } }), ['PRODUCTION', 'HOMOLOGATION']],
     ['E0330', { ...base, taker: foreignTaker }, ['PRODUCTION', 'HOMOLOGATION']],
     ['E0330', issqn(notOptant(), { taxation: '3' }), ['PRODUCTION', 'HOMOLOGATION']],
+    // Prestação no exterior (ADR-0045).
+    ['E0330', { ...base, service: { ...base.service, municipalityCode: undefined, countryCode: 'PT', nbsCode: '115011000' } }, ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0318', { ...base, taker: foreignTaker, service: { ...base.service, foreignTrade: TRADE } }, ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0318', { ...base, service: { ...base.service, municipalityCode: undefined, countryCode: 'PT', foreignTrade: TRADE } }, ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0304', exported({ ...base, service: { ...base.service, municipalityCode: undefined, countryCode: 'BR' } }), ['PRODUCTION', 'HOMOLOGATION']],
     ['E0333', exported({ ...base, taker: foreignTaker }, { mode: '0' }), ['PRODUCTION', 'HOMOLOGATION']],
     ['E0341', exported({ ...base, taker: foreignTaker }, { providerSupport: '00' }), ['PRODUCTION', 'HOMOLOGATION']],
     ['E0343', exported({ ...base, taker: foreignTaker }, { takerSupport: '00' }), ['PRODUCTION', 'HOMOLOGATION']],
@@ -215,6 +223,12 @@ describe('regras do Anexo I conferidas no aceite (ADR-0037)', () => {
     }
     expect(codes(exported({ ...base, taker: foreignTaker }, { temporaryGoods: '2', importDeclaration: 'DI1' }))).toEqual([]);
     expect(codes(exported({ ...base, taker: foreignTaker }, { temporaryGoods: '3', exportRegistration: 'RE1' }))).toEqual([]);
+  });
+
+  it('prestação no exterior com comExt e cNBS passa', () => {
+    const abroad = exported({ ...issqn(notOptant(), { taxation: '3' }), service: { ...base.service, municipalityCode: undefined, countryCode: 'US' } });
+    expect(codes(abroad, 'PRODUCTION')).toEqual([]);
+    expect(codes(abroad, 'HOMOLOGATION')).toEqual([]);
   });
 
   it('tomador e intermediário por NIF não servem para a retenção (E0204, E0264)', () => {

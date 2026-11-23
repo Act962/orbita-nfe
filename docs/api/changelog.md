@@ -8,6 +8,17 @@ last_updated: 2026-11-13
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
 
+## 2026-11-23 — v1 (prestação no exterior)
+
+**Adicionado:**
+
+- `service.countryCode` (cPaisPrestacao), alternativa a `service.municipalityCode`. Informe exatamente um dos dois (400 se faltar ou se vierem os dois).
+- Regras novas no aceite: E0304 (país diferente de BR) e E0318.
+
+**Corrigido** (pode recusar DPS que antes era aceita):
+
+- E0318: com tomador ou intermediário no exterior, ou com prestação no exterior, `service.nbsCode` é obrigatório.
+
 ## 2026-11-23 — v1 (tomador no exterior e exportação)
 
 **Adicionado** (campos opcionais):

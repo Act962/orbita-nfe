@@ -310,12 +310,23 @@ describe('tomador no exterior e exportação (ADR-0044)', () => {
     }),
   });
 
+  it('prestação no exterior (ADR-0045): sem local ou com os dois → 400; com país, comExt e cNBS → 202', async () => {
+    const both = await post(exportBody({ countryCode: 'US', foreignTrade, nbsCode: '115011000' }), 'exp-local-dois');
+    expect(both.statusCode).toBe(400);
+    expect(both.json<{ issues: { field: string }[] }>().issues.map((i) => i.field)).toContain('body.service.municipalityCode');
+    const ok = await post(exportBody({ municipalityCode: undefined, countryCode: 'US', foreignTrade, nbsCode: '115011000' }), 'exp-local-pais');
+    expect(ok.statusCode, ok.body).toBe(202);
+  });
+
   it('sem comExt → 422 E0330; com ele → 202 e o worker monta NIF, endExt, comExt e cPaisResult válidos no XSD', async () => {
     const without = await post(exportBody({}), 'exp-sem');
     expect(without.statusCode, without.body).toBe(422);
-    expect(without.json<{ issues: { code: string; field: string }[] }>().issues.map((i) => [i.code, i.field])).toEqual([['E0330', 'body.service.foreignTrade']]);
+    expect(without.json<{ issues: { code: string; field: string }[] }>().issues.map((i) => [i.code, i.field])).toEqual([
+      ['E0330', 'body.service.foreignTrade'],
+      ['E0318', 'body.service.nbsCode'],
+    ]);
 
-    const res = await post(exportBody({ foreignTrade }), 'exp-com');
+    const res = await post(exportBody({ foreignTrade, nbsCode: '115011000' }), 'exp-com');
     expect(res.statusCode, res.body).toBe(202);
     const id = res.json<{ id: string }>().id;
     expect(await fiscalWorker().processor.process(companyId, id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'AUTHORIZED' });

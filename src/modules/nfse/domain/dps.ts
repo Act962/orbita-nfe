@@ -219,8 +219,10 @@ export interface DpsData {
   /** interm (contrato v2). */
   readonly intermediary?: Party | undefined;
   readonly service: {
-    /** cLocPrestacao (IBGE, 7 dígitos). */
-    readonly municipalityCode: string;
+    /** cLocPrestacao (IBGE, 7 dígitos). Exatamente um entre este e `countryCode` (choice de TCLocPrest). */
+    readonly municipalityCode?: string | undefined;
+    /** cPaisPrestacao (ISO2): prestação no exterior (ADR-0045). */
+    readonly countryCode?: string | undefined;
     /** cTribNac (6 dígitos). */
     readonly nationalTaxCode: string;
     /** cTribMun (3 dígitos). */

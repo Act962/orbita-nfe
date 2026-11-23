@@ -159,6 +159,7 @@ Content-Type: application/json
   - **Exigibilidade suspensa e benefício municipal:** `values.issqn.suspension` e `values.issqn.municipalBenefit`. O `id` do benefício é o número que o município cadastrou no Sistema Nacional; o tipo e o limite do benefício são conferidos pelo autorizador.
   - **Exportação e tomador no exterior:** identifique o tomador por `NIF` (ou `NO_NIF` com o motivo), informe o endereço no exterior (`address` com `countryCode`) e o grupo `service.foreignTrade`, obrigatório nesses casos (E0330). Na exportação (`taxation` 3), informe também `values.issqn.resultCountryCode` quando a incidência do serviço exigir.
   - **Intermediário com CNPJ:** informe `intermediary.address` nacional (E1388).
+  - **Prestação no exterior:** use `service.countryCode` no lugar de `service.municipalityCode`. Nesse caso, e com tomador ou intermediário no exterior, informe também `service.nbsCode` (E0318) e `service.foreignTrade` (E0330).
 - **Canal de emissão (ADR-0028):** o canal é escolhido pela tabela de roteamento, pelo município do estabelecimento, `opSimpNac`, `regApTribSN` e a **competência**. Hoje só a SEFIN Nacional está disponível. Sem canal, a resposta é `422 NFSE_CHANNEL_NOT_AVAILABLE`, sem consumir número, e o motivo vai em `issues[].code`:
   - `ROUTE_CHANNEL_NOT_SUPPORTED`: em Teresina, competência anterior a 11/2026 ou prestador não optante; use o emissor municipal;
   - `ROUTE_PENDING_CONFIRMATION`: ME/EPP fora do sublimite em Teresina, canal ainda a confirmar;

@@ -58,6 +58,8 @@ const foreignCountry = (p: Party | undefined) => {
   const a = p?.address;
   return isForeignAddress(a) ? a.countryCode : undefined;
 };
+/** Gatilhos comuns da E0318 e da E0330: tomador ou intermediário no exterior, ou cPaisPrestacao. */
+const abroad = (d: DpsData) => isForeignAddress(d.taker?.address) || isForeignAddress(d.intermediary?.address) || d.service.countryCode !== undefined;
 /** "Maior que zero e menor que o valor do serviço" (E0431, E0432, E0699–E0701); ausente não viola. */
 const betweenZeroAndService = (d: DpsData, value: string | undefined) =>
   value !== undefined && (hundredths(value) === 0n || hundredths(value) >= hundredths(d.values.serviceAmount));
@@ -252,13 +254,26 @@ export const DPS_RULES: readonly DpsRule[] = [
   },
   // ------------------------------------------------------------------ comércio exterior (ADR-0044)
   {
-    // cPaisPrestacao (prestação no exterior) não existe no contrato; os outros gatilhos sim.
     code: 'E0330',
     environments: BOTH,
     field: 'service.foreignTrade',
-    message: 'Com tomador ou intermediário no exterior, ou com exportação de serviço (tribISSQN = 3), o grupo de comércio exterior (comExt) é obrigatório.',
-    violated: (d) =>
-      d.service.foreignTrade === undefined && (isForeignAddress(d.taker?.address) || isForeignAddress(d.intermediary?.address) || d.values.issqn.taxation === '3'),
+    message: 'Com tomador ou intermediário no exterior, prestação no exterior ou exportação de serviço (tribISSQN = 3), o grupo de comércio exterior (comExt) é obrigatório.',
+    violated: (d) => d.service.foreignTrade === undefined && (abroad(d) || d.values.issqn.taxation === '3'),
+  },
+  {
+    code: 'E0318',
+    environments: BOTH,
+    field: 'service.nbsCode',
+    message: 'Com tomador ou intermediário no exterior, ou com prestação no exterior, o código NBS (cNBS) é obrigatório.',
+    violated: (d) => d.service.nbsCode === undefined && abroad(d),
+  },
+  {
+    // Parcial: a existência do código na tabela ISO2 fica com o autorizador.
+    code: 'E0304',
+    environments: BOTH,
+    field: 'service.countryCode',
+    message: 'O país da prestação do serviço não pode ser o Brasil (BR).',
+    violated: (d) => d.service.countryCode === 'BR',
   },
   ...(
     [

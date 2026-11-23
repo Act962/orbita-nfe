@@ -202,6 +202,23 @@ describe('buildDpsXml contra os XSD oficiais', () => {
     expect(xml).toContain('<tribISSQN>3</tribISSQN><cPaisResult>PT</cPaisResult><tpRetISSQN>1</tpRetISSQN>');
   }, 30_000);
 
+  it.each([PROD, PRODREST])('%s: prestação no exterior (ADR-0045) — locPrest com cPaisPrestacao, válido no XSD', async (pkg) => {
+    const data = dps({
+      provider: { simplesNacionalOption: '1', specialTaxRegime: '0' },
+      service: {
+        countryCode: 'US',
+        nationalTaxCode: '010101',
+        nbsCode: '115011000',
+        description: 'Serviço prestado no exterior',
+        foreignTrade: { mode: '3', relationship: '0', currencyCode: '220', amountInCurrency: '200.00', providerSupport: '01', takerSupport: '01', temporaryGoods: '1', shareWithMdic: false },
+      },
+      values: { serviceAmount: '1000.00', issqn: { taxation: '3', retention: '1' }, approximateTaxes: { kind: 'AMOUNTS', federal: '0.00', state: '0.00', municipal: '0.00' } },
+    });
+    const xml = build(pkg, data);
+    expect(xml).toContain('<serv><locPrest><cPaisPrestacao>US</cPaisPrestacao></locPrest><cServ>');
+    expect((await catalog.validate(pkg, 'DPS_v1.01.xsd', xml)).errors).toEqual([]);
+  }, 30_000);
+
   it.each([PROD, PRODREST])('%s: substituta com o grupo subst (depois de cLocEmi) é válida; código fora de TSCodJustSubst não', async (pkg) => {
     const key = `000000022${'1'.repeat(41)}`;
     const ok = buildDpsXml({ ...input(pkg), substitution: { accessKey: key, reasonCode: '99', reasonText: 'Correção da descrição do serviço' } });

@@ -24,7 +24,9 @@ Decisão: [ADR-0033](../adr/0033-contrato-dps-v1.md).
 > **Tomador no exterior e exportação (2026-11-23, [ADR-0044](../adr/0044-tomador-exterior-exportacao.md)):**
 > - `document.type` `NIF` (`value`) e `NO_NIF` (`reason` = `cNaoNIF`), no tomador e no intermediário;
 > - `address` no exterior (endExt: `countryCode` = `cPais`, `postalCode` = `cEndPost`, `city` = `xCidade`, `region` = `xEstProvReg`, e o logradouro como no nacional);
-> - `service.foreignTrade` (comExt) e `values.issqn.resultCountryCode` (cPaisResult). As regras conferidas no aceite estão em [NFSE-DPS](regras/NFSE-DPS.md).
+> - `service.foreignTrade` (comExt) e `values.issqn.resultCountryCode` (cPaisResult).
+>
+> **Prestação no exterior (2026-11-23, [ADR-0045](../adr/0045-prestacao-exterior.md)):** `service.countryCode` (cPaisPrestacao) no lugar de `service.municipalityCode`; exatamente um dos dois. As regras conferidas no aceite estão em [NFSE-DPS](regras/NFSE-DPS.md).
 
 Fonte de estrutura, enumerações e padrões: XSD oficiais da NFS-e Nacional, versionados com hash em `resources/fiscal/schemas/nfse-nacional/`:
 - `1.01-20260209`: produção;
