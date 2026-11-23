@@ -70,6 +70,52 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Exigibilidade suspensa e benefício municipal (2026-11-23)
+Decisão: [ADR-0043](adr/0043-exigibilidade-suspensa-beneficio-municipal.md).
+- [x] **`values.issqn.suspension`** (exigSusp) e **`values.issqn.municipalBenefit`** (BM, com redução por valor ou percentual). Os grupos são iguais nos dois XSD.
+- [x] **XML** em `tribMun`, entre `tpImunidade` e `tpRetISSQN`, validado nos dois XSD.
+- [x] **Regras do aceite:**
+  - E0585, E0533, E0534 e E0535;
+  - E0574 e E0586 (parcial);
+  - E0427 passa a somar o `vRedBCBM`.
+- [x] **Fora, com o motivo no catálogo:** as regras que dependem do cadastro do benefício (E0536–E0579) e as da alíquota mínima de 2% (E0575, E0587).
+- [ ] Depois: tomador no exterior e exportação, dedução por documentos e IBS/CBS.
+
+### Dedução da base do ISSQN (2026-11-16)
+Decisão: [ADR-0042](adr/0042-deducao-base-issqn.md).
+- [x] **`values.deduction`** por percentual ou por valor. Os dois Anexos descrevem a mesma informação ("Valor, Percentual ou Documento").
+- [x] **XML pelo pacote:** `vDedRed` (`pDR`/`vDR`) em 09/02/2026, que é o da DSF, e `vAjusteBC` (`pAjusteBCISSQN`/`vAjusteBCISSQN`) em 20/10/2026. Validado nos dois XSD.
+- [x] **Regras do aceite:** E0427, E0435, E0436, E0438 (produção), E0445 (produção restrita) e E0453.
+- [x] **Achado:** o texto da E0435 de produção termina em contradição ("tpRetISSQN tem que ser igual a 1"); vale a condição (`tribISSQN`).
+- [x] **R-45 mitigado** para percentual e valor.
+- [x] Benefício municipal: feito no ADR-0043.
+
+### Descontos e tributos federais na DPS (2026-11-16)
+Decisão: [ADR-0041](adr/0041-descontos-tributos-federais.md).
+- [x] **Acréscimos opcionais na API v1:** `values.discounts` (vDescCondIncond) e `values.federalTaxes` (tribFed: PIS/COFINS, CP, IRRF e CSLL). Os grupos são iguais nos dois XSD.
+- [x] **XML** na ordem do leiaute, validado nos dois XSD.
+- [x] **Regras do aceite:**
+  - E0431 e E0432 (descontos);
+  - E0699, E0700 e E0701 (retenções);
+  - E0720 e E0724 (tipo de retenção × vRetCSLL);
+  - E0428, parcial (sem o ISSQN retido, que é calculado pelo autorizador).
+- [x] **Fora, com o motivo no catálogo:** E0694/E0696 (arredondamento não definido), E0676/E0677 (efeito "Obrig."), E0686/E0692 (garantidas pelo formato) e E0427.
+- [x] **Achado (R-45):** o grupo de dedução é diferente em cada pacote (`vDedRed` × `vAjusteBC`). As deduções ficam para uma etapa própria.
+- [x] Deduções: feitas no ADR-0042 (percentual e valor).
+
+### Contrato v2 da DPS (2026-11-16)
+Decisão: [ADR-0040](adr/0040-contrato-dps-v2.md).
+- [x] **Acréscimos opcionais na API v1**, nas mesmas regras de formato do XSD (iguais nos dois pacotes):
+  - `taker.address` (endNac) e `taker.phone`;
+  - `intermediary`;
+  - `values.issqn.immunityType`.
+- [x] **XML** na ordem do leiaute, validado nos dois XSD (tomador com endereço, intermediário, imunidade).
+- [x] **Regras do aceite:**
+  - E0235, E0237, E0264 e E0592 só recusam quando falta o grupo;
+  - novas: E0248 (DV do intermediário), E0262 (raiz do intermediário igual à do prestador) e E0593 (imunidade 0).
+- [x] **R-42 mitigado:** a emissão B2B com retenção passa de ponta a ponta (HTTP, worker e XSD).
+- [ ] Depois: tomador no exterior, deduções, benefício municipal e IBS/CBS.
+
 ### Fase 2b adiantada — emissor municipal de Teresina (DSF) (2026-11-13)
 Decisão: [ADR-0039](adr/0039-adapter-emissor-municipal-teresina.md). Motivo: a empresa de teste é não optante, e o canal real dela é a DSF. O A1 vence em 26/11.
 - [x] **Perfil `TERESINA_DSF`** sobre o mesmo cliente do padrão nacional (Guia V7):
@@ -483,6 +529,10 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-10 | Piloto em Teresina pela SEFIN Nacional (Res. CGSN 191/2026); adapter municipal DSF na Fase 2b conforme demanda | 0017 (revisado) |
 | 2026-11-10 | Canal de NFS-e decidido pela data de competência, por tabela versionada com fonte | 0028 |
 | 2026-11-10 | Cliente único do padrão nacional com perfil de endpoint; reconciliação por Id da DPS antes de reenviar | 0029 |
+| 2026-11-23 | Exigibilidade suspensa e benefício municipal por acréscimos opcionais em `values.issqn`; regras de cadastro do benefício ficam com o autorizador | 0043 |
+| 2026-11-16 | Dedução da base do ISSQN no contrato por percentual ou valor; o perfil de leiaute de cada pacote monta `vDedRed` ou `vAjusteBC`; documentos adiados | 0042 |
+| 2026-11-16 | Descontos e tributos federais por acréscimos opcionais; E0428 conferida só na parte que depende da DPS; deduções adiadas pela diferença entre os pacotes (R-45) | 0041 |
+| 2026-11-16 | Contrato v2 da DPS por acréscimos opcionais na API v1 (endereço nacional, intermediário, imunidade); regras E0235/E0237/E0264/E0592 condicionais aos grupos | 0040 |
 | 2026-11-13 | Emissor municipal de Teresina (DSF) como novo perfil do mesmo cliente; autorizador escolhido pelo canal da nota; DSF com o pacote e o Anexo de 09/02/2026; `cTribMun` obrigatório (THE-001); cancelamento e substituição só na SEFIN | 0039 |
 | 2026-11-13 | Adapter da SEFIN pelo Swagger lido com o A1: só produção restrita; só `Exxxx` é rejeição; duplicidade (E0014, E0802, E0840) leva à consulta | 0038 |
 | 2026-11-13 | Regras do Anexo I conferidas no aceite só quando dependem apenas da DPS, por ambiente, com o código oficial; lacunas do contrato v1 viram recusa local | 0037 |

@@ -8,6 +8,42 @@ last_updated: 2026-11-13
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
 
+## 2026-11-23 — v1 (exigibilidade suspensa e benefício municipal)
+
+**Adicionado** (campos opcionais em `values.issqn`):
+
+- `suspension`: `type` (1 decisão judicial, 2 processo administrativo) e `processNumber` (30 dígitos).
+- `municipalBenefit`: `id` (o nBM de 14 dígitos cadastrado pelo município) e `reduction` opcional (`AMOUNT` ou `PERCENTAGE`).
+- Regras novas no aceite: E0533, E0534, E0535, E0574, E0585 e E0586 (parcial). A E0427 passa a somar a redução por benefício em valor.
+
+## 2026-11-16 — v1 (dedução da base do ISSQN)
+
+**Adicionado** (campo opcional):
+
+- `values.deduction`: `{ "kind": "PERCENTAGE", "rate": "10.00" }` ou `{ "kind": "AMOUNT", "amount": "150.00" }`. O motor monta o grupo certo para o leiaute do autorizador (`vDedRed` ou `vAjusteBC`).
+- Regras novas no aceite: E0427, E0435, E0436, E0438 (produção), E0445 (produção restrita) e E0453.
+
+## 2026-11-16 — v1 (descontos e tributos federais)
+
+**Adicionado** (campos opcionais, sem mudança para quem já integra):
+
+- `values.discounts`: `unconditional` (desconto incondicionado) e `conditional` (desconto condicionado), com ao menos um.
+- `values.federalTaxes`: `pisCofins` (`cst`, `baseAmount`, `pisRate`, `cofinsRate`, `pisAmount`, `cofinsAmount`, `retentionType`), `socialSecurityWithheld` (CP), `incomeTaxWithheld` (IRRF) e `contributionsWithheld` (PIS/COFINS/CSLL retidos), com ao menos um campo.
+- Regras novas no aceite: E0428 (parcial), E0431, E0432, E0699, E0700, E0701, E0720 e E0724.
+
+## 2026-11-16 — v1 (contrato v2 da DPS)
+
+**Adicionado** (campos opcionais, sem mudança para quem já integra):
+
+- `taker.address`: endereço nacional, com `municipalityCode`, `postalCode` (8 dígitos), `street`, `number`, `complement` e `district`.
+- `taker.phone`: de 6 a 20 dígitos.
+- `intermediary`: intermediário, com a mesma forma do tomador.
+- `values.issqn.immunityType`: tipo de imunidade, de 1 a 5, só com `taxation` 2.
+- Regras novas no aceite: E0248, E0262 e E0593.
+- E0235, E0237, E0264 e E0592 agora só recusam quando o grupo exigido falta.
+
+**Migração:** tomador com CNPJ, retenção (`retention` 2 ou 3) e imunidade passam a ser aceitos quando o grupo correspondente é informado. O campo de `issues[]` da E0235 e da E0237 passa a ser `taker.address`, e o da E0264 passa a ser `intermediary`.
+
 ## 2026-11-13 — v1 (Fase 2a, etapa 7)
 
 **Adicionado**

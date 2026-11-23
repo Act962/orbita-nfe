@@ -50,6 +50,26 @@ const build = (layoutPackage: string, data: DpsData) =>
     dps: data,
   });
 
+/** Contrato v2 (ADR-0040): tomador com endereço e telefone, intermediário e imunidade. */
+const FULL_V2 = dps({
+  provider: { simplesNacionalOption: '1', specialTaxRegime: '0', municipalRegistration: '12345' },
+  taker: {
+    document: { type: 'CNPJ', value: '11444777000161' },
+    name: 'Tomador & Filhos Ltda',
+    municipalRegistration: '999',
+    address: { municipalityCode: '2211001', postalCode: '64000000', street: 'Av. Frei Serafim <teste>', number: 'S/N', complement: 'Sala 2', district: 'Centro' },
+    phone: '86999990000',
+    email: 'tomador@exemplo.com',
+  },
+  intermediary: {
+    document: { type: 'CPF', value: '12345678909' },
+    name: 'Intermediária',
+    address: { municipalityCode: '2211001', postalCode: '64001000', street: 'Rua B', number: '10', district: 'Ilhotas' },
+  },
+  service: { municipalityCode: '2211001', nationalTaxCode: '010101', municipalTaxCode: '001', description: 'Serviço' },
+  values: { serviceAmount: '100.00', issqn: { taxation: '2', immunityType: '3', retention: '1' }, approximateTaxes: { kind: 'AMOUNTS', federal: '0.00', state: '0.00', municipal: '0.00' } },
+});
+
 const FULL = dps({
   provider: { simplesNacionalOption: '3', simplesNacionalRegime: '1', specialTaxRegime: '0', municipalRegistration: '12345' },
   taker: { document: { type: 'CPF', value: '12345678909' }, name: 'Tomador Fictício & Cia', municipalRegistration: '999', email: 'tomador@exemplo.com' },
@@ -72,6 +92,82 @@ describe('buildDpsXml contra os XSD oficiais', () => {
   ])('totais aproximados %s são válidos nos dois pacotes', async (_name, approximateTaxes) => {
     const data = dps({ values: { serviceAmount: '100.00', issqn: { taxation: '1', retention: '1' }, approximateTaxes } });
     for (const pkg of [PROD, PRODREST]) expect((await catalog.validate(pkg, 'DPS_v1.01.xsd', build(pkg, data))).errors).toEqual([]);
+  }, 30_000);
+
+  it.each([PROD, PRODREST])('%s: contrato v2 (endereço, telefone, intermediário, imunidade) é válido no XSD, na ordem do leiaute', async (pkg) => {
+    const xml = build(pkg, FULL_V2);
+    expect((await catalog.validate(pkg, 'DPS_v1.01.xsd', xml)).errors).toEqual([]);
+    expect(xml).toContain(
+      '<end><endNac><cMun>2211001</cMun><CEP>64000000</CEP></endNac><xLgr>Av. Frei Serafim &lt;teste&gt;</xLgr><nro>S/N</nro><xCpl>Sala 2</xCpl><xBairro>Centro</xBairro></end><fone>86999990000</fone><email>tomador@exemplo.com</email></toma><interm><CPF>12345678909</CPF>',
+    );
+    expect(xml).toContain('<tribISSQN>2</tribISSQN><tpImunidade>3</tpImunidade><tpRetISSQN>1</tpRetISSQN>');
+  }, 30_000);
+
+  it.each([PROD, PRODREST])('%s: descontos e tributos federais (ADR-0041) são válidos no XSD, na ordem do leiaute', async (pkg) => {
+    const data = dps({
+      values: {
+        serviceAmount: '1000.00',
+        discounts: { unconditional: '100.00', conditional: '50.00' },
+        issqn: { taxation: '1', retention: '1', rate: '2.00' },
+        federalTaxes: {
+          pisCofins: { cst: '01', baseAmount: '1000.00', pisRate: '0.65', cofinsRate: '3.00', pisAmount: '6.50', cofinsAmount: '30.00', retentionType: '3' },
+          socialSecurityWithheld: '110.00',
+          incomeTaxWithheld: '15.00',
+          contributionsWithheld: '46.50',
+        },
+        approximateTaxes: { kind: 'PERCENTAGES', federal: '13.45', state: '0', municipal: '2.00' },
+      },
+    });
+    const xml = build(pkg, data);
+    expect((await catalog.validate(pkg, 'DPS_v1.01.xsd', xml)).errors).toEqual([]);
+    expect(xml).toContain('</vServPrest><vDescCondIncond><vDescIncond>100.00</vDescIncond><vDescCond>50.00</vDescCond></vDescCondIncond><trib><tribMun>');
+    expect(xml).toContain(
+      '</tribMun><tribFed><piscofins><CST>01</CST><vBCPisCofins>1000.00</vBCPisCofins><pAliqPis>0.65</pAliqPis><pAliqCofins>3.00</pAliqCofins><vPis>6.50</vPis><vCofins>30.00</vCofins><tpRetPisCofins>3</tpRetPisCofins></piscofins><vRetCP>110.00</vRetCP><vRetIRRF>15.00</vRetIRRF><vRetCSLL>46.50</vRetCSLL></tribFed><totTrib>',
+    );
+    // Só um desconto e só um tributo também valem.
+    const minimal = dps({
+      values: { serviceAmount: '1000.00', discounts: { conditional: '10.00' }, issqn: { taxation: '1', retention: '1' }, federalTaxes: { incomeTaxWithheld: '15.00' }, approximateTaxes: { kind: 'NOT_INFORMED' } },
+    });
+    expect((await catalog.validate(pkg, 'DPS_v1.01.xsd', build(pkg, minimal))).errors).toEqual([]);
+  }, 30_000);
+
+  it.each([
+    [PROD, '<vDedRed><pDR>10.00</pDR></vDedRed>', '<vDedRed><vDR>150.00</vDR></vDedRed>'],
+    [PRODREST, '<vAjusteBC><pAjusteBCISSQN>10.00</pAjusteBCISSQN></vAjusteBC>', '<vAjusteBC><vAjusteBCISSQN>150.00</vAjusteBCISSQN></vAjusteBC>'],
+  ])('%s: dedução por percentual e por valor no grupo do pacote (ADR-0042), depois de vDescCondIncond, válida no XSD', async (pkg, percentage, amount) => {
+    const withDeduction = (deduction: DpsData['values']['deduction']) =>
+      dps({
+        provider: { simplesNacionalOption: '1', specialTaxRegime: '0' },
+        values: { serviceAmount: '1000.00', discounts: { unconditional: '50.00' }, deduction, issqn: { taxation: '1', retention: '1', rate: '2.00' }, approximateTaxes: { kind: 'AMOUNTS', federal: '0.00', state: '0.00', municipal: '0.00' } },
+      });
+    for (const [deduction, expected] of [
+      [{ kind: 'PERCENTAGE', rate: '10.00' }, percentage],
+      [{ kind: 'AMOUNT', amount: '150.00' }, amount],
+    ] as const) {
+      const xml = build(pkg, withDeduction(deduction));
+      expect(xml).toContain(`</vDescCondIncond>${expected}<trib>`);
+      expect((await catalog.validate(pkg, 'DPS_v1.01.xsd', xml)).errors).toEqual([]);
+    }
+  }, 30_000);
+
+  it.each([PROD, PRODREST])('%s: exigibilidade suspensa e benefício municipal (ADR-0043) em tribMun, na ordem do XSD', async (pkg) => {
+    const process = '2'.repeat(30);
+    for (const [reduction, expected] of [
+      [undefined, '<BM><nBM>22110010400001</nBM></BM>'],
+      [{ kind: 'AMOUNT', amount: '100.00' }, '<BM><nBM>22110010400001</nBM><vRedBCBM>100.00</vRedBCBM></BM>'],
+      [{ kind: 'PERCENTAGE', rate: '20.00' }, '<BM><nBM>22110010400001</nBM><pRedBCBM>20.00</pRedBCBM></BM>'],
+    ] as const) {
+      const data = dps({
+        values: {
+          serviceAmount: '1000.00',
+          issqn: { taxation: '1', retention: '1', suspension: { type: '1', processNumber: process }, municipalBenefit: { id: '22110010400001', reduction } },
+          approximateTaxes: { kind: 'NOT_INFORMED' },
+        },
+      });
+      const xml = build(pkg, data);
+      expect(xml).toContain(`<tribISSQN>1</tribISSQN><exigSusp><tpSusp>1</tpSusp><nProcesso>${process}</nProcesso></exigSusp>${expected}<tpRetISSQN>1</tpRetISSQN>`);
+      expect((await catalog.validate(pkg, 'DPS_v1.01.xsd', xml)).errors).toEqual([]);
+    }
   }, 30_000);
 
   it.each([PROD, PRODREST])('%s: substituta com o grupo subst (depois de cLocEmi) é válida; código fora de TSCodJustSubst não', async (pkg) => {

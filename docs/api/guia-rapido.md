@@ -151,7 +151,12 @@ Content-Type: application/json
   - `UNKNOWN`: **em verificação. Não reemita.** O motor consulta o autorizador e resolve sozinho.
 - **Erros:** um corpo fora do contrato ou uma DPS que não passa no XSD oficial dá `400 VALIDATION_FAILED`, sem consumir número.
 - **Regras do Anexo I (ADR-0037):** o motor confere antes de numerar as regras oficiais que só dependem da DPS (por exemplo, competência futura, alíquota acima de 5%, regime especial com retenção). A violação dá `422 NFSE_RULES_VIOLATED`, com todas as regras de uma vez em `issues[]` (`code` é o código de rejeição do Anexo, como `E0015`; `field` é o campo). O catálogo completo está em [NFSE-DPS](../fiscal/regras/NFSE-DPS.md).
-  - **Limite do contrato v1:** tomador identificado por CNPJ (E0235), retenção pelo tomador (E0237) ou pelo intermediário (E0264), e imunidade em produção (E0592) exigem grupos da DPS que só entram no contrato v2. Até lá, esses casos são recusados no aceite, em vez de rejeitados pela SEFIN.
+  - **Tomador com CNPJ, retenção e imunidade:** informe os grupos que a regra exige:
+    - `taker.address` (endereço nacional do tomador), para tomador com CNPJ (E0235) e para retenção pelo tomador (E0237);
+    - `intermediary`, para retenção pelo intermediário (E0264);
+    - `values.issqn.immunityType` (1 a 5), com imunidade (`taxation` 2). Os valores são seus.
+  - **Descontos e retenções federais:** `values.discounts` e `values.federalTaxes` (PIS/COFINS, CP, IRRF e CSLL). O motor não calcula nenhum valor: confere só os limites do Anexo I (por exemplo, cada desconto e cada retenção abaixo do valor do serviço). Dedução da base do ISSQN: `values.deduction`, por percentual ou por valor (por documentos ainda não). Se o serviço admite dedução, quem confere é o autorizador, pela parametrização do município.
+  - **Exigibilidade suspensa e benefício municipal:** `values.issqn.suspension` e `values.issqn.municipalBenefit`. O `id` do benefício é o número que o município cadastrou no Sistema Nacional; o tipo e o limite do benefício são conferidos pelo autorizador.
 - **Canal de emissão (ADR-0028):** o canal é escolhido pela tabela de roteamento, pelo município do estabelecimento, `opSimpNac`, `regApTribSN` e a **competência**. Hoje só a SEFIN Nacional está disponível. Sem canal, a resposta é `422 NFSE_CHANNEL_NOT_AVAILABLE`, sem consumir número, e o motivo vai em `issues[].code`:
   - `ROUTE_CHANNEL_NOT_SUPPORTED`: em Teresina, competência anterior a 11/2026 ou prestador não optante; use o emissor municipal;
   - `ROUTE_PENDING_CONFIRMATION`: ME/EPP fora do sublimite em Teresina, canal ainda a confirmar;

@@ -65,7 +65,7 @@
 
 <header>
   <h1>orbita-nfe · Status do projeto</h1>
-  <p>Motor fiscal próprio (NFS-e, NFC-e, NF-e) para o Orbita e o NERP · Atualizado em <strong>12/11/2026</strong></p>
+  <p>Motor fiscal próprio (NFS-e, NFC-e, NF-e) para o Orbita e o NERP · Atualizado em <strong>23/11/2026</strong></p>
 </header>
 
 <h2>Visão geral</h2>
@@ -73,16 +73,16 @@
   <div class="card kpi">
     <div class="label">Fase atual</div>
     <div class="value">2a · NFS-e Nacional</div>
-    <div class="note">Emissão, cancelamento, substituição e regras oficiais (etapas 1 a 7)</div>
+    <div class="note">Emissão (inclusive para empresas), cancelamento, substituição, regras oficiais e conexão com SEFIN e DSF</div>
   </div>
   <div class="card kpi">
     <div class="label">Próxima etapa</div>
-    <div class="value">Contrato v2</div>
-    <div class="note">Endereço do tomador, intermediário e imunidade na DPS</div>
+    <div class="value">Nota de teste autorizada</div>
+    <div class="note">Depende da resposta da SEMF/DSF ou de um certificado de MEI (antes de 26/11)</div>
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">689 ✓</div>
+    <div class="value">734 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -176,7 +176,10 @@
     <li><span class="tag block">Você</span><div>Perguntar à SEMF/DSF por que a homologação recusa os códigos de serviço da tabela oficial (E0314); texto pronto no acompanhamento</div></li>
     <li><span class="tag done">Pronto</span><div>Conexão com o emissor municipal de Teresina (DSF), o canal real da empresa de teste (não optante): o sistema escolhe sozinho o emissor certo pela nota<small>Só o ambiente de homologação da DSF está ligado; cancelamento e substituição por esse canal ficam para depois.</small></div></li>
     <li><span class="tag doing">Próximo</span><div>Primeiro envio de teste à homologação da DSF, antes de o certificado vencer em 26/11<small>16/11: a conexão, o formato e o arquivo da nota foram aceitos, e a regra de série foi incorporada. Mas o ambiente de testes da DSF recusa os códigos de serviço de Teresina, até os do exemplo oficial da Prefeitura. Precisamos de resposta da SEMF/DSF (R-44).</small></div></li>
-    <li><span class="tag todo">Depois</span><div>Contrato v2 da DPS: endereço do tomador, intermediário e tipo de imunidade (destrava o B2B)</div></li>
+    <li><span class="tag done">Pronto</span><div>Contrato v2 da DPS: endereço do tomador, intermediário e tipo de imunidade. Notas para empresas, com retenção do ISS e com imunidade passam a ser aceitas<small>Os campos novos são opcionais: quem já integra não muda nada.</small></div></li>
+<li><span class="tag done">Pronto</span><div>Descontos e retenções federais (PIS/COFINS, INSS, IR e CSLL) na nota, com mais 8 regras oficiais conferidas antes de numerar (46 no total)<small>Os valores são sempre seus; o sistema só confere os limites da Receita. Achado: a dedução da base do ISS mudou de formato entre o ambiente de testes e o de produção, então fica para uma etapa própria (R-45).</small></div></li>
+<li><span class="tag done">Pronto</span><div>Dedução da base do ISS por percentual ou por valor, com mais 6 regras oficiais (52 no total)<small>O sistema monta a dedução no formato que cada autorizador espera, então a mesma requisição serve para a DSF e para a SEFIN. A dedução por documentos fica para depois.</small></div></li>
+<li><span class="tag done">Pronto</span><div>Exigibilidade suspensa (decisão judicial ou processo administrativo) e benefício municipal na nota, com mais 6 regras oficiais (58 no total)<small>O número do benefício é o que a Prefeitura cadastrou no Sistema Nacional; tipo, vigência e limite são conferidos pela Receita.</small></div></li>
     <li><span class="tag block">Você</span><div>Envio real à produção restrita (precisa do CNPJ e do certificado A1)</div></li>
   </ul>
 </div>
@@ -200,8 +203,8 @@
     <h2>Próximos passos (desenvolvimento)</h2>
     <div class="card">
       <ol>
-        <li>Contrato v2 da DPS (endereço do tomador, intermediário, imunidade)</li>
-        <li>Envio real à produção restrita (precisa do A1)</li>
+        <li>Primeira nota de teste autorizada (SEMF/DSF ou MEI de Teresina)</li>
+        <li>Tomador no exterior e exportação, dedução por documentos e IBS/CBS (2027)</li>
         <li>Piloto controlado em produção</li>
       </ol>
     </div>
@@ -226,7 +229,6 @@
   <ul class="check">
     <li><span class="tag block">Alto</span><div>Ambiente de testes da DSF (Teresina) não reconhece os códigos de serviço da Prefeitura: sem nota de teste autorizada até a SEMF/DSF responder (R-44)</div></li>
     <li><span class="tag block">Alto</span><div>Ambiente de testes da SEFIN sem Teresina no cadastro de convênio: assinatura ainda não provada (R-43)</div></li>
-    <li><span class="tag block">Alto</span><div>Contrato atual não emite para tomador com CNPJ, com retenção nem com imunidade; contrato v2 é a próxima etapa (R-42)</div></li>
     <li><span class="tag doing">Médio</span><div>Enquadramento do Simples da empresa-piloto a confirmar com o contador (R-30)</div></li>
     <li><span class="tag doing">Médio</span><div>Algoritmo de assinatura da SEFIN só documentado pela DSF (R-31)</div></li>
     <li><span class="tag doing">Médio</span><div>Uma VPS só: depende de backup e restauração testados (R-17)</div></li>

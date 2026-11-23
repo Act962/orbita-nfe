@@ -22,7 +22,13 @@ const notOptant = (d: DpsData = base): DpsData => ({ ...d, provider: { simplesNa
 const issqn = (d: DpsData, change: Partial<DpsData['values']['issqn']>): DpsData => ({ ...d, values: { ...d.values, issqn: { ...d.values.issqn, ...change } } });
 const service = (d: DpsData, change: Partial<DpsData['service']>): DpsData => ({ ...d, service: { ...d.service, ...change } });
 const taxes = (d: DpsData, approximateTaxes: DpsData['values']['approximateTaxes']): DpsData => ({ ...d, values: { ...d.values, approximateTaxes } });
+const values = (d: DpsData, change: Partial<DpsData['values']>): DpsData => ({ ...d, values: { ...d.values, ...change } });
+/** nBM fictício no formato do XSD (IBGE + tipo 04 + sequencial). */
+const BM_ID = '22110010400001';
+const PROCESS = '1'.repeat(30);
 const cpfTaker = { document: { type: 'CPF', value: '12345678909' }, name: 'Tomador' } as const;
+const ADDRESS = { municipalityCode: '2211001', postalCode: '64000000', street: 'Rua Fictícia', number: '100', district: 'Centro' } as const;
+const intermediary = (value: string) => ({ document: { type: 'CNPJ', value }, name: 'Intermediário' }) as const;
 
 describe('regras do Anexo I conferidas no aceite (ADR-0037)', () => {
   it('a DPS de base não viola nenhuma regra nos dois ambientes', () => {
@@ -66,6 +72,38 @@ describe('regras do Anexo I conferidas no aceite (ADR-0037)', () => {
     ['E0710', taxes(mei(), { kind: 'SIMPLES_NACIONAL_RATE', rate: '6.00' }), ['PRODUCTION', 'HOMOLOGATION']],
     ['E0712', taxes(base, { kind: 'NOT_INFORMED' }), ['PRODUCTION', 'HOMOLOGATION']],
     ['E0713', taxes(notOptant(), { kind: 'SIMPLES_NACIONAL_RATE', rate: '6.00' }), ['PRODUCTION', 'HOMOLOGATION']],
+    // Contrato v2 (ADR-0040).
+    ['E0248', { ...base, intermediary: intermediary('11444777000162') }, ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0262', { ...base, intermediary: intermediary('11222333000262') }, ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0593', issqn(base, { taxation: '2', immunityType: '0' }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0592', issqn(base, { immunityType: '1' }), ['PRODUCTION']],
+    // Descontos e tributos federais (ADR-0041).
+    ['E0431', values(base, { discounts: { unconditional: '0.00' } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0431', values(base, { discounts: { unconditional: '1000.00' } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0432', values(base, { discounts: { conditional: '0' } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0432', values(base, { discounts: { conditional: '1000.01' } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0428', values(base, { discounts: { unconditional: '600.00', conditional: '300.00' }, federalTaxes: { incomeTaxWithheld: '100.01' } }), ['PRODUCTION', 'HOMOLOGATION']],
+    // Dedução/redução da BC (ADR-0042).
+    ['E0435', issqn(values(base, { deduction: { kind: 'AMOUNT', amount: '10.00' } }), { taxation: '4' }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0436', values(mei(), { deduction: { kind: 'PERCENTAGE', rate: '10.00' } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0438', { ...values(notOptant(), { deduction: { kind: 'AMOUNT', amount: '10.00' } }), provider: { simplesNacionalOption: '1', specialTaxRegime: '9' } }, ['PRODUCTION']],
+    ['E0445', { ...values(notOptant(), { deduction: { kind: 'AMOUNT', amount: '10.00' } }), provider: { simplesNacionalOption: '1', specialTaxRegime: '1' } }, ['HOMOLOGATION']],
+    ['E0453', values(base, { deduction: { kind: 'PERCENTAGE', rate: '0' } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0453', values(base, { deduction: { kind: 'PERCENTAGE', rate: '100.01' } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0427', values(base, { discounts: { unconditional: '400.00' }, deduction: { kind: 'AMOUNT', amount: '600.01' } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0427', issqn(values(base, { discounts: { unconditional: '400.00' } }), { municipalBenefit: { id: BM_ID, reduction: { kind: 'AMOUNT', amount: '600.01' } } }), ['PRODUCTION', 'HOMOLOGATION']],
+    // Exigibilidade suspensa e benefício municipal (ADR-0043).
+    ['E0585', issqn(base, { taxation: '4', suspension: { type: '1', processNumber: PROCESS } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0533', issqn(base, { taxation: '3', municipalBenefit: { id: BM_ID } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0534', issqn(mei(), { municipalBenefit: { id: BM_ID } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0535', { ...issqn(notOptant(), { municipalBenefit: { id: BM_ID } }), provider: { simplesNacionalOption: '1', specialTaxRegime: '9' } }, ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0574', issqn(base, { municipalBenefit: { id: BM_ID, reduction: { kind: 'AMOUNT', amount: '1000.01' } } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0586', issqn(base, { municipalBenefit: { id: BM_ID, reduction: { kind: 'PERCENTAGE', rate: '0.00' } } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0699', values(base, { federalTaxes: { socialSecurityWithheld: '0' } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0700', values(base, { federalTaxes: { incomeTaxWithheld: '1000.00' } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0701', values(base, { federalTaxes: { contributionsWithheld: '0.00' } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0720', values(base, { federalTaxes: { pisCofins: { cst: '01', retentionType: '0' }, contributionsWithheld: '46.50' } }), ['PRODUCTION', 'HOMOLOGATION']],
+    ['E0724', values(base, { federalTaxes: { pisCofins: { cst: '01', retentionType: '3' } } }), ['PRODUCTION', 'HOMOLOGATION']],
   ])('%s: violada só nos ambientes em que a fonte a traz', (code, dps, environments) => {
     for (const environment of ['PRODUCTION', 'HOMOLOGATION'] as const) {
       expect(codes(dps, environment).includes(code), `${code} em ${environment}`).toBe(environments.includes(environment));
@@ -79,6 +117,60 @@ describe('regras do Anexo I conferidas no aceite (ADR-0037)', () => {
     expect(codes(taxes(base, { kind: 'AMOUNTS', federal: '1000', state: '1000.00', municipal: '0' }))).toEqual([]);
   });
 
+  it('contrato v2: com os grupos que a regra exige, E0235, E0237, E0264 e E0592 deixam de valer', () => {
+    const cnpjTaker = { document: { type: 'CNPJ', value: OTHER_CNPJ }, name: 'X', address: ADDRESS } as const;
+    expect(codes({ ...base, taker: cnpjTaker }, 'PRODUCTION')).toEqual([]);
+    expect(codes({ ...issqn(base, { retention: '2' }), taker: { ...cpfTaker, address: ADDRESS } }, 'PRODUCTION')).toEqual([]);
+    expect(codes({ ...issqn(base, { retention: '3' }), intermediary: intermediary(OTHER_CNPJ) }, 'PRODUCTION')).toEqual([]);
+    expect(codes(issqn(base, { taxation: '2', immunityType: '1' }), 'PRODUCTION')).toEqual([]);
+  });
+
+  it('descontos e retenções federais dentro dos limites passam (soma igual ao serviço, tipos de retenção 0 e 2 sem vRetCSLL)', () => {
+    const full = values(base, {
+      discounts: { unconditional: '100.00', conditional: '50.00' },
+      federalTaxes: {
+        pisCofins: { cst: '01', baseAmount: '1000.00', pisRate: '0.65', cofinsRate: '3.00', pisAmount: '6.50', cofinsAmount: '30.00', retentionType: '3' },
+        socialSecurityWithheld: '110.00',
+        incomeTaxWithheld: '15.00',
+        contributionsWithheld: '725.00',
+      },
+    });
+    expect(codes(full, 'PRODUCTION')).toEqual([]);
+    expect(codes(full, 'HOMOLOGATION')).toEqual([]);
+    for (const retentionType of ['0', '2'] as const) {
+      expect(codes(values(base, { federalTaxes: { pisCofins: { cst: '01', retentionType } } }))).toEqual([]);
+    }
+    // vRetCSLL sem piscofins: nenhuma das duas regras do tipo de retenção se aplica.
+    expect(codes(values(base, { federalTaxes: { contributionsWithheld: '10.00' } }))).toEqual([]);
+  });
+
+  it('dedução dentro dos limites passa: 100%, valor que fecha o serviço com o desconto; regEspTrib 9 na produção restrita fica com o autorizador', () => {
+    expect(codes(values(base, { deduction: { kind: 'PERCENTAGE', rate: '100.00' } }), 'PRODUCTION')).toEqual([]);
+    expect(codes(values(base, { discounts: { unconditional: '400.00' }, deduction: { kind: 'AMOUNT', amount: '600.00' } }), 'HOMOLOGATION')).toEqual([]);
+    const regime9 = { ...values(notOptant(), { deduction: { kind: 'AMOUNT', amount: '10.00' } }), provider: { simplesNacionalOption: '1', specialTaxRegime: '9' } } as const;
+    expect(codes(regime9, 'HOMOLOGATION')).toEqual([]);
+  });
+
+  it('exigibilidade suspensa e benefício municipal válidos passam; a soma da E0427 aceita o limite e ignora reduções por percentual', () => {
+    expect(codes(issqn(base, { suspension: { type: '2', processNumber: PROCESS }, municipalBenefit: { id: BM_ID } }), 'PRODUCTION')).toEqual([]);
+    const exact = issqn(values(base, { discounts: { unconditional: '300.00' }, deduction: { kind: 'AMOUNT', amount: '300.00' } }), {
+      municipalBenefit: { id: BM_ID, reduction: { kind: 'AMOUNT', amount: '400.00' } },
+    });
+    expect(codes(exact, 'HOMOLOGATION')).toEqual([]);
+    const percentages = issqn(values(base, { discounts: { unconditional: '900.00' }, deduction: { kind: 'PERCENTAGE', rate: '100.00' } }), {
+      municipalBenefit: { id: BM_ID, reduction: { kind: 'PERCENTAGE', rate: '100.00' } },
+    });
+    expect(codes(percentages, 'PRODUCTION')).toEqual([]);
+  });
+
+  it('E0428 confere só a parte que depende da DPS: o ISSQN retido, calculado pelo autorizador, não entra', () => {
+    const exact = values(issqn({ ...base, taker: { ...cpfTaker, address: ADDRESS } }, { retention: '2', rate: '5.00' }), {
+      discounts: { unconditional: '500.00' },
+      federalTaxes: { incomeTaxWithheld: '500.00' },
+    });
+    expect(codes(exact)).toEqual([]);
+  });
+
   it('E0532: na produção só 99.01.01; na produção restrita qualquer 99.XX.XX', () => {
     const other99 = service(base, { nationalTaxCode: '990201' });
     expect(codes(other99, 'PRODUCTION')).not.toContain('E0532');
@@ -89,7 +181,7 @@ describe('regras do Anexo I conferidas no aceite (ADR-0037)', () => {
     const many = { ...issqn(mei(), { retention: '3', rate: '6.00' }), competenceDate: '2026-12-01' };
     expect(checkDpsRules(many, ctx()).map((v) => [v.code, v.field])).toEqual([
       ['E0015', 'competenceDate'],
-      ['E0264', 'values.issqn.retention'],
+      ['E0264', 'intermediary'],
       ['E0583', 'values.issqn.retention'],
       ['E0595', 'values.issqn.rate'],
       ['E0600', 'values.issqn.rate'],

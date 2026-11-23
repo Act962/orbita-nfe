@@ -2,7 +2,24 @@
 
 Decisão: [ADR-0033](../adr/0033-contrato-dps-v1.md).
 
-> **Limite conhecido (2026-11-13, ADR-0037):** o Anexo I exige grupos que este contrato não tem. Sem eles, quatro casos são recusados no aceite: tomador identificado por CNPJ (E0235, endereço nacional do tomador), retenção pelo tomador (E0237) ou pelo intermediário (E0264), e imunidade em produção (E0592, `tpImunidade`). Eles entram no contrato v2 (R-42). As regras conferidas no aceite estão em [NFSE-DPS](regras/NFSE-DPS.md).
+> **Contrato v2 (2026-11-16, [ADR-0040](../adr/0040-contrato-dps-v2.md)):** acréscimos opcionais, sem mudar o que está abaixo:
+> - `taker.address` (TCEndereco/endNac: `cMun`, `CEP`, `xLgr`, `nro`, `xCpl`, `xBairro`) e `taker.phone` (`fone`);
+> - `intermediary` (`interm`, mesma forma do tomador);
+> - `values.issqn.immunityType` (`tpImunidade`).
+>
+> Com eles, o tomador por CNPJ, a retenção e a imunidade deixam de ser recusados (R-42).
+>
+> **Descontos e tributos federais (2026-11-16, [ADR-0041](../adr/0041-descontos-tributos-federais.md)):** também opcionais:
+> - `values.discounts` (vDescCondIncond: `unconditional` = `vDescIncond`, `conditional` = `vDescCond`);
+> - `values.federalTaxes` (tribFed):
+>   - `pisCofins` (`CST`, `vBCPisCofins`, `pAliqPis`, `pAliqCofins`, `vPis`, `vCofins`, `tpRetPisCofins`);
+>   - `socialSecurityWithheld` (`vRetCP`), `incomeTaxWithheld` (`vRetIRRF`) e `contributionsWithheld` (`vRetCSLL`).
+>
+> **Dedução da base do ISSQN (2026-11-16, [ADR-0042](../adr/0042-deducao-base-issqn.md)):** `values.deduction`, por percentual (`PERCENTAGE`, `rate`) ou por valor (`AMOUNT`, `amount`). Vira `vDedRed` (`pDR`/`vDR`) no pacote de 09/02/2026 e `vAjusteBC` (`pAjusteBCISSQN`/`vAjusteBCISSQN`) no de 20/10/2026. A dedução por documentos ainda não é aceita.
+>
+> **Exigibilidade suspensa e benefício municipal (2026-11-23, [ADR-0043](../adr/0043-exigibilidade-suspensa-beneficio-municipal.md)):**
+> - `values.issqn.suspension` (exigSusp: `type` = `tpSusp`, `processNumber` = `nProcesso`);
+> - `values.issqn.municipalBenefit` (BM: `id` = `nBM`, `reduction` = `vRedBCBM` ou `pRedBCBM`). As regras conferidas no aceite estão em [NFSE-DPS](regras/NFSE-DPS.md).
 
 Fonte de estrutura, enumerações e padrões: XSD oficiais da NFS-e Nacional, versionados com hash em `resources/fiscal/schemas/nfse-nacional/`:
 - `1.01-20260209`: produção;

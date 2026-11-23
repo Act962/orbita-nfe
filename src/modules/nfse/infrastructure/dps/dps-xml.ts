@@ -1,4 +1,4 @@
-import type { DpsData } from '../../domain/dps.js';
+import type { DpsData, NationalAddress, Party } from '../../domain/dps.js';
 
 /**
  * Montagem determinística do XML da DPS (ADR-0014, ADR-0033) a partir do contrato v1.
@@ -15,11 +15,25 @@ interface LayoutProfile {
   readonly finNFSe: boolean;
   /** Ordem em TCCServ. */
   readonly serviceOrder: readonly ('cTribNac' | 'cTribMun' | 'xDescServ' | 'cNBS')[];
+  /**
+   * Grupo de dedução/redução da base do ISSQN em TCInfoValores, logo depois de vDescCondIncond
+   * (ADR-0042): `vDedRed` (choice pDR | vDR | documentos) ou `vAjusteBC` (choice opcional
+   * pAjusteBCISSQN | vAjusteBCISSQN, seguida de documentos?).
+   */
+  readonly deduction: { readonly group: string; readonly percentage: string; readonly amount: string };
 }
 
 export const LAYOUT_PROFILES: Readonly<Record<string, LayoutProfile>> = {
-  'nfse-nacional/1.01-20260209': { finNFSe: false, serviceOrder: ['cTribNac', 'cTribMun', 'xDescServ', 'cNBS'] },
-  'nfse-nacional/1.01-20261020-prodrest': { finNFSe: true, serviceOrder: ['cTribNac', 'cTribMun', 'cNBS', 'xDescServ'] },
+  'nfse-nacional/1.01-20260209': {
+    finNFSe: false,
+    serviceOrder: ['cTribNac', 'cTribMun', 'xDescServ', 'cNBS'],
+    deduction: { group: 'vDedRed', percentage: 'pDR', amount: 'vDR' },
+  },
+  'nfse-nacional/1.01-20261020-prodrest': {
+    finNFSe: true,
+    serviceOrder: ['cTribNac', 'cTribMun', 'cNBS', 'xDescServ'],
+    deduction: { group: 'vAjusteBC', percentage: 'pAjusteBCISSQN', amount: 'vAjusteBCISSQN' },
+  },
 };
 
 export interface DpsXmlInput {
@@ -55,10 +69,8 @@ export function buildDpsXml(input: DpsXmlInput): string {
     opt('IM', dps.provider.municipalRegistration) +
     group('regTrib', el('opSimpNac', dps.provider.simplesNacionalOption) + opt('regApTribSN', dps.provider.simplesNacionalRegime) + el('regEspTrib', dps.provider.specialTaxRegime));
 
-  const toma =
-    dps.taker === undefined
-      ? ''
-      : group('toma', el(dps.taker.document.type, dps.taker.document.value) + opt('IM', dps.taker.municipalRegistration) + el('xNome', dps.taker.name) + opt('email', dps.taker.email));
+  const toma = dps.taker === undefined ? '' : group('toma', party(dps.taker));
+  const interm = dps.intermediary === undefined ? '' : group('interm', party(dps.intermediary));
 
   const serviceParts: Record<LayoutProfile['serviceOrder'][number], string> = {
     cTribNac: el('cTribNac', dps.service.nationalTaxCode),
@@ -69,7 +81,22 @@ export function buildDpsXml(input: DpsXmlInput): string {
   const serv = group('serv', group('locPrest', el('cLocPrestacao', dps.service.municipalityCode)) + group('cServ', layout.serviceOrder.map((k) => serviceParts[k]).join('')));
 
   const issqn = dps.values.issqn;
-  const tribMun = group('tribMun', el('tribISSQN', issqn.taxation) + el('tpRetISSQN', issqn.retention) + opt('pAliq', issqn.rate));
+  // Ordem de TCTribMunicipal: tribISSQN, cPaisResult?, tpImunidade?, exigSusp?, BM?, tpRetISSQN, pAliq?.
+  // Iguais nos dois pacotes (ADR-0043). cPaisResult fica fora do contrato (exportação).
+  const exigSusp = issqn.suspension === undefined ? '' : group('exigSusp', el('tpSusp', issqn.suspension.type) + el('nProcesso', issqn.suspension.processNumber));
+  const bm = issqn.municipalBenefit;
+  const bmGroup =
+    bm === undefined
+      ? ''
+      : group(
+          'BM',
+          el('nBM', bm.id) +
+            (bm.reduction === undefined ? '' : bm.reduction.kind === 'AMOUNT' ? el('vRedBCBM', bm.reduction.amount) : el('pRedBCBM', bm.reduction.rate)),
+        );
+  const tribMun = group(
+    'tribMun',
+    el('tribISSQN', issqn.taxation) + opt('tpImunidade', issqn.immunityType) + exigSusp + bmGroup + el('tpRetISSQN', issqn.retention) + opt('pAliq', issqn.rate),
+  );
   const taxes = dps.values.approximateTaxes;
   const totTrib = group(
     'totTrib',
@@ -81,7 +108,39 @@ export function buildDpsXml(input: DpsXmlInput): string {
           ? el('pTotTribSN', taxes.rate)
           : el('indTotTrib', '0'),
   );
-  const valores = group('valores', group('vServPrest', el('vServ', dps.values.serviceAmount)) + group('trib', tribMun + totTrib));
+  // TCInfoValores: vServPrest, vDescCondIncond?, vDedRed? | vAjusteBC? (conforme o pacote), trib.
+  // TCInfoTributacao: tribMun, tribFed?, totTrib. Iguais nos dois pacotes nestes grupos (ADR-0041).
+  const discounts = dps.values.discounts;
+  const vDescCondIncond = discounts === undefined ? '' : group('vDescCondIncond', opt('vDescIncond', discounts.unconditional) + opt('vDescCond', discounts.conditional));
+  const ded = dps.values.deduction;
+  const deduction =
+    ded === undefined
+      ? ''
+      : group(layout.deduction.group, ded.kind === 'PERCENTAGE' ? el(layout.deduction.percentage, ded.rate) : el(layout.deduction.amount, ded.amount));
+  const fed = dps.values.federalTaxes;
+  const pc = fed?.pisCofins;
+  const tribFed =
+    fed === undefined
+      ? ''
+      : group(
+          'tribFed',
+          (pc === undefined
+            ? ''
+            : group(
+                'piscofins',
+                el('CST', pc.cst) +
+                  opt('vBCPisCofins', pc.baseAmount) +
+                  opt('pAliqPis', pc.pisRate) +
+                  opt('pAliqCofins', pc.cofinsRate) +
+                  opt('vPis', pc.pisAmount) +
+                  opt('vCofins', pc.cofinsAmount) +
+                  opt('tpRetPisCofins', pc.retentionType),
+              )) +
+            opt('vRetCP', fed.socialSecurityWithheld) +
+            opt('vRetIRRF', fed.incomeTaxWithheld) +
+            opt('vRetCSLL', fed.contributionsWithheld),
+        );
+  const valores = group('valores', group('vServPrest', el('vServ', dps.values.serviceAmount)) + vDescCondIncond + deduction + group('trib', tribMun + tribFed + totTrib));
 
   const inf =
     el('tpAmb', input.tpAmb) +
@@ -99,10 +158,24 @@ export function buildDpsXml(input: DpsXmlInput): string {
       : group('subst', el('chSubstda', input.substitution.accessKey) + el('cMotivo', input.substitution.reasonCode) + opt('xMotivo', input.substitution.reasonText ?? undefined))) +
     group('prest', prest) +
     toma +
+    interm +
     serv +
     valores;
 
   return `<?xml version="1.0" encoding="UTF-8"?><DPS xmlns="${NFSE_NS}" versao="1.01"><infDPS Id="${attr(input.dpsId)}">${inf}</infDPS></DPS>`;
+}
+
+/**
+ * TCInfoPessoa, na ordem do XSD: CNPJ|CPF, CAEPF?, IM?, xNome, end?, fone?, email?. Igual nos dois
+ * pacotes (o de produção restrita só torna o xNome opcional; o contrato sempre o exige).
+ */
+function party(p: Party): string {
+  return el(p.document.type, p.document.value) + opt('IM', p.municipalRegistration) + el('xNome', p.name) + (p.address === undefined ? '' : address(p.address)) + opt('fone', p.phone) + opt('email', p.email);
+}
+
+/** TCEndereco com endNac: endNac(cMun, CEP), xLgr, nro, xCpl?, xBairro. */
+function address(a: NationalAddress): string {
+  return group('end', group('endNac', el('cMun', a.municipalityCode) + el('CEP', a.postalCode)) + el('xLgr', a.street) + el('nro', a.number) + opt('xCpl', a.complement) + el('xBairro', a.district));
 }
 
 /** Elemento folha: o valor é SEMPRE escapado (nunca vira marcação). */

@@ -45,13 +45,14 @@ interface DpsRule {
   readonly violated: (dps: DpsData, context: DpsRuleContext) => boolean;
 }
 
-/** Sem endereço nem intermediário no contrato v1: a regra não tem como ser cumprida ainda. */
-const NEEDS_V2 = 'O contrato v1 ainda não leva este grupo da DPS; a emissão neste caso depende do contrato v2.';
 
 const notTaxable = (d: DpsData) => d.values.issqn.taxation !== '1'; // 2 Imunidade, 3 Exportação, 4 Não incidência
 const option = (d: DpsData) => d.provider.simplesNacionalOption;
 const specialRegime = (d: DpsData) => d.provider.specialTaxRegime !== '0';
 const retained = (d: DpsData) => d.values.issqn.retention !== '1';
+/** "Maior que zero e menor que o valor do serviço" (E0431, E0432, E0699–E0701); ausente não viola. */
+const betweenZeroAndService = (d: DpsData, value: string | undefined) =>
+  value !== undefined && (hundredths(value) === 0n || hundredths(value) >= hundredths(d.values.serviceAmount));
 
 export const DPS_RULES: readonly DpsRule[] = [
   // ------------------------------------------------------------------ datas
@@ -123,23 +124,38 @@ export const DPS_RULES: readonly DpsRule[] = [
   {
     code: 'E0235',
     environments: BOTH,
-    field: 'taker',
-    message: `Tomador identificado por CNPJ exige o endereço nacional do tomador (toma/end/endNac). ${NEEDS_V2}`,
-    violated: (d) => d.taker?.document.type === 'CNPJ',
+    field: 'taker.address',
+    message: 'Tomador identificado por CNPJ exige o endereço nacional do tomador (toma/end/endNac).',
+    violated: (d) => d.taker?.document.type === 'CNPJ' && d.taker.address === undefined,
   },
   {
     code: 'E0237',
     environments: BOTH,
-    field: 'values.issqn.retention',
-    message: `Com retenção pelo tomador (tpRetISSQN = 2), o endereço nacional do tomador é obrigatório. ${NEEDS_V2}`,
-    violated: (d) => d.values.issqn.retention === '2',
+    field: 'taker.address',
+    message: 'Com retenção pelo tomador (tpRetISSQN = 2), o endereço nacional do tomador é obrigatório.',
+    violated: (d) => d.values.issqn.retention === '2' && d.taker !== undefined && d.taker.address === undefined,
+  },
+  // ------------------------------------------------------------------ intermediário (contrato v2)
+  {
+    code: 'E0248',
+    environments: BOTH,
+    field: 'intermediary.document',
+    message: 'O CNPJ do intermediário é inválido (dígitos verificadores).',
+    violated: (d) => d.intermediary?.document.type === 'CNPJ' && !Cnpj.parse(d.intermediary.document.value).ok,
+  },
+  {
+    code: 'E0262',
+    environments: BOTH,
+    field: 'intermediary.document',
+    message: 'O CNPJ do intermediário não pode ter a mesma raiz (8 primeiras posições) do CNPJ do prestador.',
+    violated: (d, c) => d.intermediary?.document.type === 'CNPJ' && d.intermediary.document.value.slice(0, 8) === c.providerCnpj.slice(0, 8),
   },
   {
     code: 'E0264',
     environments: BOTH,
-    field: 'values.issqn.retention',
-    message: `Com retenção pelo intermediário (tpRetISSQN = 3), o intermediário deve ser identificado. ${NEEDS_V2}`,
-    violated: (d) => d.values.issqn.retention === '3',
+    field: 'intermediary',
+    message: 'Com retenção pelo intermediário (tpRetISSQN = 3), o intermediário deve ser identificado por CNPJ ou CPF.',
+    violated: (d) => d.values.issqn.retention === '3' && d.intermediary === undefined,
   },
   // ------------------------------------------------------------------ serviço
   {
@@ -188,9 +204,16 @@ export const DPS_RULES: readonly DpsRule[] = [
   {
     code: 'E0592',
     environments: PRODUCTION_ONLY,
-    field: 'values.issqn.taxation',
-    message: `Com imunidade (tribISSQN = 2), o tipo de imunidade (tpImunidade) é obrigatório. ${NEEDS_V2}`,
-    violated: (d) => d.values.issqn.taxation === '2',
+    field: 'values.issqn.immunityType',
+    message: 'O tipo de imunidade (tpImunidade) é obrigatório e informado somente quando a tributação do ISSQN é imunidade (tribISSQN = 2).',
+    violated: (d) => (d.values.issqn.taxation === '2') !== (d.values.issqn.immunityType !== undefined),
+  },
+  {
+    code: 'E0593',
+    environments: BOTH,
+    field: 'values.issqn.immunityType',
+    message: 'O tipo de imunidade 0 (não informado na nota de origem) não é permitido na DPS.',
+    violated: (d) => d.values.issqn.immunityType === '0',
   },
   {
     code: 'E0580',
@@ -247,6 +270,176 @@ export const DPS_RULES: readonly DpsRule[] = [
     field: 'values.issqn.rate',
     message: 'Com regime especial de tributação (regEspTrib diferente de 0), a alíquota do ISSQN (pAliq) não pode ser informada.',
     violated: (d) => specialRegime(d) && d.values.issqn.rate !== undefined,
+  },
+  // ------------------------------------------------------------------ descontos e tributos federais (ADR-0041)
+  {
+    code: 'E0431',
+    environments: BOTH,
+    field: 'values.discounts.unconditional',
+    message: 'O desconto incondicionado deve ser maior que zero e menor que o valor do serviço.',
+    violated: (d) => betweenZeroAndService(d, d.values.discounts?.unconditional),
+  },
+  {
+    code: 'E0432',
+    environments: BOTH,
+    field: 'values.discounts.conditional',
+    message: 'O desconto condicionado deve ser maior que zero e menor que o valor do serviço.',
+    violated: (d) => betweenZeroAndService(d, d.values.discounts?.conditional),
+  },
+  {
+    // Conferência parcial: o vISSQN retido é calculado pelo autorizador e não entra aqui. Sem ele, a
+    // soma só fica menor; então tudo o que esta conferência recusa o autorizador também recusaria.
+    code: 'E0428',
+    environments: BOTH,
+    field: 'values',
+    message: 'O valor do serviço deve ser maior ou igual à soma dos descontos (condicionado e incondicionado) e dos tributos retidos (CP, IRRF e CSLL).',
+    violated: (d) => {
+      const f = d.values.federalTaxes;
+      const parts = [d.values.discounts?.unconditional, d.values.discounts?.conditional, f?.socialSecurityWithheld, f?.incomeTaxWithheld, f?.contributionsWithheld];
+      return parts.reduce((sum, v) => sum + (v === undefined ? 0n : hundredths(v)), 0n) > hundredths(d.values.serviceAmount);
+    },
+  },
+  // ------------------------------------------------------------------ dedução/redução da BC do ISSQN (ADR-0042)
+  {
+    code: 'E0435',
+    environments: BOTH,
+    field: 'values.deduction',
+    message: 'Com imunidade, exportação ou não incidência (tribISSQN 2, 3 ou 4), a dedução/redução da base de cálculo não pode ser informada.',
+    violated: (d) => d.values.deduction !== undefined && notTaxable(d),
+  },
+  {
+    code: 'E0436',
+    environments: BOTH,
+    field: 'values.deduction',
+    message: 'Para MEI (opSimpNac = 2), a dedução/redução da base de cálculo não pode ser informada.',
+    violated: (d) => d.values.deduction !== undefined && option(d) === '2',
+  },
+  {
+    code: 'E0438',
+    environments: PRODUCTION_ONLY,
+    field: 'values.deduction',
+    message: 'Com regime especial de tributação (regEspTrib diferente de 0), a dedução/redução da base de cálculo não pode ser informada.',
+    violated: (d) => d.values.deduction !== undefined && specialRegime(d),
+  },
+  {
+    // A produção restrita lista regEspTrib 1 a 6 (o 9 fica de fora do texto; na dúvida, confere-se menos).
+    code: 'E0445',
+    environments: HOMOLOGATION_ONLY,
+    field: 'values.deduction',
+    message: 'Com regime especial de tributação (regEspTrib de 1 a 6), o ajuste da base de cálculo não pode ser informado.',
+    violated: (d) => d.values.deduction !== undefined && ['1', '2', '3', '4', '5', '6'].includes(d.provider.specialTaxRegime),
+  },
+  {
+    code: 'E0453',
+    environments: BOTH,
+    field: 'values.deduction.rate',
+    message: 'O percentual de dedução/redução da base de cálculo deve ser maior que 0 e menor ou igual a 100%.',
+    violated: (d) => d.values.deduction?.kind === 'PERCENTAGE' && (hundredths(d.values.deduction.rate) === 0n || hundredths(d.values.deduction.rate) > 10_000n),
+  },
+  {
+    // vServ ≥ vDescIncond + (vDR ou vAjusteBCISSQN) + vRedBCBM (ADR-0042, ADR-0043). Os valores por
+    // percentual (vCalcDR, vCalcBM) são calculados pelo autorizador e não entram: a conferência só
+    // recusa o que o autorizador também recusaria.
+    code: 'E0427',
+    environments: BOTH,
+    field: 'values',
+    message: 'O valor do serviço deve ser maior ou igual à soma do desconto incondicionado, da dedução/redução e da redução por benefício municipal.',
+    violated: (d) => {
+      const deduction = d.values.deduction?.kind === 'AMOUNT' ? d.values.deduction.amount : undefined;
+      const reduction = d.values.issqn.municipalBenefit?.reduction;
+      const benefit = reduction?.kind === 'AMOUNT' ? reduction.amount : undefined;
+      if (deduction === undefined && benefit === undefined) return false;
+      return hundredths(d.values.discounts?.unconditional ?? '0') + hundredths(deduction ?? '0') + hundredths(benefit ?? '0') > hundredths(d.values.serviceAmount);
+    },
+  },
+  // ------------------------------------------------------------------ exigibilidade suspensa e benefício municipal (ADR-0043)
+  {
+    code: 'E0585',
+    environments: BOTH,
+    field: 'values.issqn.suspension',
+    message: 'A suspensão da exigibilidade do ISSQN só pode ser informada com operação tributável (tribISSQN = 1).',
+    violated: (d) => d.values.issqn.suspension !== undefined && notTaxable(d),
+  },
+  {
+    code: 'E0533',
+    environments: BOTH,
+    field: 'values.issqn.municipalBenefit',
+    message: 'O benefício municipal só pode ser informado com operação tributável (tribISSQN = 1).',
+    violated: (d) => d.values.issqn.municipalBenefit !== undefined && notTaxable(d),
+  },
+  {
+    code: 'E0534',
+    environments: BOTH,
+    field: 'values.issqn.municipalBenefit',
+    message: 'Para MEI (opSimpNac = 2), o benefício municipal não pode ser informado.',
+    violated: (d) => d.values.issqn.municipalBenefit !== undefined && option(d) === '2',
+  },
+  {
+    code: 'E0535',
+    environments: BOTH,
+    field: 'values.issqn.municipalBenefit',
+    message: 'Com regime especial de tributação (regEspTrib diferente de 0), o benefício municipal não pode ser informado.',
+    violated: (d) => d.values.issqn.municipalBenefit !== undefined && specialRegime(d),
+  },
+  {
+    // Nível 3 no Anexo, mas o texto só depende da DPS (como a E0313).
+    code: 'E0574',
+    environments: BOTH,
+    field: 'values.issqn.municipalBenefit.reduction.amount',
+    message: 'O valor da redução por benefício municipal não pode ser superior ao valor do serviço.',
+    violated: (d) => {
+      const r = d.values.issqn.municipalBenefit?.reduction;
+      return r?.kind === 'AMOUNT' && hundredths(r.amount) > hundredths(d.values.serviceAmount);
+    },
+  },
+  {
+    // Conferência parcial: o limite superior é o percentual parametrizado pelo município (autorizador).
+    code: 'E0586',
+    environments: BOTH,
+    field: 'values.issqn.municipalBenefit.reduction.rate',
+    message: 'O percentual de redução por benefício municipal deve ser maior que 0.',
+    violated: (d) => {
+      const r = d.values.issqn.municipalBenefit?.reduction;
+      return r?.kind === 'PERCENTAGE' && hundredths(r.rate) === 0n;
+    },
+  },
+  {
+    code: 'E0699',
+    environments: BOTH,
+    field: 'values.federalTaxes.socialSecurityWithheld',
+    message: 'O valor da contribuição previdenciária (vRetCP) deve ser maior que zero e menor que o valor do serviço.',
+    violated: (d) => betweenZeroAndService(d, d.values.federalTaxes?.socialSecurityWithheld),
+  },
+  {
+    code: 'E0700',
+    environments: BOTH,
+    field: 'values.federalTaxes.incomeTaxWithheld',
+    message: 'O valor do IRRF (vRetIRRF) deve ser maior que zero e menor que o valor do serviço.',
+    violated: (d) => betweenZeroAndService(d, d.values.federalTaxes?.incomeTaxWithheld),
+  },
+  {
+    code: 'E0701',
+    environments: BOTH,
+    field: 'values.federalTaxes.contributionsWithheld',
+    message: 'O valor retido de CSLL (vRetCSLL) deve ser maior que zero e menor que o valor do serviço.',
+    violated: (d) => betweenZeroAndService(d, d.values.federalTaxes?.contributionsWithheld),
+  },
+  {
+    code: 'E0720',
+    environments: BOTH,
+    field: 'values.federalTaxes.contributionsWithheld',
+    message: 'Com tipo de retenção 0 (PIS/COFINS/CSLL não retidos), o vRetCSLL não pode ser informado.',
+    violated: (d) => d.values.federalTaxes?.pisCofins?.retentionType === '0' && d.values.federalTaxes.contributionsWithheld !== undefined,
+  },
+  {
+    code: 'E0724',
+    environments: BOTH,
+    field: 'values.federalTaxes.contributionsWithheld',
+    message: 'Com tipo de retenção diferente de 0 e de 2 (há contribuição retida), o vRetCSLL é obrigatório.',
+    violated: (d) => {
+      const type = d.values.federalTaxes?.pisCofins?.retentionType;
+      return type !== undefined && type !== '0' && type !== '2' && d.values.federalTaxes?.contributionsWithheld === undefined;
+    },
   },
   // ------------------------------------------------------------------ totais aproximados (Lei 12.741/2012)
   ...(['federal', 'state', 'municipal'] as const).map(

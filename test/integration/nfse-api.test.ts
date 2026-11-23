@@ -190,7 +190,7 @@ describe('regras do Anexo I no aceite (ADR-0037)', () => {
     expect(issues.map((i) => [i.code, i.field])).toEqual([
       ['E0015', 'body.competenceDate'],
       ['E0202', 'body.taker.document'],
-      ['E0235', 'body.taker'],
+      ['E0235', 'body.taker.address'],
     ]);
     expect(issues.every((i) => i.ruleId === 'NFSE-DPS')).toBe(true);
     const written = await new CompanyTransactions(t.api.db).run(companyId, (tx) =>
@@ -199,6 +199,98 @@ describe('regras do Anexo I no aceite (ADR-0037)', () => {
     expect(written.rows[0]?.n).toBe(0);
     // A mesma DPS sem as violações é aceita.
     expect((await post({ establishmentId, ...sampleDpsData() }, 'regras-2')).statusCode).toBe(202);
+  });
+});
+
+describe('contrato v2 da DPS (ADR-0040)', () => {
+  it('B2B: tomador com CNPJ e endereço, retenção pelo tomador → 202; o worker monta toma/end e tpRetISSQN = 2 válidos no XSD', async () => {
+    const address = { municipalityCode: '2211001', postalCode: '64000000', street: 'Av. Ficticia', number: '100', district: 'Centro' };
+    const body = {
+      establishmentId,
+      ...sampleDpsData({
+        taker: { document: { type: 'CNPJ', value: '11444777000161' }, name: 'Tomador Ficticio Ltda', address, phone: '86999990000' },
+        values: { serviceAmount: '100.00', issqn: { taxation: '1', retention: '2' }, approximateTaxes: { kind: 'AMOUNTS', federal: '0.00', state: '0.00', municipal: '0.00' } },
+      }),
+    };
+    const res = await post(body, 'v2-b2b');
+    expect(res.statusCode, res.body).toBe(202);
+    const id = res.json<{ id: string }>().id;
+    expect(await fiscalWorker().processor.process(companyId, id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'AUTHORIZED' });
+    const stored = await new CompanyTransactions(worker.db).run(companyId, (tx) =>
+      tx.execute<{ signed_dps: string; layout_package: string }>(sql`select signed_dps, layout_package from service_invoices where id = ${id}`),
+    );
+    const row = stored.rows[0];
+    expect(row?.signed_dps).toContain('<toma><CNPJ>11444777000161</CNPJ><xNome>Tomador Ficticio Ltda</xNome><end><endNac><cMun>2211001</cMun>');
+    expect(row?.signed_dps).toContain('<tpRetISSQN>2</tpRetISSQN>');
+    expect((await catalog.validate(row?.layout_package ?? '', 'DPS_v1.01.xsd', row?.signed_dps ?? '')).errors).toEqual([]);
+  }, 60_000);
+
+  it('formato fora do XSD (CEP com hífen, telefone curto, imunidade fora da lista) → 400 com os campos', async () => {
+    const body = {
+      establishmentId,
+      ...sampleDpsData({
+        taker: {
+          document: { type: 'CPF', value: '12345678909' },
+          name: 'X',
+          address: { municipalityCode: '2211001', postalCode: '64000-000', street: 'R', number: '1', district: 'C' },
+          phone: '123',
+        },
+        values: { serviceAmount: '100.00', issqn: { taxation: '2', retention: '1', immunityType: '9' }, approximateTaxes: { kind: 'AMOUNTS', federal: '0.00', state: '0.00', municipal: '0.00' } },
+      }),
+    };
+    const res = await post(body, 'v2-formato');
+    expect(res.statusCode).toBe(400);
+    const fields = res.json<{ issues: { field: string }[] }>().issues.map((i) => i.field);
+    expect(fields).toEqual(expect.arrayContaining(['body.taker.address.postalCode', 'body.taker.phone', 'body.values.issqn.immunityType']));
+  });
+});
+
+describe('descontos, dedução, exigibilidade suspensa, benefício municipal e tributos federais (ADR-0041 a ADR-0043)', () => {
+  const withValues = (values: Record<string, unknown>) => ({
+    establishmentId,
+    ...sampleDpsData({ values: { serviceAmount: '1000.00', issqn: { taxation: '1', retention: '1' }, approximateTaxes: { kind: 'AMOUNTS', federal: '0.00', state: '0.00', municipal: '0.00' }, ...values } }),
+  });
+
+  it('com descontos e retenções federais → 202; o worker monta vDescCondIncond e tribFed válidos no XSD', async () => {
+    const body = withValues({
+      discounts: { unconditional: '100.00' },
+      deduction: { kind: 'AMOUNT', amount: '200.00' },
+      issqn: {
+        taxation: '1',
+        retention: '1',
+        suspension: { type: '2', processNumber: '3'.repeat(30) },
+        municipalBenefit: { id: '22110010400001', reduction: { kind: 'PERCENTAGE', rate: '10.00' } },
+      },
+      federalTaxes: { pisCofins: { cst: '01', retentionType: '1' }, incomeTaxWithheld: '15.00', contributionsWithheld: '36.50' },
+    });
+    const res = await post(body, 'fed-ok');
+    expect(res.statusCode, res.body).toBe(202);
+    const id = res.json<{ id: string }>().id;
+    expect(await fiscalWorker().processor.process(companyId, id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'AUTHORIZED' });
+    const stored = await new CompanyTransactions(worker.db).run(companyId, (tx) =>
+      tx.execute<{ signed_dps: string; layout_package: string }>(sql`select signed_dps, layout_package from service_invoices where id = ${id}`),
+    );
+    const row = stored.rows[0];
+    // Dedução no grupo do pacote em que a nota foi montada (ADR-0042).
+    const deduction = row?.layout_package.endsWith('-prodrest') ? '<vAjusteBC><vAjusteBCISSQN>200.00</vAjusteBCISSQN></vAjusteBC>' : '<vDedRed><vDR>200.00</vDR></vDedRed>';
+    expect(row?.signed_dps).toContain(`<vDescCondIncond><vDescIncond>100.00</vDescIncond></vDescCondIncond>${deduction}<trib>`);
+    expect(row?.signed_dps).toContain(`<exigSusp><tpSusp>2</tpSusp><nProcesso>${'3'.repeat(30)}</nProcesso></exigSusp><BM><nBM>22110010400001</nBM><pRedBCBM>10.00</pRedBCBM></BM>`);
+    expect(row?.signed_dps).toContain('<tribFed><piscofins><CST>01</CST><tpRetPisCofins>1</tpRetPisCofins></piscofins><vRetIRRF>15.00</vRetIRRF><vRetCSLL>36.50</vRetCSLL></tribFed>');
+    expect((await catalog.validate(row?.layout_package ?? '', 'DPS_v1.01.xsd', row?.signed_dps ?? '')).errors).toEqual([]);
+  }, 60_000);
+
+  it('regras do Anexo I → 422 com os campos; grupos vazios e CST fora da lista → 400', async () => {
+    const rules = await post(withValues({ discounts: { conditional: '1000.00' }, federalTaxes: { pisCofins: { cst: '01', retentionType: '0' }, contributionsWithheld: '10.00' } }), 'fed-regras');
+    expect(rules.statusCode, rules.body).toBe(422);
+    expect(rules.json<{ issues: { code: string; field: string }[] }>().issues.map((i) => [i.code, i.field])).toEqual([
+      ['E0432', 'body.values.discounts.conditional'],
+      ['E0428', 'body.values'],
+      ['E0720', 'body.values.federalTaxes.contributionsWithheld'],
+    ]);
+    const format = await post(withValues({ discounts: {}, federalTaxes: { pisCofins: { cst: '10' } } }), 'fed-formato');
+    expect(format.statusCode).toBe(400);
+    const fields = format.json<{ issues: { field: string }[] }>().issues.map((i) => i.field);
+    expect(fields).toEqual(expect.arrayContaining(['body.values.discounts', 'body.values.federalTaxes.pisCofins.cst']));
   });
 });
 

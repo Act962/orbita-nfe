@@ -9,8 +9,12 @@ import type { ServiceInvoiceService } from '../../application/service-invoice-se
 import type { ServiceInvoice, ServiceInvoiceCancellation } from '../../application/ports.js';
 import { CANCELLATION_REASON_CODES, CANCELLATION_STATES, REASON_TEXT_MAX, REASON_TEXT_MIN } from '../../domain/cancellation.js';
 import {
+  ISSQN_IMMUNITY_TYPES,
   ISSQN_RETENTIONS,
+  ISSQN_SUSPENSION_TYPES,
   ISSQN_TAXATIONS,
+  PIS_COFINS_CSTS,
+  PIS_COFINS_RETENTION_TYPES,
   SIMPLES_NACIONAL_OPTIONS,
   SIMPLES_NACIONAL_REGIMES,
   SPECIAL_TAX_REGIMES,
@@ -29,7 +33,84 @@ const DATE = /^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/; // TSData 
 /** TSString: sem espaço no início nem no fim, só caracteres até U+00FF. */
 const XSD_STRING = /^[!-ÿ]([ -ÿ]*[!-ÿ])?$/;
 
+/** TSString com limites de tamanho do XSD. */
+const xsdText = (min: number, max: number) => z.string().min(min).max(max).regex(XSD_STRING);
+
+/** TCEndereco com endNac (contrato v2, ADR-0040). O endereço no exterior fica para depois. */
+const AddressSchema = z
+  .object({
+    municipalityCode: z.string().regex(/^[0-9]{7}$/).meta({ description: 'cMun: município (IBGE).' }),
+    postalCode: z.string().regex(/^[0-9]{8}$/).meta({ description: 'CEP (8 dígitos, sem hífen).' }),
+    street: xsdText(1, 255).meta({ description: 'xLgr: logradouro.' }),
+    number: xsdText(1, 60).meta({ description: 'nro: número (ex.: "100", "S/N").' }),
+    complement: xsdText(1, 156).optional().meta({ description: 'xCpl: complemento.' }),
+    district: xsdText(1, 60).meta({ description: 'xBairro: bairro.' }),
+  })
+  .strict()
+  .meta({ id: 'NationalAddress', description: 'Endereço nacional (TCEndereco/endNac).' });
+
+/** TCInfoPessoa: tomador ou intermediário identificado por CNPJ ou CPF. */
+const PartySchema = (role: string) =>
+  z
+    .object({
+      document: z.discriminatedUnion('type', [
+        z.object({ type: z.literal('CNPJ'), value: z.string().regex(/^[0-9A-Z]{12}[0-9]{2}$/) }).strict(),
+        z.object({ type: z.literal('CPF'), value: z.string().regex(/^[0-9]{11}$/) }).strict(),
+      ]),
+      name: z.string().min(1).max(300).meta({ description: `xNome do ${role}.` }),
+      municipalRegistration: z.string().min(1).max(15).regex(XSD_STRING).optional(),
+      address: AddressSchema.optional().meta({
+        description: `Endereço nacional do ${role} (contrato v2). Obrigatório para tomador com CNPJ (E0235) e com retenção pelo tomador (E0237).`,
+      }),
+      phone: z.string().regex(/^[0-9]{6,20}$/).optional().meta({ description: 'fone (TSTelefone): de 6 a 20 dígitos.' }),
+      email: z.string().min(1).max(80).regex(XSD_STRING).optional(),
+    })
+    .strict();
+
 const money = (element: string) => z.string().regex(DEC15V2).meta({ description: `${element}: valor em R$ com ponto decimal e 2 casas (ex.: "1500.00").` });
+
+const atLeastOne = (o: Record<string, unknown>) => Object.values(o).some((v) => v !== undefined);
+
+/** vDescCondIncond (ADR-0041). */
+const DiscountsSchema = z
+  .object({
+    unconditional: money('vDescIncond').optional(),
+    conditional: money('vDescCond').optional(),
+  })
+  .strict()
+  .refine(atLeastOne, 'Informe ao menos um desconto (unconditional ou conditional).')
+  .meta({
+    id: 'Discounts',
+    description: 'Descontos (vDescCondIncond, ADR-0041). Cada um deve ser maior que zero e menor que o valor do serviço (E0431, E0432).',
+  });
+
+/** tribFed (TCTribFederal, ADR-0041). Os valores são do contribuinte; o motor não calcula nenhum. */
+const FederalTaxesSchema = z
+  .object({
+    pisCofins: z
+      .object({
+        cst: z.enum(PIS_COFINS_CSTS).meta({ description: 'CST do PIS/COFINS (TSTipoCST). Escolha do contribuinte.' }),
+        baseAmount: money('vBCPisCofins').optional(),
+        pisRate: z.string().regex(DEC2V2).optional().meta({ description: 'pAliqPis (%).' }),
+        cofinsRate: z.string().regex(DEC2V2).optional().meta({ description: 'pAliqCofins (%).' }),
+        pisAmount: money('vPis').optional(),
+        cofinsAmount: money('vCofins').optional(),
+        retentionType: z.enum(PIS_COFINS_RETENTION_TYPES).optional().meta({
+          description: 'tpRetPisCofins: 0 PIS/COFINS/CSLL não retidos; 1 PIS/COFINS retidos; 2 PIS/COFINS não retidos; 3 a 9 conforme o XSD. Diz o que compõe o contributionsWithheld.',
+        }),
+      })
+      .strict()
+      .optional()
+      .meta({ description: 'piscofins (TCTribOutrosPisCofins).' }),
+    socialSecurityWithheld: money('vRetCP').optional().meta({ description: 'vRetCP: contribuição previdenciária retida (R$).' }),
+    incomeTaxWithheld: money('vRetIRRF').optional().meta({ description: 'vRetIRRF: IRRF retido (R$).' }),
+    contributionsWithheld: money('vRetCSLL')
+      .optional()
+      .meta({ description: 'vRetCSLL: PIS, COFINS e CSLL retidos, conforme o retentionType (R$). Obrigatório com retentionType diferente de 0 e 2 (E0724).' }),
+  })
+  .strict()
+  .refine(atLeastOne, 'Informe ao menos um tributo federal.')
+  .meta({ id: 'FederalTaxes', description: 'Tributos federais (tribFed, ADR-0041).' });
 
 const DpsBody = z
   .object({
@@ -50,19 +131,10 @@ const DpsBody = z
         municipalRegistration: z.string().min(1).max(15).regex(XSD_STRING).optional().meta({ description: 'IM do prestador.' }),
       })
       .strict(),
-    taker: z
-      .object({
-        document: z.discriminatedUnion('type', [
-          z.object({ type: z.literal('CNPJ'), value: z.string().regex(/^[0-9A-Z]{12}[0-9]{2}$/) }).strict(),
-          z.object({ type: z.literal('CPF'), value: z.string().regex(/^[0-9]{11}$/) }).strict(),
-        ]),
-        name: z.string().min(1).max(300).meta({ description: 'xNome do tomador.' }),
-        municipalRegistration: z.string().min(1).max(15).regex(XSD_STRING).optional(),
-        email: z.string().min(1).max(80).regex(XSD_STRING).optional(),
-      })
-      .strict()
+    taker: PartySchema('tomador').optional().meta({ description: 'Tomador (toma).' }),
+    intermediary: PartySchema('intermediário')
       .optional()
-      .meta({ description: 'Tomador (toma). Endereço e intermediário ainda não fazem parte do contrato v1.' }),
+      .meta({ description: 'Intermediário (interm, contrato v2). Obrigatório com retenção pelo intermediário (E0264).' }),
     service: z
       .object({
         municipalityCode: z.string().regex(/^[0-9]{7}$/).meta({ description: 'cLocPrestacao: município da prestação (IBGE).' }),
@@ -75,13 +147,54 @@ const DpsBody = z
     values: z
       .object({
         serviceAmount: money('vServ'),
+        discounts: DiscountsSchema.optional(),
+        deduction: z
+          .discriminatedUnion('kind', [
+            z.object({ kind: z.literal('PERCENTAGE'), rate: z.string().regex(DEC3V2).meta({ description: 'Percentual (maior que 0 e até 100, E0453).' }) }).strict(),
+            z.object({ kind: z.literal('AMOUNT'), amount: money('vDR / vAjusteBCISSQN') }).strict(),
+          ])
+          .optional()
+          .meta({
+            id: 'IssqnDeduction',
+            description:
+              'Dedução/redução da base de cálculo do ISSQN (ADR-0042), por percentual ou por valor. O motor monta vDedRed (pDR/vDR) ou vAjusteBC (pAjusteBCISSQN/vAjusteBCISSQN), conforme o leiaute do autorizador. Se o serviço admite dedução é parametrização do município: quem confere é o autorizador. Dedução por documentos ainda não é aceita.',
+          }),
         issqn: z
           .object({
             taxation: z.enum(ISSQN_TAXATIONS).meta({ description: 'tribISSQN: 1 - Tributável; 2 - Imunidade; 3 - Exportação; 4 - Não incidência.' }),
             retention: z.enum(ISSQN_RETENTIONS).meta({ description: 'tpRetISSQN: 1 - Não retido; 2 - Retido pelo tomador; 3 - Retido pelo intermediário.' }),
             rate: z.string().regex(DEC1V2).optional().meta({ description: 'pAliq (%), ex.: "2.00".' }),
+            immunityType: z.enum(ISSQN_IMMUNITY_TYPES).optional().meta({
+              description: 'tpImunidade (contrato v2), só com taxation 2 (imunidade): 1 a 5 = alíneas a a e do art. 150, VI, da CF88. O 0 não é aceito (E0593). Escolha do contribuinte.',
+            }),
+            suspension: z
+              .object({
+                type: z.enum(ISSQN_SUSPENSION_TYPES).meta({ description: 'tpSusp: 1 - decisão judicial; 2 - processo administrativo.' }),
+                processNumber: z.string().regex(/^[0-9]{30}$/).meta({ description: 'nProcesso: número do processo (30 dígitos).' }),
+              })
+              .strict()
+              .optional()
+              .meta({ id: 'IssqnSuspension', description: 'Exigibilidade suspensa do ISSQN (exigSusp, ADR-0043). Só com taxation 1 (E0585).' }),
+            municipalBenefit: z
+              .object({
+                id: z.string().regex(/^[0-9]{14}$/).meta({ description: 'nBM: identificador do benefício cadastrado pelo município no Sistema Nacional (14 dígitos).' }),
+                reduction: z
+                  .discriminatedUnion('kind', [
+                    z.object({ kind: z.literal('AMOUNT'), amount: money('vRedBCBM') }).strict(),
+                    z.object({ kind: z.literal('PERCENTAGE'), rate: z.string().regex(DEC3V2).meta({ description: 'pRedBCBM (%), maior que 0 (E0586).' }) }).strict(),
+                  ])
+                  .optional()
+                  .meta({ description: 'Redução da base pelo benefício, quando o benefício cadastrado for desse tipo (o autorizador confere: E0565, E0567, E0577, E0579).' }),
+              })
+              .strict()
+              .optional()
+              .meta({
+                id: 'MunicipalBenefit',
+                description: 'Benefício municipal (BM, ADR-0043). O tipo, a vigência e os limites são do cadastro do município, conferidos pelo autorizador.',
+              }),
           })
           .strict(),
+        federalTaxes: FederalTaxesSchema.optional(),
         approximateTaxes: z
           .discriminatedUnion('kind', [
             z.object({ kind: z.literal('AMOUNTS'), federal: money('vTotTribFed'), state: money('vTotTribEst'), municipal: money('vTotTribMun') }).strict(),
@@ -101,7 +214,10 @@ const DpsBody = z
       .strict(),
   })
   .strict()
-  .meta({ id: 'IssueServiceInvoice', description: 'Contrato v1 da DPS (ADR-0033). Os valores fiscais são do contribuinte: o motor não escolhe nenhum.' });
+  .meta({
+    id: 'IssueServiceInvoice',
+    description: 'Contrato da DPS (v1, ADR-0033, com os acréscimos opcionais do v2, ADR-0040). Os valores fiscais são do contribuinte: o motor não escolhe nenhum.',
+  });
 
 const IdempotencyHeaders = CompanyHeaders.extend({
   'idempotency-key': z
