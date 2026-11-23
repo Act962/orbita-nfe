@@ -1,0 +1,3 @@
+DROP INDEX "uq_service_invoices_external_reference";--> statement-breakpoint
+CREATE INDEX "ix_service_invoices_external_reference" ON "service_invoices" USING btree ("company_id","client_application_id","environment","external_reference","created_at") WHERE "service_invoices"."external_reference" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_service_invoices_external_reference" ON "service_invoices" USING btree ("company_id","client_application_id","environment","external_reference") WHERE "service_invoices"."external_reference" is not null and "service_invoices"."status" not in ('REJECTED', 'FAILED');

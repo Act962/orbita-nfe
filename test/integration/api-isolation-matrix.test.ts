@@ -41,12 +41,17 @@ interface MatrixCase {
   readonly payload?: (ctx: Ctx) => Record<string, unknown>;
   /** Headers extras da rota (ex.: Idempotency-Key). */
   readonly headers?: Record<string, string>;
+  /** Querystring da rota (ex.: filtro obrigatório). */
+  readonly query?: string;
   /** Requisição de B, na empresa B, usando ids/dados de A: o que se espera. */
   readonly expectCrossCompany: (res: LightMyRequestResponse, ctx: Ctx) => void;
 }
 
 /** Conteúdo qualquer: a matriz testa isolamento, não a validação do certificado (que é do worker). */
 const DUMMY_PFX = Buffer.from('nao-e-um-pfx-de-verdade').toString('base64');
+
+/** A mesma referência externa nas duas empresas. */
+const MATRIX_REFERENCE = 'matriz-referencia';
 
 const expectNotFound = (code: string) => (res: LightMyRequestResponse) => {
   expect(res.statusCode).toBe(404);
@@ -104,6 +109,21 @@ const CASES: Record<string, MatrixCase> = {
     payload: ({ a }) => ({ establishmentId: a.establishmentId, ...sampleDpsData() }),
     headers: { 'idempotency-key': 'matriz-isolamento' },
     expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),
+  },
+  'POST /v1/service-invoices/validation': {
+    // B tenta validar na própria empresa usando o estabelecimento de A.
+    payload: ({ a }) => ({ establishmentId: a.establishmentId, ...sampleDpsData() }),
+    expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),
+  },
+  'GET /v1/service-invoices': {
+    // A e B usam a MESMA referência: B só vê a própria nota.
+    query: `externalReference=${MATRIX_REFERENCE}`,
+    expectCrossCompany: (res, { a, b }) => {
+      expect(res.statusCode).toBe(200);
+      const ids = res.json<{ items: { id: string }[] }>().items.map((i) => i.id);
+      expect(ids).toEqual([b.invoiceId]);
+      expect(ids).not.toContain(a.invoiceId);
+    },
   },
   'GET /v1/service-invoices/:id': { expectCrossCompany: expectNotFound('SERVICE_INVOICE_NOT_FOUND') },
   'POST /v1/service-invoices/:id/cancellation': {
@@ -167,8 +187,8 @@ let t: TestApi;
 let ctx: Ctx;
 let superuser: DatabaseHandle;
 
-function fill(url: string, party: Party): string {
-  return url
+function fill(url: string, party: Party, query?: string): string {
+  const path = url
     .replace(':establishmentId', party.establishmentId)
     .replace(':seriesId', party.seriesId)
     .replace(':certificateId', party.certificateId)
@@ -176,6 +196,7 @@ function fill(url: string, party: Party): string {
     .replace(':deliveryId', party.deliveryId)
     .replace(':enablementId', party.enablementId)
     .replace(':id', party.invoiceId);
+  return query === undefined ? path : `${path}?${query}`;
 }
 
 async function setupParty(prefix: string): Promise<Party> {
@@ -225,7 +246,7 @@ async function setupParty(prefix: string): Promise<Party> {
     method: 'POST',
     url: '/v1/service-invoices',
     headers: { ...bearer(key, company.id), 'idempotency-key': `matriz-${prefix}` },
-    payload: { establishmentId, ...sampleDpsData() },
+    payload: { establishmentId, externalReference: MATRIX_REFERENCE, ...sampleDpsData() },
   });
   expect(invoice.statusCode, invoice.body).toBe(202);
   return {
@@ -274,7 +295,7 @@ describe('Matriz de isolamento da API', () => {
 
   it('toda rota /v1 exige credencial (401 sem Authorization)', async () => {
     for (const route of t.app.routeCatalog.filter((r) => r.url.startsWith('/v1'))) {
-      const res = await t.app.inject({ method: route.method as 'GET', url: fill(route.url, ctx.a), headers: { 'x-company-id': ctx.a.companyId } });
+      const res = await t.app.inject({ method: route.method as 'GET', url: fill(route.url, ctx.a, CASES[routeKey(route)]?.query), headers: { 'x-company-id': ctx.a.companyId } });
       expect(res.statusCode, routeKey(route)).toBe(401);
     }
   });
@@ -284,7 +305,7 @@ describe('Matriz de isolamento da API', () => {
       const c = CASES[routeKey(route)];
       const res = await t.app.inject({
         method: route.method as 'GET',
-        url: fill(route.url, ctx.a),
+        url: fill(route.url, ctx.a, c?.query),
         headers: { ...bearer(ctx.b.key, ctx.a.companyId), ...c?.headers },
         ...(c?.payload ? { payload: c.payload(ctx) } : {}),
       });
@@ -299,7 +320,7 @@ describe('Matriz de isolamento da API', () => {
       if (c === undefined) throw new Error(`sem caso: ${routeKey(route)}`);
       const res = await t.app.inject({
         method: route.method as 'GET',
-        url: fill(route.url, ctx.a),
+        url: fill(route.url, ctx.a, c.query),
         headers: { ...bearer(ctx.b.key, ctx.b.companyId), ...c.headers },
         ...(c.payload ? { payload: c.payload(ctx) } : {}),
       });

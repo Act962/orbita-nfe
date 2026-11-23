@@ -2,6 +2,7 @@ import { loadPrivateKek, X509TrustStore } from '../modules/certificates/public.j
 import {
   ChannelRoutedGateway,
   NationalNfseGateway,
+  S3ArtifactStore,
   SEFIN_NACIONAL,
   SimulatedNfseGateway,
   TERESINA_DSF,
@@ -12,6 +13,7 @@ import {
 } from '../modules/nfse/public.js';
 import { createDatabase } from '../shared/infrastructure/database/database.js';
 import { createLogger } from '../shared/infrastructure/logging/logger.js';
+import { artifactArchiveOptions } from './artifact-config.js';
 import { composeFiscalWorker } from './compose.js';
 import { loadFiscalSchemas } from './fiscal-resources.js';
 import { loadFiscalWorkerConfig } from './worker-config.js';
@@ -19,8 +21,9 @@ import { runWorker } from './worker-runtime.js';
 
 /**
  * worker-fiscal (ADR-0021): único processo com a KEK privada dos certificados. Consome só a
- * lane `fiscal` (RLS da tabela de jobs). A única saída de rede são os autorizadores fiscais
- * (NFSE_GATEWAY=real), com mTLS e o certificado do estabelecimento; nunca URLs de clientes.
+ * lane `fiscal` (RLS da tabela de jobs). As saídas de rede são os autorizadores fiscais
+ * (NFSE_GATEWAY=real), com mTLS e o certificado do estabelecimento, e o bucket de artefatos
+ * (ADR-0048); nunca URLs de clientes.
  */
 const config = loadFiscalWorkerConfig();
 const logger = createLogger({ level: config.LOG_LEVEL, service: 'worker-fiscal' });
@@ -38,6 +41,12 @@ const alerts: UnknownAlertSink = {
   },
 };
 
+const archiveOptions = artifactArchiveOptions(config);
+const artifactStore = archiveOptions === undefined ? undefined : new S3ArtifactStore(archiveOptions.store);
+if (artifactStore === undefined && config.NFSE_GATEWAY !== 'none') {
+  logger.warn('arquivamento do XML autorizado não configurado: fila nfse.archive parada (só fora de produção)');
+}
+
 const schemas = config.NFSE_GATEWAY === 'none' ? undefined : loadFiscalSchemas();
 const nfse =
   schemas === undefined
@@ -51,6 +60,7 @@ const nfse =
         verifier: new XmlNfseVerifier(schemas),
         alerts,
         cancellationPreparer: new XmlCancellationPreparer(schemas, `orbita-nfe-${config.APP_VERSION}`),
+        ...(artifactStore === undefined || archiveOptions === undefined ? {} : { archive: { store: artifactStore, retentionDays: archiveOptions.retentionDays } }),
       };
 if (config.NFSE_GATEWAY === 'simulator') logger.warn('NFS-e com autorizador SIMULADO (NFSE_GATEWAY=simulator): nada é enviado a órgão nenhum');
 if (config.NFSE_GATEWAY === 'real') {
@@ -72,4 +82,8 @@ runWorker({
   concurrency: config.WORKER_CONCURRENCY,
   pollIntervalMs: config.WORKER_POLL_INTERVAL_MS,
   retentionDays: config.JOB_RETENTION_DAYS,
+  onClose: () => {
+    artifactStore?.close();
+    return Promise.resolve();
+  },
 });

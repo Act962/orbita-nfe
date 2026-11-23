@@ -70,6 +70,23 @@ describe('separação de segredos por processo (ADR-0021)', () => {
     expect(() => loadGeneralWorkerConfig({ ...GENERAL, AUDIT_ANCHOR_S3_BUCKET: 'so-o-bucket' })).toThrow(/pela metade/);
   });
 
+  it('arquivamento do XML autorizado (ADR-0048): obrigatório em produção com NFS-e, nunca pela metade, retenção sem padrão', () => {
+    const artifacts = {
+      ARTIFACTS_S3_ENDPOINT: 'https://s3.us-east-005.backblazeb2.com',
+      ARTIFACTS_S3_BUCKET: 'orbita-fiscal-artifacts',
+      ARTIFACTS_S3_ACCESS_KEY_ID_FILE: '/run/secrets/artifacts-key-id',
+      ARTIFACTS_S3_SECRET_ACCESS_KEY_FILE: '/run/secrets/artifacts-secret',
+    };
+    expect(loadFiscalWorkerConfig(FISCAL).ARTIFACTS_RETENTION_DAYS).toBeUndefined();
+    // Sem a retenção (prazo legal, decisão do responsável), o bucket sozinho é "pela metade".
+    expect(() => loadFiscalWorkerConfig({ ...FISCAL, ...artifacts })).toThrow(/ARTIFACTS_RETENTION_DAYS/);
+    expect(loadFiscalWorkerConfig({ ...FISCAL, ...artifacts, ARTIFACTS_RETENTION_DAYS: '2200' }).ARTIFACTS_RETENTION_DAYS).toBe(2200);
+    expect(() => loadFiscalWorkerConfig({ ...FISCAL, NODE_ENV: 'production', NFSE_GATEWAY: 'real' })).toThrow(/ARTIFACTS_S3_BUCKET/);
+    expect(() => loadFiscalWorkerConfig({ ...FISCAL, NODE_ENV: 'production', NFSE_GATEWAY: 'real', ...artifacts, ARTIFACTS_RETENTION_DAYS: '2200' })).not.toThrow();
+    // Sem NFS-e, o worker-fiscal só valida certificados: não precisa do bucket.
+    expect(() => loadFiscalWorkerConfig({ ...FISCAL, NODE_ENV: 'production' })).not.toThrow();
+  });
+
   it('rate limit com padrões e limites', () => {
     const config = loadConfig(API);
     expect(config).toMatchObject({ RATE_LIMIT_PER_MINUTE: 600, RATE_LIMIT_BURST: 120 });

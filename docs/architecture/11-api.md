@@ -7,6 +7,8 @@ Recursos separados por modalidade (contratos diferentes), com consulta unificada
 | Método | Rota | Escopo |
 |---|---|---|
 | POST | `/v1/service-invoices` | `nfse:issue` — **implementado** (contrato v1, ADR-0033) |
+| POST | `/v1/service-invoices/validation` | `nfse:issue` — **implementado** (sem efeitos, ADR-0047) |
+| GET | `/v1/service-invoices?externalReference=…` | `nfse:read` — **implementado** (ADR-0047) |
 | GET | `/v1/service-invoices/{id}` | `nfse:read` — **implementado** (404 para outra aplicação ou outro ambiente) |
 | POST | `/v1/service-invoices/{id}/cancellation` | `nfse:cancel` — **implementado** (ADR-0035) |
 | GET | `/v1/service-invoices/{id}/cancellation` | `nfse:read` — **implementado** |
@@ -35,7 +37,7 @@ Recursos separados por modalidade (contratos diferentes), com consulta unificada
 - `X-Company-Id` obrigatório nas rotas de empresa; validado contra a concessão da aplicação **a cada requisição** (sem cache). Ordem: credencial (401) → escopo (403) → header (400) → concessão (403).
 - `X-Correlation-Id` opcional (gerado se ausente, sempre devolvido).
 - Emissão retorna `201` quando o resultado final sai dentro do `Prefer: wait=<s>` (máx. curto; padrão curto na NFC-e/PDV) e `202` + `Location` quando ainda processa ([ADR-0026](../adr/0026-convencoes-api-referencia-mercado.md)).
-- `externalReference` (id do documento no sistema de origem) única por (empresa, aplicação, modalidade); consulta `GET /v1/<modalidade>/by-reference/{ref}`; reuso só após falha definitiva (ADR-0026).
+- `externalReference` (id do documento no sistema de origem) única por (empresa, aplicação, modalidade); consulta `GET /v1/<modalidade>?externalReference=…` (lista, ADR-0047); reuso só após falha definitiva (ADR-0026). A unicidade é também por ambiente (ADR-0047).
 - Ambiente fiscal derivado da credencial: chave `test` → homologação; `live` → produção (ADR-0026).
 - Erros no formato RFC 9457 (`application/problem+json`) com `code` estável (`VALIDATION_FAILED`, `IDEMPOTENCY_KEY_REUSED`, `CERTIFICATE_EXPIRED`, `COMPANY_ACCESS_DENIED`…). Rejeições fiscais não são erro HTTP: o documento existe com `status: REJECTED` e `rejection: { code, message, source }`.
 - Valores monetários como **string decimal** (`"1234.50"`), nunca number.

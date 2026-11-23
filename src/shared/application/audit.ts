@@ -35,6 +35,7 @@ export const COMPANY_AUDIT_ACTIONS = [
   'service_invoice.resolution_requested',
   'service_invoice.resolution_applied',
   'service_invoice.resolution_refused',
+  'service_invoice.xml_archived',
   'service_invoice.cancellation_requested',
   'service_invoice.cancelled',
   'service_invoice.cancellation_rejected',

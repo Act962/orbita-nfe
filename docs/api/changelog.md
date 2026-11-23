@@ -8,6 +8,17 @@ last_updated: 2026-11-13
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
 
+## 2026-11-23 — v1 (consulta pela referência e validação sem efeitos)
+
+**Adicionado:**
+
+- `GET /v1/service-invoices?externalReference=…`: as notas da referência no ambiente da credencial, da mais nova para a mais antiga (até 50), incluindo as REJECTED e FAILED.
+- `POST /v1/service-invoices/validation`: as mesmas conferências e os mesmos erros da emissão, sem numerar, gravar nem transmitir, e sem `Idempotency-Key`. Responde `200` com o canal e a série que seriam usados.
+
+**Mudado:**
+
+- A `externalReference` passa a ser única **por ambiente**. Uma referência ocupada em homologação não dá mais `409 DOCUMENT_IN_PROGRESS` em produção.
+
 ## 2026-11-23 — v1 (substituição pela DSF e E0065)
 
 **Adicionado:**

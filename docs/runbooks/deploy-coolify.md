@@ -33,7 +33,7 @@ sudo install -d -m 0750 /srv/orbita-nfe/secrets/{api,worker-fiscal,worker-genera
 | Serviço | Arquivos | Origem |
 |---|---|---|
 | `api` | `api-key-pepper`, `certificate-kek-public.pem`, `webhook-secret-key-public.pem` | runbooks credenciais-api e kek-certificados |
-| `worker-fiscal` | `certificate-kek-private.pem`, `trust-bundle.pem` | kek-certificados (ACs ICP-Brasil do ITI) |
+| `worker-fiscal` | `certificate-kek-private.pem`, `trust-bundle.pem`, `artifacts-s3-access-key-id`, `artifacts-s3-secret-access-key` | kek-certificados (ACs ICP-Brasil do ITI); bucket de artefatos (ESCRITA, ADR-0048) |
 | `worker-general` | `webhook-secret-key-private.pem`, `anchor-s3-access-key-id`, `anchor-s3-secret-access-key` | filas-e-webhooks; bucket `audit-anchors` (ESCRITA) |
 | `postgres` | `postgres-superuser-password`, `backup-s3-access-key-id`, `backup-s3-secret-access-key`, `backup-encryption-key` | backup-restauracao §2 |
 
@@ -50,6 +50,8 @@ sudo install -d -m 0750 /srv/orbita-nfe/secrets/{api,worker-fiscal,worker-genera
 | `WALG_S3_PREFIX`, `BACKUP_S3_ENDPOINT`, `BACKUP_S3_REGION` | `s3://orbita-backups/orbita-nfe` | Bucket de backups |
 | `AUDIT_ANCHOR_S3_ENDPOINT`, `AUDIT_ANCHOR_S3_BUCKET`, `AUDIT_ANCHOR_S3_REGION` | | Bucket com Object Lock (ADR-0031) |
 | `AUDIT_ANCHOR_RETENTION_DAYS` | `1830` | Retenção COMPLIANCE: não dá para encurtar depois |
+| `ARTIFACTS_S3_ENDPOINT`, `ARTIFACTS_S3_BUCKET`, `ARTIFACTS_S3_REGION` | | Bucket dos XML autorizados, **criado com Object Lock** (ADR-0048) |
+| `ARTIFACTS_RETENTION_DAYS` | *(sem exemplo)* | **Prazo legal de guarda, a confirmar com o contador.** Sem padrão: o compose não sobe sem ela. Retenção COMPLIANCE: não dá para encurtar depois |
 
 ## 4. Primeiro deploy
 1. No Coolify, crie o recurso *Docker Compose* apontando para o repositório e para o arquivo `docker/coolify/docker-compose.yml` *(conferir no Coolify)*. Cadastre as variáveis do §3.

@@ -82,7 +82,7 @@
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">770 ✓</div>
+    <div class="value">781 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -183,6 +183,8 @@
 <li><span class="tag done">Pronto</span><div>Exportação de serviço e cliente no exterior: identificação pelo NIF, endereço fora do Brasil e dados de comércio exterior, com mais 18 regras oficiais (76 no total)<small>Achado: faltavam duas regras do contrato v2 para o intermediário com CNPJ (exige endereço no Brasil). Elas entraram agora; quem enviar sem o endereço passa a ser avisado na hora, em vez de receber a rejeição da Receita.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Serviço prestado no exterior (país no lugar do município), com mais 2 regras oficiais (78 no total)<small>Achado: na exportação, o código NBS do serviço é obrigatório (E0318); a regra faltava e entrou agora.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Substituição de nota emitida pela DSF<small>Achado: uma substituta que mudasse o enquadramento podia ser mandada a outro autorizador, com a chave de uma nota que ele não emitiu. Agora isso é recusado na hora e travado no banco (regra oficial E0065). O cancelamento pela DSF espera resposta da SEMF.</small></div></li>
+<li><span class="tag done">Pronto</span><div>Achar a nota pela referência do seu sistema e validar sem emitir<small>Quem perdeu a resposta da emissão agora acha a nota pelo número do pedido, em vez de emitir de novo. E dá para conferir uma nota antes de emitir, sem gastar número. Achado: a referência de um teste bloqueava a mesma referência em produção; agora cada ambiente tem a sua.</small></div></li>
+<li><span class="tag done">Pronto</span><div>Cópia imutável de cada nota autorizada fora do servidor<small>O XML de cada nota autorizada ganha uma "impressão digital" (hash) e vai para um depósito em nuvem onde não pode ser apagado nem alterado até o fim do prazo de guarda. <b>Decisão sua com o contador:</b> qual é esse prazo, e qual provedor usar. Sem isso, a produção não sobe.</small></div></li>
     <li><span class="tag block">Você</span><div>Envio real à produção restrita (precisa do CNPJ e do certificado A1)</div></li>
   </ul>
 </div>
@@ -262,7 +264,7 @@
 <li><span class="tag done">Enviado</span><div><code>157d75b</code> Nota para empresas: endereço, intermediário, imunidade, descontos, retenções federais, dedução, exigibilidade suspensa e benefício municipal</div></li>
 <li><span class="tag done">Enviado</span><div><code>58950e7</code> Exportação de serviço e cliente no exterior; regras do intermediário com CNPJ corrigidas (CI verde)</div></li>
 <li><span class="tag done">Enviado</span><div><code>3aa9c2d</code> Serviço prestado no exterior e código NBS obrigatório na exportação (CI verde)</div></li>
-<li><span class="tag done">Enviado</span><div><code>90caf6f</code> Substituição de nota da DSF e trava de mesmo autorizador (E0065)</div></li>
+<li><span class="tag done">Enviado</span><div><code>90caf6f</code> Substituição de nota da DSF e trava de mesmo autorizador (E0065) (CI verde)</div></li>
   </ul>
 </div>
 

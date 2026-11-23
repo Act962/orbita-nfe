@@ -59,6 +59,7 @@ Implementado em 2026-11-10 (módulo `audit`, migration 0003):
   - empresa (resolução manual de UNKNOWN, [ADR-0034](../adr/0034-resolucao-manual-unknown.md)):
     - `service_invoice.resolution_requested`: pelo operador, com o resultado alegado e o SHA-256 da evidência, nunca o XML;
     - `service_invoice.resolution_applied` e `service_invoice.resolution_refused`: pelo worker-fiscal, com o código;
+  - empresa (arquivamento, [ADR-0048](../adr/0048-arquivamento-xml-autorizado.md)): `service_invoice.xml_archived`, pelo worker-fiscal, com a chave do objeto, o SHA-256 e a retenção, nunca o XML;
   - empresa (cancelamento, [ADR-0035](../adr/0035-cancelamento-nfse.md)): `service_invoice.cancellation_requested`, `service_invoice.cancelled`, `service_invoice.cancellation_rejected`, `service_invoice.cancellation_failed`, `service_invoice.cancellation_unknown`, `service_invoice.cancellation_retransmission_scheduled`;
   - empresa (substituição, [ADR-0036](../adr/0036-substituicao-nfse.md)):
     - `service_invoice.substitution_requested`: na original, com o id da substituta e o motivo;

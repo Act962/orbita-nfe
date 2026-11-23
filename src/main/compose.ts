@@ -44,6 +44,7 @@ import {
   ManualResolutionDesk,
   ResolutionApplier,
   UnknownEscalator,
+  AuthorizedXmlArchiver,
   nfseApiUnitOfWork,
   nfseDeskReader,
   nfseDeskUnitOfWork,
@@ -56,6 +57,7 @@ import {
   type CredentialAccess,
   type DpsPreparer,
   type EstablishmentReader,
+  type NfseArtifactStore,
   type NfseDocumentVerifier,
   type NfseGateway,
   type ProcessorOptions,
@@ -265,6 +267,11 @@ export interface FiscalWorkerDependencies {
     /** Monta, assina e valida o pedido de cancelamento (ADR-0035). */
     readonly cancellationPreparer: CancellationPreparer;
     readonly options?: ProcessorOptions;
+    /**
+     * Arquivamento do XML autorizado no bucket com Object Lock (ADR-0048). Sem isto, a fila
+     * `nfse.archive` fica sem handler e os jobs esperam (a configuração exige em produção).
+     */
+    readonly archive?: { readonly store: NfseArtifactStore; readonly retentionDays: number };
   };
   readonly now?: () => Date;
 }
@@ -278,6 +285,7 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
   escalator?: UnknownEscalator;
   cancellations?: CancellationProcessor;
   cancellationReconciler?: CancellationReconciler;
+  archiver?: AuthorizedXmlArchiver;
   handlers: Partial<Record<QueueName, JobHandler>>;
 } {
   const transactions = new CompanyTransactions(deps.db);
@@ -337,7 +345,12 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
   handlers['nfse.cancel-reconcile'] = async (job) => {
     await cancellationReconciler.reconcile(payloadId(job, 'companyId'), payloadId(job, 'cancellationId'), systemContext('worker-fiscal', job));
   };
-  return { vault, processor, reconciler, resolutions, escalator, cancellations, cancellationReconciler, handlers };
+  if (deps.nfse.archive === undefined) return { vault, processor, reconciler, resolutions, escalator, cancellations, cancellationReconciler, handlers };
+  const archiver = new AuthorizedXmlArchiver(nfseUow, deps.nfse.archive.store, deps.nfse.archive.retentionDays, deps.now);
+  handlers['nfse.archive'] = async (job) => {
+    await archiver.archive(payloadId(job, 'companyId'), payloadId(job, 'invoiceId'), systemContext('worker-fiscal', job));
+  };
+  return { vault, processor, reconciler, resolutions, escalator, cancellations, cancellationReconciler, archiver, handlers };
 }
 
 export interface GeneralWorkerDependencies {

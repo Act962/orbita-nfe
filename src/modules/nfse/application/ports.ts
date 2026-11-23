@@ -126,8 +126,10 @@ export interface ProductionGate {
 export interface ServiceInvoiceRepository {
   findById(id: string): Promise<ServiceInvoice | undefined>;
   findByIdempotencyKey(clientApplicationId: string, key: string): Promise<ServiceInvoice | undefined>;
-  /** Documento com a referência ainda "ocupada" (não REJECTED/FAILED). */
-  findActiveByExternalReference(clientApplicationId: string, reference: string): Promise<ServiceInvoice | undefined>;
+  /** Documento com a referência ainda "ocupada" (não REJECTED/FAILED) no ambiente (ADR-0047). */
+  findActiveByExternalReference(clientApplicationId: string, environment: FiscalEnvironment, reference: string): Promise<ServiceInvoice | undefined>;
+  /** Todas as notas da referência no ambiente, da mais nova para a mais antiga, até `limit` (ADR-0047). */
+  listByExternalReference(clientApplicationId: string, environment: FiscalEnvironment, reference: string, limit: number): Promise<readonly ServiceInvoice[]>;
   insert(invoice: NewServiceInvoice): Promise<ServiceInvoice>;
   /**
    * Serializa, até o fim da transação, os pedidos que mudam o destino de uma nota autorizada
@@ -156,6 +158,27 @@ export interface ServiceInvoiceWorkerRepository {
   changeStatus(id: string, from: ServiceInvoiceStatus, to: ServiceInvoiceStatus, change?: ServiceInvoiceStatusChange): Promise<boolean>;
   /** Grava a DPS assinada (uma única vez) sem mudar o estado. */
   storeSignedDps(id: string, signed: NonNullable<ServiceInvoiceStatusChange['signedDps']>): Promise<void>;
+  /** XML autorizado e a situação do arquivamento (ADR-0048). */
+  authorizedXml(id: string): Promise<AuthorizedXml | undefined>;
+  /** Grava o arquivamento uma única vez. Devolve se gravou (falso: já estava arquivado). */
+  markArchived(id: string, archive: { readonly objectKey: string; readonly archivedAt: Date; readonly retainUntil: Date }): Promise<boolean>;
+}
+
+export interface AuthorizedXml {
+  readonly companyId: string;
+  readonly xml: string | null;
+  /** Gravado junto com o XML; nulo só em nota autorizada antes da migration 0024. */
+  readonly sha256: string | null;
+  readonly authorizedAt: Date | null;
+  readonly objectKey: string | null;
+}
+
+/**
+ * Object storage dos artefatos fiscais (ADR-0010, ADR-0048). `put` grava com retenção COMPLIANCE
+ * e devolve os bytes relidos do bucket, para o chamador conferir o hash.
+ */
+export interface NfseArtifactStore {
+  put(object: { readonly key: string; readonly body: Buffer; readonly contentType: string; readonly retainUntil: Date }): Promise<Buffer>;
 }
 
 export interface AttemptRepository {

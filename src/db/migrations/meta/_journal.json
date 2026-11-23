@@ -155,6 +155,27 @@
       "when": 1795437841929,
       "tag": "0021_security_substitution_same_channel",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1795451915875,
+      "tag": "0022_service_invoice_reference_environment",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795453850909,
+      "tag": "0023_service_invoice_xml_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795453852833,
+      "tag": "0024_security_service_invoice_xml_archive",
+      "breakpoints": true
     }
   ]
 }

@@ -32,6 +32,7 @@ Filas implementadas (catálogo fechado em `job-queue.ts`):
 | `nfse.escalate` | fiscal (`fiscal_worker`) | 5 | 1 min → 15 min | 30 s |
 | `nfse.cancel` | fiscal (`fiscal_worker`) | 20 | 30 s → 30 min | 180 s |
 | `nfse.cancel-reconcile` | fiscal (`fiscal_worker`) | 20 | 1 min → 1 h | 120 s |
+| `nfse.archive` | fiscal (`fiscal_worker`) | 24 | 1 min → 1 h | 60 s |
 
 Jobs agendados (semana 7):
 - **`certificates.expiry-notice`:** a ativação do certificado (worker-fiscal) agenda um job por limiar: 30, 15, 7 e 1 dia antes do vencimento, mais o próprio vencimento. Na hora, o worker-general decide qual aviso vale e registra em `certificate_expiry_notices`, para não repetir. Não há varredura entre empresas.
@@ -49,6 +50,10 @@ Jobs agendados (semana 7):
   - A entrada em `UNKNOWN` agenda a verificação de +15 min.
   - Cada execução alerta e agenda a próxima (2 h, 24 h, depois a cada 24 h), com a chave `<id>:escalate:<tentativa>:<horário>`.
   - Para quando a nota sai de `UNKNOWN`.
+- **`nfse.archive`** (ADR-0048): arquiva o XML autorizado no bucket com Object Lock.
+  - A autorização agenda com a chave `<id>:archive`, na mesma transação, por qualquer caminho (envio, consulta ou resolução manual).
+  - Grava, relê e confere o SHA-256; só então marca a nota. Repetir é seguro.
+  - Sem o bucket configurado (só fora de produção), a fila fica sem handler e os jobs esperam.
 
 Filas previstas:
 

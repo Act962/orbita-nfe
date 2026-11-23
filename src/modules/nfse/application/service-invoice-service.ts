@@ -7,7 +7,7 @@ import { buildDpsId } from '../domain/dps-id.js';
 import { checkChannelRules, checkChannelSeries } from '../domain/channel-rules.js';
 import { layoutEnvironmentOf, route, SUPPORTED_CHANNELS, type RoutingTable } from '../domain/routing.js';
 import { checkSubstitutionReason, lockedFieldChanges, type SubstitutionReason } from '../domain/substitution.js';
-import type { DpsValidator, FiscalEnvironment, NfseApiRepositories, ServiceInvoice, SubstitutionOf } from './ports.js';
+import type { ActiveSeries, DpsValidator, FiscalEnvironment, IssuerEstablishment, NfseApiRepositories, ServiceInvoice, SubstitutionOf } from './ports.js';
 
 export interface AcceptServiceInvoice {
   readonly companyId: string;
@@ -30,6 +30,21 @@ export interface SubstituteServiceInvoice extends Omit<AcceptServiceInvoice, 'es
   readonly originalId: string;
   readonly reason: SubstitutionReason;
 }
+
+/** Validação sem efeitos (ADR-0047): o pedido de emissão, sem Idempotency-Key (nada é aceito). */
+export type ValidateServiceInvoice = Omit<AcceptServiceInvoice, 'idempotencyKey' | 'requestHash'>;
+
+export interface ValidationResult {
+  /** Autorizador que receberia a nota, pela tabela de roteamento. */
+  readonly channel: string;
+  /** Série que seria usada (a informada ou a única ativa). */
+  readonly series: ActiveSeries;
+  readonly ruleSetVersion: string;
+  readonly routingTableVersion: string;
+}
+
+/** Teto da consulta por referência: a referência só se repete depois de falha definitiva. */
+export const REFERENCE_LIST_LIMIT = 50;
 
 export interface AcceptResult {
   readonly invoice: ServiceInvoice;
@@ -167,6 +182,30 @@ export class ServiceInvoiceService {
     return this.create(r, { ...input, establishmentId: original.establishmentId }, substitution, context, originalChannel(original));
   }
 
+  /**
+   * Validação sem efeitos (ADR-0047, ADR-0026 item 4): as mesmas conferências do aceite, na mesma
+   * ordem e com os mesmos erros, mas sem numerar, gravar, auditar nem enfileirar. Passar aqui não
+   * garante a autorização: as regras de cadastro e de parametrização ficam com o autorizador.
+   */
+  async validate(input: ValidateServiceInvoice): Promise<ValidationResult> {
+    await this.prevalidate(input);
+    const checked = await this.uow.inCompany(input.companyId, (r) => this.check(r, input));
+    return { channel: checked.channel, series: checked.series, ruleSetVersion: DPS_RULE_SET_VERSION, routingTableVersion: this.routing.version };
+  }
+
+  /**
+   * Notas da referência externa no ambiente da credencial (ADR-0047), da mais nova para a mais
+   * antiga. É o caminho de quem perdeu a resposta do POST e não guardou a Idempotency-Key.
+   */
+  async listByExternalReference(
+    companyId: string,
+    clientApplicationId: string,
+    environment: FiscalEnvironment,
+    reference: string,
+  ): Promise<readonly ServiceInvoice[]> {
+    return this.uow.inCompany(companyId, (r) => r.invoices.listByExternalReference(clientApplicationId, environment, reference, REFERENCE_LIST_LIMIT));
+  }
+
   private async create(
     r: NfseApiRepositories,
     input: AcceptServiceInvoice,
@@ -175,8 +214,76 @@ export class ServiceInvoiceService {
     /** Canal da original, na substituição (E0065). */
     requiredChannel?: string,
   ): Promise<AcceptResult> {
+    const { establishment, channel, series } = await this.check(r, input, requiredChannel);
+    const number = await r.series.allocate(series.id);
+    const dpsId = buildDpsId({
+      municipalityCode: establishment.municipalityCode,
+      registration: { kind: 'CNPJ', value: establishment.cnpj },
+      series: series.series,
+      number,
+    });
+    if (!dpsId.ok) throw new InternalError(`DPS_ID_${dpsId.error}`);
+
+    const invoice = await r.invoices.insert({
+      id: this.newId(),
+      companyId: input.companyId,
+      establishmentId: establishment.id,
+      clientApplicationId: input.clientApplicationId,
+      environment: input.environment,
+      seriesId: series.id,
+      series: series.series,
+      number,
+      dpsId: dpsId.value,
+      idempotencyKey: input.idempotencyKey,
+      requestHash: input.requestHash,
+      externalReference: input.externalReference,
+      payload: input.dps as unknown as Readonly<Record<string, unknown>>,
+      routingChannel: channel,
+      routingTableVersion: this.routing.version,
+      substitution,
+    });
+    if (substitution !== null) {
+      await r.audit.record(context, {
+        action: 'service_invoice.substitution_requested',
+        subject: { type: 'service_invoice', id: substitution.invoiceId },
+        details: { substituteId: invoice.id, reasonCode: substitution.reasonCode },
+      });
+    }
+    await r.audit.record(context, {
+      action: 'service_invoice.accepted',
+      subject: { type: 'service_invoice', id: invoice.id },
+      details: {
+        establishmentId: invoice.establishmentId,
+        environment: invoice.environment,
+        series: invoice.series,
+        number: invoice.number,
+        dpsId: invoice.dpsId,
+        routingChannel: channel,
+        routingTableVersion: this.routing.version,
+        clientApplicationId: clientApplicationOf(context) ?? null,
+        substitutesInvoiceId: substitution?.invoiceId ?? null,
+      },
+    });
+    await r.jobs.enqueue({
+      queue: 'nfse.process',
+      payload: { companyId: invoice.companyId, invoiceId: invoice.id },
+      singletonKey: invoice.id,
+      correlationId: context.correlationId,
+    });
+    return { invoice, replayed: false };
+  }
+
+  /**
+   * Conferências do aceite, antes de numerar, sem escrever nada: referência externa, estabelecimento,
+   * canal (ADR-0028), E0065, regras do Anexo I e do canal, habilitação de produção e série.
+   */
+  private async check(
+    r: NfseApiRepositories,
+    input: Omit<AcceptServiceInvoice, 'idempotencyKey' | 'requestHash'>,
+    requiredChannel?: string,
+  ): Promise<{ readonly establishment: IssuerEstablishment; readonly channel: string; readonly series: ActiveSeries }> {
     if (input.externalReference !== null) {
-      const occupied = await r.invoices.findActiveByExternalReference(input.clientApplicationId, input.externalReference);
+      const occupied = await r.invoices.findActiveByExternalReference(input.clientApplicationId, input.environment, input.externalReference);
       if (occupied !== undefined) {
         throw occupied.status === 'AUTHORIZED'
           ? new ConflictError('DOCUMENT_ALREADY_AUTHORIZED', `Já existe NFS-e autorizada com esta referência externa (${occupied.id}).`)
@@ -243,63 +350,7 @@ export class ServiceInvoiceService {
     if (seriesViolation !== undefined) {
       throw new BusinessRuleError('NFSE_RULES_VIOLATED', 'A série de DPS não serve ao canal de emissão desta nota.', [{ ...seriesViolation, ruleId: 'NFSE-TERESINA-DSF' }]);
     }
-
-    const number = await r.series.allocate(series.id);
-    const dpsId = buildDpsId({
-      municipalityCode: establishment.municipalityCode,
-      registration: { kind: 'CNPJ', value: establishment.cnpj },
-      series: series.series,
-      number,
-    });
-    if (!dpsId.ok) throw new InternalError(`DPS_ID_${dpsId.error}`);
-
-    const invoice = await r.invoices.insert({
-      id: this.newId(),
-      companyId: input.companyId,
-      establishmentId: establishment.id,
-      clientApplicationId: input.clientApplicationId,
-      environment: input.environment,
-      seriesId: series.id,
-      series: series.series,
-      number,
-      dpsId: dpsId.value,
-      idempotencyKey: input.idempotencyKey,
-      requestHash: input.requestHash,
-      externalReference: input.externalReference,
-      payload: input.dps as unknown as Readonly<Record<string, unknown>>,
-      routingChannel: channel,
-      routingTableVersion: this.routing.version,
-      substitution,
-    });
-    if (substitution !== null) {
-      await r.audit.record(context, {
-        action: 'service_invoice.substitution_requested',
-        subject: { type: 'service_invoice', id: substitution.invoiceId },
-        details: { substituteId: invoice.id, reasonCode: substitution.reasonCode },
-      });
-    }
-    await r.audit.record(context, {
-      action: 'service_invoice.accepted',
-      subject: { type: 'service_invoice', id: invoice.id },
-      details: {
-        establishmentId: invoice.establishmentId,
-        environment: invoice.environment,
-        series: invoice.series,
-        number: invoice.number,
-        dpsId: invoice.dpsId,
-        routingChannel: channel,
-        routingTableVersion: this.routing.version,
-        clientApplicationId: clientApplicationOf(context) ?? null,
-        substitutesInvoiceId: substitution?.invoiceId ?? null,
-      },
-    });
-    await r.jobs.enqueue({
-      queue: 'nfse.process',
-      payload: { companyId: invoice.companyId, invoiceId: invoice.id },
-      singletonKey: invoice.id,
-      correlationId: context.correlationId,
-    });
-    return { invoice, replayed: false };
+    return { establishment, channel, series };
   }
 
   /**

@@ -70,6 +70,22 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Arquivamento do XML autorizado (2026-11-23)
+Decisão: [ADR-0048](adr/0048-arquivamento-xml-autorizado.md). Implementa o ADR-0010 para a NFS-e.
+- [x] **SHA-256 do XML** gravado junto com a autorização, na mesma transação, pelos três caminhos (envio, consulta e resolução manual).
+- [x] **Fila `nfse.archive`** no worker-fiscal: grava no bucket com Object Lock (COMPLIANCE), relê, confere o hash e o travamento e só então marca a nota (`nfse_xml_object_key`, `nfse_xml_archived_at`, `nfse_xml_retain_until`).
+- [x] **No banco (migration 0024):** as quatro colunas são gravadas uma vez; o hash não pode ser "carimbado" depois do XML; só o worker-fiscal grava.
+- [x] Testes com o SeaweedFS (o mesmo do docker-compose): arquivamento, releitura corrompida (não marca), repetição e trava no banco.
+- [ ] **Decisão do responsável com o contador:** o prazo legal de guarda (`ARTIFACTS_RETENTION_DAYS`, sem padrão) e o provedor S3 (decisão pendente 2). Sem isso, o worker-fiscal de produção com NFS-e não sobe.
+- [ ] Depois: os XML de eventos (cancelamento) e a verificação periódica dos objetos.
+
+### Consulta pela referência e validação sem efeitos (2026-11-23)
+Decisão: [ADR-0047](adr/0047-consulta-por-referencia-e-validacao.md). Itens 1 e 4 do ADR-0026.
+- [x] **`GET /v1/service-invoices?externalReference=…`:** o caminho de quem perdeu a resposta e a `Idempotency-Key`. Lista as notas da referência no ambiente, incluindo as rejeitadas.
+- [x] **`POST /v1/service-invoices/validation`:** as mesmas conferências da emissão, sem efeitos. O aceite e a validação usam o mesmo método `check`, para não divergirem.
+- [x] **Achado:** a referência externa não era por ambiente. Uma nota de homologação bloqueava a referência em produção com um `409` que apontava para uma nota invisível àquela credencial. A migration 0022 recria o índice com o ambiente.
+- [x] Matriz de isolamento: as duas rotas novas, com a mesma referência nas duas empresas.
+
 ### Substituição pela DSF e E0065 (2026-11-23)
 Decisão: [ADR-0046](adr/0046-substituicao-dsf-e0065.md).
 - [x] **Substituição de nota da DSF** pela API. A substituta sai pela DSF; a original é fechada quando a substituta é autorizada, como na SEFIN.
@@ -552,6 +568,8 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-10 | Piloto em Teresina pela SEFIN Nacional (Res. CGSN 191/2026); adapter municipal DSF na Fase 2b conforme demanda | 0017 (revisado) |
 | 2026-11-10 | Canal de NFS-e decidido pela data de competência, por tabela versionada com fonte | 0028 |
 | 2026-11-10 | Cliente único do padrão nacional com perfil de endpoint; reconciliação por Id da DPS antes de reenviar | 0029 |
+| 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
+| 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |
 | 2026-11-23 | Prestação no exterior (`service.countryCode`), com exatamente um local da prestação; E0318 (cNBS) incluída | 0045 |
 | 2026-11-23 | Tomador no exterior e exportação: NIF/cNaoNIF, endExt reconhecido por `countryCode`, comExt e cPaisResult; correção das regras E1388/E0293 que faltavam desde o contrato v2 | 0044 |

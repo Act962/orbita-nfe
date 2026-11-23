@@ -114,6 +114,14 @@ services:
       WORKER_CERTIFICATE_KEK_PRIVATE_FILE: /run/secrets/certificate-kek-private.pem
       CERTIFICATE_TRUST_BUNDLE_FILE: /run/secrets/trust-bundle.pem
       WORKER_CONCURRENCY: ${FISCAL_WORKER_CONCURRENCY:-4}
+      # XML autorizado no bucket com Object Lock (ADR-0048). A retenção é o prazo legal de guarda: sem padrão.
+      ARTIFACTS_S3_ENDPOINT: ${ARTIFACTS_S3_ENDPOINT:?informe ARTIFACTS_S3_ENDPOINT}
+      ARTIFACTS_S3_REGION: ${ARTIFACTS_S3_REGION:-us-east-1}
+      ARTIFACTS_S3_BUCKET: ${ARTIFACTS_S3_BUCKET:?informe ARTIFACTS_S3_BUCKET (com Object Lock)}
+      ARTIFACTS_S3_FORCE_PATH_STYLE: ${ARTIFACTS_S3_FORCE_PATH_STYLE:-false}
+      ARTIFACTS_S3_ACCESS_KEY_ID_FILE: /run/secrets/artifacts-s3-access-key-id
+      ARTIFACTS_S3_SECRET_ACCESS_KEY_FILE: /run/secrets/artifacts-s3-secret-access-key
+      ARTIFACTS_RETENTION_DAYS: ${ARTIFACTS_RETENTION_DAYS:?informe ARTIFACTS_RETENTION_DAYS (prazo legal de guarda, confirmado com o contador)}
     volumes:
       - /srv/orbita-nfe/secrets/worker-fiscal:/run/secrets:ro
     depends_on:

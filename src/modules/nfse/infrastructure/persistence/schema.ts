@@ -35,6 +35,12 @@ export const serviceInvoices = pgTable(
     layoutPackage: text('layout_package'),
     nfseAccessKey: varchar('nfse_access_key', { length: 50 }),
     nfseXml: text('nfse_xml'),
+    /** SHA-256 do XML autorizado, gravado junto com ele (ADR-0048). */
+    nfseXmlSha256: char('nfse_xml_sha256', { length: 64 }),
+    /** Arquivamento no object storage com Object Lock (ADR-0010, ADR-0048). */
+    nfseXmlObjectKey: text('nfse_xml_object_key'),
+    nfseXmlArchivedAt: timestamp('nfse_xml_archived_at', { withTimezone: true }),
+    nfseXmlRetainUntil: timestamp('nfse_xml_retain_until', { withTimezone: true }),
     authorizedAt: timestamp('authorized_at', { withTimezone: true }),
     rejectionCode: text('rejection_code'),
     rejectionMessage: text('rejection_message'),
@@ -58,9 +64,14 @@ export const serviceInvoices = pgTable(
     unique('uq_service_invoices_series_number').on(t.seriesId, t.number),
     unique('uq_service_invoices_idempotency').on(t.companyId, t.clientApplicationId, t.idempotencyKey),
     // A referência externa só volta a ficar livre depois de falha definitiva (ADR-0026 item 1).
+    // Por ambiente (ADR-0047): a credencial `test` não enxerga notas de produção, e vice-versa.
     uniqueIndex('uq_service_invoices_external_reference')
-      .on(t.companyId, t.clientApplicationId, t.externalReference)
+      .on(t.companyId, t.clientApplicationId, t.environment, t.externalReference)
       .where(sql`${t.externalReference} is not null and ${t.status} not in ('REJECTED', 'FAILED')`),
+    // Consulta por referência (ADR-0047): inclui as notas REJECTED/FAILED, que o índice único não cobre.
+    index('ix_service_invoices_external_reference')
+      .on(t.companyId, t.clientApplicationId, t.environment, t.externalReference, t.createdAt)
+      .where(sql`${t.externalReference} is not null`),
     check('ck_service_invoices_status', sql`${t.status} in ('PENDING', 'PROCESSING', 'AUTHORIZED', 'REJECTED', 'FAILED', 'UNKNOWN', 'CANCELLED', 'SUBSTITUTED')`),
     check('ck_service_invoices_environment', sql`${t.environment} in ('PRODUCTION', 'HOMOLOGATION')`),
     check('ck_service_invoices_dps_id', sql`${t.dpsId} ~ '^DPS[0-9]{7}(1[0-9]{14}|2[0-9A-Z]{14})[0-9]{20}$'`),

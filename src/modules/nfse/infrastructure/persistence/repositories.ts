@@ -1,4 +1,5 @@
-import { and, desc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
+import { and, desc, eq, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
 import type { AuditTrail } from '../../../../shared/application/audit.js';
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../../../shared/application/errors.js';
 import type { JobScheduler } from '../../../../shared/application/job-queue.js';
@@ -156,13 +157,14 @@ export function serviceInvoiceRepository(tx: Transaction): ServiceInvoiceReposit
         .limit(1);
       return rows[0] === undefined ? undefined : toInvoice(rows[0] as InvoiceRow);
     },
-    async findActiveByExternalReference(clientApplicationId, reference) {
+    async findActiveByExternalReference(clientApplicationId, environment, reference) {
       const rows = await tx
         .select(invoiceColumns)
         .from(serviceInvoices)
         .where(
           and(
             eq(serviceInvoices.clientApplicationId, clientApplicationId),
+            eq(serviceInvoices.environment, environment),
             isNotNull(serviceInvoices.externalReference),
             eq(serviceInvoices.externalReference, reference),
             notInArray(serviceInvoices.status, ['REJECTED', 'FAILED']),
@@ -170,6 +172,21 @@ export function serviceInvoiceRepository(tx: Transaction): ServiceInvoiceReposit
         )
         .limit(1);
       return rows[0] === undefined ? undefined : toInvoice(rows[0] as InvoiceRow);
+    },
+    async listByExternalReference(clientApplicationId, environment, reference, limit) {
+      const rows = await tx
+        .select(invoiceColumns)
+        .from(serviceInvoices)
+        .where(
+          and(
+            eq(serviceInvoices.clientApplicationId, clientApplicationId),
+            eq(serviceInvoices.environment, environment),
+            eq(serviceInvoices.externalReference, reference),
+          ),
+        )
+        .orderBy(desc(serviceInvoices.createdAt), desc(serviceInvoices.id))
+        .limit(limit);
+      return rows.map((row) => toInvoice(row as InvoiceRow));
     },
     async insert(invoice) {
       // SQL explícito: a API só tem INSERT nas colunas do pedido (estado e datas ficam no padrão).
@@ -218,7 +235,13 @@ export function serviceInvoiceWorkerRepository(tx: Transaction): ServiceInvoiceW
             : { signedDps: change.signedDps.xml, signedDpsSha256: change.signedDps.sha256, layoutPackage: change.signedDps.layoutPackage }),
           ...(change.authorization === undefined
             ? {}
-            : { nfseAccessKey: change.authorization.accessKey, nfseXml: change.authorization.nfseXml, authorizedAt: change.authorization.authorizedAt }),
+            : {
+                nfseAccessKey: change.authorization.accessKey,
+                nfseXml: change.authorization.nfseXml,
+                // Junto com o XML (ADR-0048): o arquivamento confere estes bytes antes de gravar no bucket.
+                nfseXmlSha256: createHash('sha256').update(change.authorization.nfseXml, 'utf8').digest('hex'),
+                authorizedAt: change.authorization.authorizedAt,
+              }),
           ...(change.rejection === undefined ? {} : { rejectionCode: change.rejection.code, rejectionMessage: change.rejection.message }),
           ...(change.failureCode === undefined ? {} : { failureCode: change.failureCode }),
           ...(change.substitutedBy === undefined ? {} : { substitutedByInvoiceId: change.substitutedBy }),
@@ -232,6 +255,28 @@ export function serviceInvoiceWorkerRepository(tx: Transaction): ServiceInvoiceW
         .update(serviceInvoices)
         .set({ signedDps: signed.xml, signedDpsSha256: signed.sha256, layoutPackage: signed.layoutPackage })
         .where(eq(serviceInvoices.id, id));
+    },
+    async authorizedXml(id) {
+      const rows = await tx
+        .select({
+          companyId: serviceInvoices.companyId,
+          xml: serviceInvoices.nfseXml,
+          sha256: serviceInvoices.nfseXmlSha256,
+          authorizedAt: serviceInvoices.authorizedAt,
+          objectKey: serviceInvoices.nfseXmlObjectKey,
+        })
+        .from(serviceInvoices)
+        .where(eq(serviceInvoices.id, id))
+        .limit(1);
+      return rows[0];
+    },
+    async markArchived(id, archive) {
+      const rows = await tx
+        .update(serviceInvoices)
+        .set({ nfseXmlObjectKey: archive.objectKey, nfseXmlArchivedAt: archive.archivedAt, nfseXmlRetainUntil: archive.retainUntil })
+        .where(and(eq(serviceInvoices.id, id), isNull(serviceInvoices.nfseXmlObjectKey)))
+        .returning({ id: serviceInvoices.id });
+      return rows.length === 1;
     },
   };
 }

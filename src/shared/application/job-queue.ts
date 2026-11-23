@@ -108,6 +108,17 @@ export const QUEUES = {
     timeoutSeconds: 120,
     priority: 14,
   },
+  /**
+   * Arquivamento do XML autorizado no bucket com Object Lock (ADR-0010, ADR-0048). Enfileirado na
+   * transação da autorização. Sem o bucket configurado, fica sem handler e espera (fora de produção).
+   */
+  'nfse.archive': {
+    lane: 'fiscal',
+    maxAttempts: 24,
+    backoff: { baseSeconds: 60, maxSeconds: 3600, jitter: 0.2 },
+    timeoutSeconds: 60,
+    priority: 4,
+  },
   /** Alerta de NFS-e em UNKNOWN pela idade (doc 12 §6); a próxima verificação é um job novo. */
   'nfse.escalate': {
     lane: 'fiscal',

@@ -144,6 +144,8 @@ Content-Type: application/json
 - **Os valores fiscais são seus** (ou do seu contador): opção do Simples, regime, códigos, alíquota, retenção e totais aproximados. A API só confere se cada um existe no XSD oficial. A tabela de campos está no contrato v1 da DPS.
 - **Resposta `202`** com `status: PENDING` e `Location`. A transmissão é assíncrona: consulte `GET /v1/service-invoices/{id}` ou assine o webhook `service_invoice.status_changed`.
 - **`Idempotency-Key` é obrigatório.** Repetir a mesma chave com o mesmo corpo devolve `200` com a mesma nota. Use uma chave nova só para uma nota nova.
+- **Perdeu a resposta?** Não emita de novo. Repita o pedido com a mesma `Idempotency-Key`. Se não guardou a chave, consulte pela referência: `GET /v1/service-invoices?externalReference=pedido-123`. Se vier uma nota que não seja `REJECTED` nem `FAILED`, ela é a sua. Emita de novo só se a lista vier vazia ou só com notas `REJECTED`/`FAILED`.
+- **Validar antes de emitir:** `POST /v1/service-invoices/validation`, com o mesmo corpo e sem `Idempotency-Key`, faz as mesmas conferências da emissão e devolve os mesmos erros, mas não numera nem grava nada. A resposta `200` diz o canal e a série que seriam usados. Passar na validação não garante a autorização: o autorizador ainda confere o cadastro e a parametrização do município.
 - **Status:**
   - `AUTHORIZED`: autorizada, com `accessKey`;
   - `REJECTED`: rejeitada pelo autorizador, com `rejection.code`;
@@ -160,12 +162,12 @@ Content-Type: application/json
   - **Exportação e tomador no exterior:** identifique o tomador por `NIF` (ou `NO_NIF` com o motivo), informe o endereço no exterior (`address` com `countryCode`) e o grupo `service.foreignTrade`, obrigatório nesses casos (E0330). Na exportação (`taxation` 3), informe também `values.issqn.resultCountryCode` quando a incidência do serviço exigir.
   - **Intermediário com CNPJ:** informe `intermediary.address` nacional (E1388).
   - **Prestação no exterior:** use `service.countryCode` no lugar de `service.municipalityCode`. Nesse caso, e com tomador ou intermediário no exterior, informe também `service.nbsCode` (E0318) e `service.foreignTrade` (E0330).
-- **Canal de emissão (ADR-0028):** o canal é escolhido pela tabela de roteamento, pelo município do estabelecimento, `opSimpNac`, `regApTribSN` e a **competência**. Hoje só a SEFIN Nacional está disponível. Sem canal, a resposta é `422 NFSE_CHANNEL_NOT_AVAILABLE`, sem consumir número, e o motivo vai em `issues[].code`:
-  - `ROUTE_CHANNEL_NOT_SUPPORTED`: em Teresina, competência anterior a 11/2026 ou prestador não optante; use o emissor municipal;
+- **Canal de emissão (ADR-0028):** o canal é escolhido pela tabela de roteamento, pelo município do estabelecimento, `opSimpNac`, `regApTribSN` e a **competência**. Hoje há dois canais: a SEFIN Nacional e, em Teresina, o emissor municipal (DSF, ADR-0039) para não optante ou competência anterior a 11/2026. Sem canal, a resposta é `422 NFSE_CHANNEL_NOT_AVAILABLE`, sem consumir número, e o motivo vai em `issues[].code`:
+  - `ROUTE_CHANNEL_NOT_SUPPORTED`: o canal desta nota ainda não tem adapter; use o emissor do município;
   - `ROUTE_PENDING_CONFIRMATION`: ME/EPP fora do sublimite em Teresina, canal ainda a confirmar;
   - `ROUTE_REGIME_REQUIRED`: informe `provider.simplesNacionalRegime`;
   - `ROUTE_AMBIGUOUS` / `ROUTE_NOT_FOUND`: caso não coberto pela tabela.
-- **Ambientes:** uma credencial `test` não enxerga notas de produção, e vice-versa.
+- **Ambientes:** uma credencial `test` não enxerga notas de produção, e vice-versa. A `externalReference` também é por ambiente: a mesma referência pode ser usada em homologação e em produção.
 
 ## 8. Cancelar NFS-e
 

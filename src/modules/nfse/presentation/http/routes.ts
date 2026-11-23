@@ -339,6 +339,17 @@ const invoiceJson = (i: ServiceInvoice): z.infer<typeof ServiceInvoiceResponse> 
   updatedAt: i.updatedAt.toISOString(),
 });
 
+const ValidationResponse = z
+  .object({
+    valid: z.literal(true),
+    environment: z.enum(['PRODUCTION', 'HOMOLOGATION']),
+    channel: z.string().meta({ description: 'Autorizador que receberia a nota (NATIONAL_SEFIN ou MUNICIPAL_TERESINA_DSF), pela tabela de roteamento.' }),
+    series: z.object({ id: z.uuid(), series: z.string() }).meta({ description: 'Série que seria usada. Nenhum número é reservado.' }),
+    ruleSetVersion: z.string().meta({ description: 'Versão do catálogo de regras do Anexo I conferido.' }),
+    routingTableVersion: z.string(),
+  })
+  .meta({ id: 'ServiceInvoiceValidation' });
+
 /** JSON canônico (chaves ordenadas) para o hash do pedido (ADR-0007). */
 function canonical(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
@@ -612,6 +623,84 @@ export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService,
         .status(result.replayed ? 200 : 202)
         .header('location', `/v1/service-invoices/${result.invoice.id}`)
         .send(invoiceJson(result.invoice));
+    },
+  );
+
+  app.post(
+    '/v1/service-invoices/validation',
+    {
+      config: { auth: { scope: 'nfse:issue', company: true } },
+      schema: {
+        tags: [TAG],
+        summary: 'Validar NFS-e sem emitir',
+        description:
+          'Confere a DPS como no `POST /v1/service-invoices`, na mesma ordem e com os mesmos erros: contrato, XSD oficial do ambiente, referência externa, estabelecimento, canal de emissão, ' +
+          'regras do Anexo I e do canal, habilitação de produção e série. **Não tem efeitos:** não numera, não grava, não audita nem transmite, e não pede Idempotency-Key. ' +
+          'Passar aqui não garante a autorização: as regras de cadastro e de parametrização do município são do autorizador.',
+        security: [{ apiKey: [] }],
+        headers: CompanyHeaders,
+        body: DpsBody,
+        response: {
+          200: ValidationResponse,
+          ...commonErrorResponses,
+          400: ProblemSchema.describe('VALIDATION_FAILED: corpo fora do contrato, ou DPS fora do XSD oficial do ambiente (issues com code DPS_SCHEMA_INVALID).'),
+          ...authErrorResponses,
+          403: ProblemSchema.describe('Sem escopo/concessão, ou PRODUCTION_NOT_ENABLED (credencial live sem habilitação de produção).'),
+          404: ProblemSchema.describe('ESTABLISHMENT_NOT_FOUND'),
+          409: ProblemSchema.describe('DOCUMENT_IN_PROGRESS ou DOCUMENT_ALREADY_AUTHORIZED (referência externa ocupada).'),
+          422: ProblemSchema.describe('NFSE_RULES_VIOLATED, NFSE_CHANNEL_NOT_AVAILABLE, NFSE_SERIES_NOT_AVAILABLE, NFSE_SERIES_REQUIRED, ESTABLISHMENT_INACTIVE.'),
+        },
+      },
+    },
+    async (request) => {
+      const caller = callerOf(request);
+      const environment: 'PRODUCTION' | 'HOMOLOGATION' = caller.environment === 'live' ? 'PRODUCTION' : 'HOMOLOGATION';
+      const { establishmentId, seriesId, externalReference, ...dps } = request.body;
+      const result = await withIssueFields('body', () =>
+        service.validate({
+          companyId: companyIdOf(request),
+          clientApplicationId: caller.clientApplicationId,
+          environment,
+          establishmentId,
+          seriesId,
+          externalReference: externalReference ?? null,
+          dps,
+        }),
+      );
+      return {
+        valid: true as const,
+        environment,
+        channel: result.channel,
+        series: { id: result.series.id, series: result.series.series },
+        ruleSetVersion: result.ruleSetVersion,
+        routingTableVersion: result.routingTableVersion,
+      };
+    },
+  );
+
+  app.get(
+    '/v1/service-invoices',
+    {
+      config: { auth: { scope: 'nfse:read', company: true } },
+      schema: {
+        tags: [TAG],
+        summary: 'Consultar NFS-e pela referência externa',
+        description:
+          'Notas da aplicação com a `externalReference`, no ambiente da credencial, da mais nova para a mais antiga (até 50). ' +
+          'Use quando a resposta do POST se perdeu: se houver nota que não seja REJECTED nem FAILED, ela é a sua; **não emita outra**. Lista vazia: nenhuma nota com essa referência.',
+        security: [{ apiKey: [] }],
+        headers: CompanyHeaders,
+        querystring: z.object({
+          externalReference: z.string().min(1).max(255).meta({ description: 'A referência enviada na emissão.' }),
+        }),
+        response: { 200: z.object({ items: z.array(ServiceInvoiceResponse) }), ...commonErrorResponses, ...authErrorResponses },
+      },
+    },
+    async (request) => {
+      const caller = callerOf(request);
+      const environment = caller.environment === 'live' ? 'PRODUCTION' : 'HOMOLOGATION';
+      const items = await service.listByExternalReference(companyIdOf(request), caller.clientApplicationId, environment, request.query.externalReference);
+      return { items: items.map(invoiceJson) };
     },
   );
 

@@ -46,6 +46,9 @@ Gerar a chave de webhooks de produção: mesmo procedimento da KEK ([kek-certifi
 | Mortos em `nfse.process` com `NFSE_PROCESSING_DEFERRED:<código>` | Falha local (certificado, habilitação) numa **retransmissão**: a nota pode existir no autorizador | Corrigir a causa (por exemplo, enviar o novo certificado) e rodar `ops retry`. Nunca force `FAILED` |
 | Mortos em `audit.anchor-company` ou `audit.anchor-platform` | `ops dead`: erro do bucket (credencial, Object Lock desligado, provedor fora) | Corrigir e rodar `ops retry` **sempre**. O job de amanhã já foi agendado, mas a âncora de hoje fica faltando até o retry (ADR-0031) |
 | Log `âncora da auditoria não configurada` | Variáveis `AUDIT_ANCHOR_S3_*` | Em produção o worker nem sobe sem elas; fora de produção, as filas de âncora ficam paradas |
+| Log `arquivamento do XML autorizado não configurado`, jobs `nfse.archive` acumulando | Variáveis `ARTIFACTS_S3_*` e `ARTIFACTS_RETENTION_DAYS` do worker-fiscal | Em produção com NFS-e o worker nem sobe sem elas. Ao configurar, os jobs parados são processados |
+| `nfse.archive` falhando com `NFSE_ARCHIVE_READBACK_MISMATCH` ou `ARTIFACT_NOT_LOCKED` | O bucket devolveu outros bytes, ou o objeto não ficou travado em COMPLIANCE | Conferir se o bucket foi criado com Object Lock. A nota **não** fica arquivada enquanto isso; o job tenta de novo |
+| Morto em `nfse.archive` com `NFSE_XML_HASH_MISMATCH` | **Incidente de integridade:** o XML do banco não é o gravado na autorização | Não reprocessar. Preservar o banco e os backups e investigar; o banco não deixa a coluna mudar, então isso indica acesso por fora das travas |
 | Muitos `429 RATE_LIMITED` | Limite por credencial ou por endereço | Ajustar `RATE_LIMIT_*`. Os baldes ficam em memória por réplica da API: com N réplicas, o limite efetivo é N × o configurado |
 
 ## 4. Garantias que a operação não pode quebrar

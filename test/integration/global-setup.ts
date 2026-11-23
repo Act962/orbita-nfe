@@ -23,8 +23,8 @@ declare module 'vitest' {
       generalUrl: string;
       adminUrl: string;
     };
-    /** S3 local com Object Lock (SeaweedFS, a mesma imagem do docker-compose) para as âncoras. */
-    objectStorage: { endpoint: string; anchorBucket: string };
+    /** S3 local com Object Lock (SeaweedFS, a mesma imagem do docker-compose): âncoras e artefatos fiscais. */
+    objectStorage: { endpoint: string; anchorBucket: string; artifactBucket: string };
   }
 }
 
@@ -33,8 +33,8 @@ let storage: StartedTestContainer | undefined;
 
 export const TEST_S3_CREDENTIALS = { accessKeyId: 'test-only', secretAccessKey: 'test-only' };
 
-/** Sobe o SeaweedFS e cria o bucket de âncoras COM Object Lock (como em produção). */
-async function startObjectStorage(): Promise<{ endpoint: string; anchorBucket: string }> {
+/** Sobe o SeaweedFS e cria os buckets de âncoras e de artefatos COM Object Lock (como em produção). */
+async function startObjectStorage(): Promise<{ endpoint: string; anchorBucket: string; artifactBucket: string }> {
   storage = await new GenericContainer('chrislusf/seaweedfs:4.50')
     .withCommand(['server', '-s3', '-dir=/data', '-ip.bind=0.0.0.0'])
     .withExposedPorts(8333)
@@ -42,12 +42,14 @@ async function startObjectStorage(): Promise<{ endpoint: string; anchorBucket: s
     .start();
   const endpoint = `http://${storage.getHost()}:${String(storage.getMappedPort(8333))}`;
   const anchorBucket = 'test-audit-anchors';
+  const artifactBucket = 'test-fiscal-artifacts';
   const s3 = new S3Client({ endpoint, region: 'us-east-1', forcePathStyle: true, credentials: TEST_S3_CREDENTIALS });
   try {
     // O gateway S3 aceita conexão um pouco antes de estar pronto: tenta por até 60 s.
     for (let attempt = 0; ; attempt++) {
       try {
         await s3.send(new CreateBucketCommand({ Bucket: anchorBucket, ObjectLockEnabledForBucket: true }));
+        await s3.send(new CreateBucketCommand({ Bucket: artifactBucket, ObjectLockEnabledForBucket: true }));
         break;
       } catch (error) {
         if (attempt >= 60) throw error;
@@ -57,7 +59,7 @@ async function startObjectStorage(): Promise<{ endpoint: string; anchorBucket: s
   } finally {
     s3.destroy();
   }
-  return { endpoint, anchorBucket };
+  return { endpoint, anchorBucket, artifactBucket };
 }
 
 export default async function setup(project: TestProject): Promise<() => Promise<void>> {

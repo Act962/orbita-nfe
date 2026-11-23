@@ -7,6 +7,7 @@ import { DEFAULT_RECONCILIATION_POLICY, type ReconciliationPolicy } from '../dom
 import { recoverStuck, type ServiceInvoiceStatus } from '../domain/service-invoice.js';
 import { scheduleFirstEscalation } from './unknown-escalator.js';
 import type { CredentialAccess, DpsPreparer, IssuerCredential, NfseGateway, NfseWorkerRepositories, ServiceInvoice, SubmissionOutcome } from './ports.js';
+import { scheduleArchive } from './xml-archiver.js';
 
 export interface ProcessorOptions {
   /** Concessão do processamento; maior que o tempo máximo de uma transmissão. */
@@ -133,7 +134,7 @@ export class SubmissionProcessor {
             leaseUntil: null,
             authorization: { accessKey: outcome.accessKey, nfseXml: outcome.nfseXml, authorizedAt: at },
           });
-          await completeSubstitution(r, invoice, context);
+          await afterAuthorization(r, invoice, context);
           return;
         case 'REJECTED':
           await r.attempts.close(attempt.id, 'REJECTED', outcome.code, at);
@@ -281,7 +282,17 @@ export async function publishStatus(
  * acontecer, porque cancelamento e substituição são exclusivos), registra a inconsistência na
  * auditoria e segue.
  */
-export async function completeSubstitution(r: NfseWorkerRepositories, substitute: ServiceInvoice, context: AuditContext): Promise<void> {
+/**
+ * O que acontece na MESMA transação em que a nota vira AUTHORIZED, por qualquer caminho (envio,
+ * consulta ou resolução manual): o arquivamento do XML (ADR-0048) e, na substituta, o fechamento
+ * da original (ADR-0036).
+ */
+export async function afterAuthorization(r: NfseWorkerRepositories, invoice: ServiceInvoice, context: AuditContext): Promise<void> {
+  await scheduleArchive(r.jobs, { companyId: invoice.companyId, invoiceId: invoice.id, correlationId: context.correlationId });
+  await completeSubstitution(r, invoice, context);
+}
+
+async function completeSubstitution(r: NfseWorkerRepositories, substitute: ServiceInvoice, context: AuditContext): Promise<void> {
   if (substitute.substitution === null) return;
   const original = await r.invoices.findById(substitute.substitution.invoiceId);
   if (original !== undefined && (await r.invoices.changeStatus(original.id, 'AUTHORIZED', 'SUBSTITUTED', { substitutedBy: substitute.id }))) {

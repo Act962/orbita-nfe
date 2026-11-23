@@ -17,3 +17,5 @@ Infra inicial é uma VPS única. Guardar XMLs só nela significa perder tudo se 
 Confirmar Object Lock e preços na documentação oficial do provedor escolhido; parecer sobre transferência internacional (LGPD) se o provedor for fora do Brasil.
 
 Detalhes: [15-infraestrutura.md](../architecture/15-infraestrutura.md).
+
+Implementação para o XML autorizado da NFS-e: [ADR-0048](0048-arquivamento-xml-autorizado.md) (2026-11-23). O provedor e o prazo de retenção continuam pendentes.

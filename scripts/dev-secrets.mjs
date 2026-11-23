@@ -52,6 +52,8 @@ if (existsSync(whPublic) || existsSync(whPrivate)) {
 for (const [file, value] of [
   ['secrets/anchor-s3-access-key-id', 'dev-only'],
   ['secrets/anchor-s3-secret-access-key', 'dev-only'],
+  ['secrets/artifacts-s3-access-key-id', 'dev-only'],
+  ['secrets/artifacts-s3-secret-access-key', 'dev-only'],
 ]) {
   if (!existsSync(file)) {
     writeFileSync(file, `${value}\n`, { mode: 0o600 });

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { anchorConfigState, anchorEnvShape } from './anchor-config.js';
+import { artifactConfigState, artifactEnvShape } from './artifact-config.js';
 
 /**
  * Configuração dos workers (fail fast). Cada worker recebe SÓ os segredos do seu papel
@@ -38,6 +39,7 @@ const FiscalWorkerSchema = z
      * ambientes de HOMOLOGAÇÃO estão nos perfis: nota de produção não sai (NOT_SENT local).
      */
     NFSE_GATEWAY: z.enum(['none', 'simulator', 'real']).default('none'),
+    ...artifactEnvShape,
   })
   .refine((c) => !(c.NODE_ENV === 'production' && c.NFSE_GATEWAY === 'simulator'), {
     path: ['NFSE_GATEWAY'],
@@ -46,6 +48,14 @@ const FiscalWorkerSchema = z
   .refine(notInProduction('GENERAL_WEBHOOK_SECRET_KEY_PRIVATE_FILE'), {
     path: ['GENERAL_WEBHOOK_SECRET_KEY_PRIVATE_FILE'],
     message: 'a chave de webhooks não pode estar no container do worker-fiscal',
+  })
+  .refine((c) => artifactConfigState(c) !== 'partial', {
+    path: ['ARTIFACTS_S3_ENDPOINT'],
+    message: 'arquivamento configurado pela metade: informe endpoint, bucket, os dois arquivos de credencial e ARTIFACTS_RETENTION_DAYS (prazo legal de guarda, sem padrão)',
+  })
+  .refine((c) => !(c.NODE_ENV === 'production' && c.NFSE_GATEWAY !== 'none' && artifactConfigState(c) !== 'configured'), {
+    path: ['ARTIFACTS_S3_BUCKET'],
+    message: 'obrigatório em produção com NFS-e: o arquivamento do XML autorizado com Object Lock (ADR-0048)',
   });
 
 const GeneralWorkerSchema = z

@@ -30,6 +30,7 @@ let otherAppKey: string;
 let companyId: string;
 let root: string;
 let establishmentId: string;
+let mainApp: Awaited<ReturnType<typeof createClientApp>>;
 const gateway = new SimulatedNfseGateway();
 
 const post = (body: Record<string, unknown>, idempotencyKey: string | undefined, token = key) =>
@@ -59,6 +60,7 @@ beforeAll(async () => {
   pki = createTestIcpPki();
   catalog = FiscalSchemaCatalog.load(ROOT);
   const app = await createClientApp(t.admin, 'nfse-api');
+  mainApp = app;
   key = await app.key(['companies:create', 'companies:manage', 'fiscal-settings:manage', 'certificates:manage', 'nfse:issue', 'nfse:read', 'nfse:cancel']);
   const company = await createCompany(t.app, key);
   companyId = company.id;
@@ -171,6 +173,108 @@ describe('POST /v1/service-invoices → worker → GET', () => {
     const live = await createClientApp(t.admin, 'nfse-api-ambiente');
     await t.admin.grantCompany(live.id, companyId);
     expect(problemCode(await get(id, await live.key(['nfse:read'], 'live')))).toBe('SERVICE_INVOICE_NOT_FOUND');
+  });
+});
+
+describe('consulta pela referência externa (ADR-0047)', () => {
+  const byReference = (reference: string, token = key) =>
+    t.app.inject({ method: 'GET', url: `/v1/service-invoices?externalReference=${encodeURIComponent(reference)}`, headers: bearer(token, companyId) });
+
+  it('devolve as notas da referência, da mais nova para a mais antiga, incluindo a rejeitada; outra aplicação ou outro ambiente → lista vazia', async () => {
+    const first = await post({ establishmentId, externalReference: 'pedido-ref-1', ...sampleDpsData() }, 'ref-1a');
+    expect(first.statusCode).toBe(202);
+    const firstId = first.json<{ id: string }>().id;
+    // A primeira nota é rejeitada: a referência fica livre e a segunda é aceita.
+    gateway.onSubmit('REJECT');
+    expect(await fiscalWorker().processor.process(companyId, firstId, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'REJECTED' });
+    const second = await post({ establishmentId, externalReference: 'pedido-ref-1', ...sampleDpsData() }, 'ref-1b');
+    expect(second.statusCode, second.body).toBe(202);
+    const secondId = second.json<{ id: string }>().id;
+
+    const res = await byReference('pedido-ref-1');
+    expect(res.statusCode, res.body).toBe(200);
+    const items = res.json<{ items: { id: string; status: string; externalReference: string }[] }>().items;
+    expect(items.map((i) => [i.id, i.status])).toEqual([
+      [secondId, 'PENDING'],
+      [firstId, 'REJECTED'],
+    ]);
+
+    expect((await byReference('pedido-que-nao-existe')).json<{ items: unknown[] }>().items).toEqual([]);
+    expect((await byReference('pedido-ref-1', otherAppKey)).json<{ items: unknown[] }>().items).toEqual([]);
+    expect((await byReference('pedido-ref-1', await mainApp.key(['nfse:read'], 'live'))).json<{ items: unknown[] }>().items).toEqual([]);
+  });
+
+  it('sem a referência, ou vazia → 400', async () => {
+    expect((await t.app.inject({ method: 'GET', url: '/v1/service-invoices', headers: bearer(key, companyId) })).statusCode).toBe(400);
+    expect((await byReference('')).statusCode).toBe(400);
+  });
+
+  it('a referência é por ambiente: ocupada em homologação não bloqueia a produção', async () => {
+    expect((await post({ establishmentId, externalReference: 'pedido-ref-amb', ...sampleDpsData() }, 'ref-amb')).statusCode).toBe(202);
+    // Mesma aplicação, credencial live: passa da referência e para na habilitação de produção.
+    const live = await post({ establishmentId, externalReference: 'pedido-ref-amb', ...sampleDpsData() }, 'ref-amb-live', await mainApp.key(['nfse:issue'], 'live'));
+    expect(live.statusCode).toBe(403);
+    expect(problemCode(live)).toBe('PRODUCTION_NOT_ENABLED');
+  });
+});
+
+describe('validação sem efeitos (ADR-0047)', () => {
+  const validate = (body: Record<string, unknown>, token = key) =>
+    t.app.inject({ method: 'POST', url: '/v1/service-invoices/validation', headers: bearer(token, companyId), payload: body });
+
+  it('DPS válida → 200 com canal e série; nada é numerado, gravado ou enfileirado', async () => {
+    const before = await post({ establishmentId, ...sampleDpsData() }, 'valid-antes');
+    const n = before.json<{ number: number }>().number;
+    const superuser = connect('superuser', { poolMax: 1 });
+    const counts = () =>
+      superuser.db.execute<{ invoices: number; audit: number; jobs: number }>(
+        sql`select (select count(*)::int from service_invoices where company_id = ${companyId}) as invoices,
+                   (select count(*)::int from audit_log where company_id = ${companyId}) as audit,
+                   (select count(*)::int from jobs where payload->>'companyId' = ${companyId}) as jobs`,
+      );
+    const start = (await counts()).rows[0];
+
+    const res = await validate({ establishmentId, externalReference: 'pedido-validacao', ...sampleDpsData() });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({ valid: true, environment: 'HOMOLOGATION', channel: 'NATIONAL_SEFIN', series: { series: '1' } });
+    expect((await validate({ establishmentId, externalReference: 'pedido-validacao', ...sampleDpsData() })).statusCode).toBe(200);
+
+    expect((await counts()).rows[0]).toEqual(start);
+    const after = await post({ establishmentId, externalReference: 'pedido-validacao', ...sampleDpsData() }, 'valid-depois');
+    expect(after.statusCode).toBe(202);
+    expect(after.json<{ number: number }>().number).toBe(n + 1);
+    await superuser.close();
+  });
+
+  it('os mesmos erros do aceite: 400 XSD, 422 regras do Anexo I, 409 referência ocupada; sem Idempotency-Key', async () => {
+    const xsd = await validate({ establishmentId, ...sampleDpsData({ competenceDate: '2026-02-30' }) });
+    expect(xsd.statusCode).toBe(400);
+    expect(xsd.json<{ issues: { code: string }[] }>().issues[0]?.code).toBe('DPS_SCHEMA_INVALID');
+
+    const rules = await validate({
+      establishmentId,
+      ...sampleDpsData({ competenceDate: '2099-01-01', taker: { document: { type: 'CNPJ', value: cnpjOf(root) }, name: 'Tomador igual ao prestador' } }),
+    });
+    expect(rules.statusCode).toBe(422);
+    expect(problemCode(rules)).toBe('NFSE_RULES_VIOLATED');
+    expect(rules.json<{ issues: { code: string; field: string }[] }>().issues.map((i) => [i.code, i.field])).toEqual([
+      ['E0015', 'body.competenceDate'],
+      ['E0202', 'body.taker.document'],
+      ['E0235', 'body.taker.address'],
+    ]);
+
+    expect((await post({ establishmentId, externalReference: 'pedido-validacao-ocupado', ...sampleDpsData() }, 'valid-ocupado')).statusCode).toBe(202);
+    const occupied = await validate({ establishmentId, externalReference: 'pedido-validacao-ocupado', ...sampleDpsData() });
+    expect(occupied.statusCode).toBe(409);
+    expect(problemCode(occupied)).toBe('DOCUMENT_IN_PROGRESS');
+  });
+
+  it('credencial live sem habilitação → 403 PRODUCTION_NOT_ENABLED; escopo só de leitura → 403', async () => {
+    const live = await validate({ establishmentId, ...sampleDpsData() }, await mainApp.key(['nfse:issue'], 'live'));
+    expect(live.statusCode).toBe(403);
+    expect(problemCode(live)).toBe('PRODUCTION_NOT_ENABLED');
+    const readOnly = await validate({ establishmentId, ...sampleDpsData() }, await mainApp.key(['nfse:read']));
+    expect(readOnly.statusCode).toBe(403);
   });
 });
 
