@@ -127,6 +127,18 @@ export const QUEUES = {
     timeoutSeconds: 60,
     priority: 4,
   },
+  /**
+   * Conferência diária dos XML arquivados de uma empresa contra o hash (ADR-0051). Nasce no primeiro
+   * arquivamento; cada execução agenda a do dia seguinte ANTES de conferir, e a continuação logo em
+   * seguida quando o lote enche.
+   */
+  'nfse.verify-archives': {
+    lane: 'fiscal',
+    maxAttempts: 24,
+    backoff: { baseSeconds: 300, maxSeconds: 3600, jitter: 0.2 },
+    timeoutSeconds: 300,
+    priority: 1,
+  },
   /** Alerta de NFS-e em UNKNOWN pela idade (doc 12 §6); a próxima verificação é um job novo. */
   'nfse.escalate': {
     lane: 'fiscal',

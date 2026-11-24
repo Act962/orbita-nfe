@@ -28,4 +28,4 @@ O mesmo desenho do ADR-0048:
 ## Consequências
 - Nota e cancelamento passam a ter cópia imutável fora da VPS.
 - O evento de substituição (e105102) é registrado pelo autorizador quando a substituta é autorizada, e o motor não recebe esse XML. A prova da substituição é o XML autorizado da substituta, que já é arquivado (ADR-0048).
-- **Continua fora:** a verificação periódica dos objetos. O download pela API foi feito no [ADR-0050](0050-download-xml-pela-api.md).
+- **Feitos depois:** o download pela API ([ADR-0050](0050-download-xml-pela-api.md)) e a verificação periódica dos objetos ([ADR-0051](0051-conferencia-periodica-xml-arquivado.md)).

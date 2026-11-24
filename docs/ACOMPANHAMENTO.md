@@ -70,13 +70,21 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Conferência periódica dos XML arquivados (2026-11-24)
+Decisão: [ADR-0051](adr/0051-conferencia-periodica-xml-arquivado.md).
+- [x] **Fila `nfse.verify-archives`** no worker-fiscal: uma conferência diária por empresa, que nasce no primeiro arquivamento e agenda a seguinte antes de conferir.
+- [x] **Por objeto:** XML do banco contra o hash, objeto presente, bytes contra o hash, trava COMPLIANCE até a retenção gravada. A cada 30 dias, até 200 por execução, os mais atrasados primeiro.
+- [x] **Falha:** linha em `archived_xml_checks`, auditoria `service_invoice.archived_xml_check_failed` e log `nfse.archive_integrity`, repetidos uma vez por dia. Nada é regravado.
+- [x] **Migrations 0028 e 0029:** a tabela, com RLS forçado; só o worker-fiscal grava, o operador lê.
+- [ ] Depois: painel do operador para as falhas e recuperação a partir do bucket.
+
 ### Download do XML pela API (2026-11-24)
 Decisão: [ADR-0050](adr/0050-download-xml-pela-api.md). Revê o item 8 do ADR-0026 para o XML.
 - [x] **`GET /v1/service-invoices/{id}/xml`** e **`GET /v1/service-invoices/{id}/cancellation/xml`**, com escopo `nfse:read` e a mesma visibilidade da consulta (outra aplicação ou outro ambiente: 404).
 - [x] **Servido do banco, sem URL pré-assinada:** a API continua sem a credencial do bucket, nenhum link fica valendo sem credencial, e o download funciona mesmo antes do arquivamento.
 - [x] **Hash conferido antes de responder:** se não bater, 500 sem os bytes e `NFSE_XML_HASH_MISMATCH` no log. `ETag` e `Repr-Digest` para o cliente conferir.
 - [x] **Migration 0027:** a API passa a ler `event_xml`.
-- [ ] Depois: a verificação periódica dos objetos do bucket e `links` no corpo da nota.
+- [ ] Depois: `links` no corpo da nota. A verificação periódica foi feita no ADR-0051.
 
 ### Arquivamento do XML do evento de cancelamento (2026-11-24)
 Decisão: [ADR-0049](adr/0049-arquivamento-xml-evento-cancelamento.md). O mesmo desenho do ADR-0048.
@@ -586,6 +594,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-10 | Cliente único do padrão nacional com perfil de endpoint; reconciliação por Id da DPS antes de reenviar | 0029 |
 | 2026-11-24 | XML do evento de cancelamento arquivado no bucket com Object Lock, no mesmo desenho do XML autorizado | 0049 |
 | 2026-11-24 | Download do XML da nota e do cancelamento pela API, servido do banco com o hash conferido, sem URL pré-assinada | 0050 |
+| 2026-11-24 | Conferência diária dos XML arquivados contra o hash e a trava, com alerta e auditoria das falhas | 0051 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |

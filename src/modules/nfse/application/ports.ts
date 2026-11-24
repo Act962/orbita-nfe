@@ -188,6 +188,44 @@ export interface AuthorizedXml {
  */
 export interface NfseArtifactStore {
   put(object: { readonly key: string; readonly body: Buffer; readonly contentType: string; readonly retainUntil: Date }): Promise<Buffer>;
+  /** Lê o objeto e a trava (ADR-0051). `undefined` se o objeto não existe. */
+  read(key: string): Promise<StoredArtifact | undefined>;
+}
+
+export interface StoredArtifact {
+  readonly body: Buffer;
+  /** `COMPLIANCE` esperado; outro valor (ou nenhum) é objeto sem a trava pedida. */
+  readonly lockMode: string | null;
+  readonly retainUntil: Date | null;
+}
+
+// ------------------------------------------------------------------ conferência periódica (ADR-0051)
+
+export type ArchivedXmlKind = 'NFSE' | 'CANCELLATION_EVENT';
+
+/** XML arquivado na vez de ser conferido: o do banco, o hash gravado e onde está no bucket. */
+export interface ArchivedXmlDue {
+  readonly kind: ArchivedXmlKind;
+  /** Nota (NFSE) ou pedido de cancelamento (CANCELLATION_EVENT). */
+  readonly documentId: string;
+  /** A nota, nos dois casos: é o assunto da auditoria. */
+  readonly invoiceId: string;
+  readonly xml: string;
+  readonly sha256: string;
+  readonly objectKey: string;
+  readonly retainUntil: Date;
+  /** A última falha ainda sem conferência boa depois dela. */
+  readonly failureCode: string | null;
+}
+
+export interface ArchivedXmlCheckRepository {
+  /**
+   * Os mais atrasados primeiro: arquivados sem conferência boa desde `verifiedBefore` e sem falha
+   * desde `failedBefore` (a falha volta a ser conferida, e alertada, uma vez por intervalo).
+   */
+  due(input: { readonly verifiedBefore: Date; readonly failedBefore: Date; readonly retainedAfter: Date; readonly limit: number }): Promise<readonly ArchivedXmlDue[]>;
+  recordVerified(kind: ArchivedXmlKind, documentId: string, at: Date): Promise<void>;
+  recordFailed(kind: ArchivedXmlKind, documentId: string, failureCode: string, at: Date): Promise<void>;
 }
 
 export interface AttemptRepository {
@@ -393,6 +431,7 @@ export interface NfseWorkerRepositories {
   readonly attempts: AttemptRepository;
   readonly resolutions: ResolutionRepository;
   readonly cancellations: CancellationRepository;
+  readonly archiveChecks: ArchivedXmlCheckRepository;
   readonly production: ProductionGate;
   readonly audit: AuditTrail;
   readonly jobs: JobScheduler;

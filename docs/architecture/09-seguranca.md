@@ -39,6 +39,7 @@ Configuração do sistema: variáveis de ambiente injetadas por secret manager; 
 - Banco: TLS, papéis mínimos, RLS, backups criptografados.
 - S3: bucket privado, criptografia server-side, Object Lock (modo compliance) para artefatos autorizados. Só o worker-fiscal tem a credencial do bucket de artefatos.
 - Download do XML ([ADR-0050](../adr/0050-download-xml-pela-api.md)): a API entrega os bytes do banco, com a mesma autenticação, concessão e RLS da consulta, depois de conferir o SHA-256 gravado. Se o hash não bater, responde 500 sem os bytes e registra `NFSE_XML_HASH_MISMATCH`. `Cache-Control: private, no-store`, por causa dos dados pessoais. URL pré-assinada fica para arquivos grandes (PDF, ZIP mensal).
+- Conferência periódica ([ADR-0051](../adr/0051-conferencia-periodica-xml-arquivado.md)): o worker-fiscal relê cada objeto arquivado a cada 30 dias e confere bytes, trava e retenção, e também o XML do banco, contra o hash. Falha vira auditoria e alerta diário, nunca correção automática.
 
 ## 5. Auditoria
 `audit_log` append-only com hash encadeado: criação/alteração de empresa, credenciais,

@@ -25,6 +25,7 @@ import type {
 import { IDEMPOTENCY_RACE } from '../../application/service-invoice-service.js';
 import type { AttemptState, ServiceInvoiceStatus } from '../../domain/service-invoice.js';
 import type { SubstitutionReasonCode } from '../../domain/substitution.js';
+import { archivedXmlCheckRepository } from './archive-check-repository.js';
 import { CANCELLATION_CONSTRAINTS, cancellationRepository, cancellationRequestRepository } from './cancellation-repositories.js';
 import { RESOLUTION_CONSTRAINTS, resolutionRepository } from './resolution-repositories.js';
 import { serviceInvoiceAttempts, serviceInvoices } from './schema.js';
@@ -367,6 +368,7 @@ export function nfseWorkerUnitOfWork(
       attempts: attemptRepository(tx),
       resolutions: resolutionRepository(tx),
       cancellations: cancellationRepository(tx),
+      archiveChecks: archivedXmlCheckRepository(tx),
       production: ports.productionFor(tx),
       audit: ports.auditFor(tx),
       jobs: ports.jobsFor(tx),

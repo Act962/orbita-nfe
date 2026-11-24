@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
-import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { composeFiscalWorker } from '../../src/main/compose.js';
@@ -11,10 +11,12 @@ import {
   XmlCancellationPreparer,
   XmlDpsPreparer,
   XmlNfseVerifier,
+  type ArchiveIntegrityAlertSink,
   type NfseArtifactStore,
 } from '../../src/modules/nfse/public.js';
 import type { AuditContext } from '../../src/shared/application/audit.js';
 import type { ClaimedJob } from '../../src/shared/application/job-queue.js';
+import { nextDailyRun, runDay } from '../../src/shared/domain/daily-schedule.js';
 import { CompanyTransactions, type DatabaseHandle } from '../../src/shared/infrastructure/database/database.js';
 import { FiscalSchemaCatalog } from '../../src/shared/infrastructure/xml/fiscal-schema-catalog.js';
 import { sampleDpsData } from '../support/dps-fixtures.js';
@@ -42,9 +44,10 @@ let companyId: string;
 let establishmentId: string;
 let s3Store: S3ArtifactStore;
 const gateway = new SimulatedNfseGateway();
+const alerts: Parameters<ArchiveIntegrityAlertSink['raise']>[0][] = [];
 const storage = () => inject('objectStorage');
 
-function fiscalWorker(store: NfseArtifactStore = s3Store) {
+function fiscalWorker(store: NfseArtifactStore = s3Store, options: { now?: () => Date; retentionDays?: number } = {}) {
   const composed = composeFiscalWorker({
     db: worker.db,
     certificateKeks: [testCertificateKek().privateKey],
@@ -55,8 +58,9 @@ function fiscalWorker(store: NfseArtifactStore = s3Store) {
       verifier: new XmlNfseVerifier(catalog),
       alerts: { raise: () => undefined },
       cancellationPreparer: new XmlCancellationPreparer(catalog, 'orbita-nfe-teste'),
-      archive: { store, retentionDays: RETENTION_DAYS },
+      archive: { store, retentionDays: options.retentionDays ?? RETENTION_DAYS, alerts: { raise: (alert) => alerts.push(alert) } },
     },
+    ...(options.now === undefined ? {} : { now: options.now }),
   });
   if (composed.processor === undefined || composed.archiver === undefined || composed.cancellations === undefined) throw new Error('nfse não composto');
   return composed;
@@ -178,7 +182,7 @@ describe('arquivamento do XML autorizado (ADR-0048)', () => {
 
   it('releitura diferente do que foi gravado → erro e a nota NÃO fica arquivada', async () => {
     const id = await authorizedInvoice('arquivo-2');
-    const corrupting: NfseArtifactStore = { put: async (object) => Buffer.concat([await s3Store.put(object), Buffer.from(' ')]) };
+    const corrupting: NfseArtifactStore = { put: async (object) => Buffer.concat([await s3Store.put(object), Buffer.from(' ')]), read: (objectKey) => s3Store.read(objectKey) };
     await expect(fiscalWorker(corrupting).archiver?.archive(companyId, id, WORKER)).rejects.toMatchObject({ code: 'NFSE_ARCHIVE_READBACK_MISMATCH' });
     expect((await row(id)).nfse_xml_object_key).toBeNull();
     // Com o bucket certo, a nova tentativa arquiva.
@@ -350,5 +354,132 @@ describe('download do XML pela API (ADR-0050)', () => {
     expect(res.statusCode).toBe(500);
     expect(res.json<{ code: string }>().code).toBe('INTERNAL_ERROR');
     expect(res.body).not.toContain('<NFSe');
+  });
+});
+
+describe('conferência periódica dos XML arquivados (ADR-0051)', () => {
+  const LONG_RETENTION = 40;
+  const DAY = 86_400_000;
+  const verifyJob = (): ClaimedJob => ({ id: crypto.randomUUID(), queue: 'nfse.verify-archives', payload: { companyId }, attempt: 1, correlationId: null });
+  const verifyAt = async (at: Date) => {
+    const handler = fiscalWorker(s3Store, { now: () => at }).handlers['nfse.verify-archives'];
+    if (handler === undefined) throw new Error('sem handler');
+    await handler(verifyJob(), new AbortController().signal);
+  };
+  const archived = async (idempotencyKey: string) => {
+    const id = await authorizedInvoice(idempotencyKey);
+    expect(await fiscalWorker(s3Store, { retentionDays: LONG_RETENTION }).archiver?.archive(companyId, id, WORKER)).toMatchObject({ kind: 'ARCHIVED' });
+    return id;
+  };
+  const check = async (kind: string, documentId: string) => {
+    const rows = await superuser.db.execute<{ last_verified_at: string | null; last_failed_at: string | null; failure_code: string | null }>(
+      sql`select last_verified_at, last_failed_at, failure_code from archived_xml_checks where company_id = ${companyId} and kind = ${kind} and document_id = ${documentId}`,
+    );
+    return rows.rows[0];
+  };
+  /** Alteração por fora das travas (como uma restauração de cópia corrompida). */
+  const bypass = (statement: ReturnType<typeof sql>) =>
+    superuser.db.transaction(async (tx) => {
+      await tx.execute(sql`set local session_replication_role = replica`);
+      await tx.execute(statement);
+    });
+
+  it('o arquivamento agenda a conferência; depois de 30 dias, nota e evento batem e a próxima fica agendada', async () => {
+    const id = await archived('conferencia-ok');
+    const seeded = await superuser.db.execute<{ state: string }>(
+      sql`select state from jobs where queue = 'nfse.verify-archives' and payload->>'companyId' = ${companyId} and state = 'queued'`,
+    );
+    expect(seeded.rows.length).toBeGreaterThan(0);
+
+    const requested = await t.app.inject({
+      method: 'POST',
+      url: `/v1/service-invoices/${id}/cancellation`,
+      headers: bearer(key, companyId),
+      payload: { reasonCode: '1', reasonText: 'Erro na emissão: tomador errado' },
+    });
+    expect(requested.statusCode, requested.body).toBe(202);
+    const cancellationId = requested.json<{ id: string }>().id;
+    expect(await fiscalWorker().cancellations?.process(companyId, cancellationId, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'REGISTERED' });
+    expect(await fiscalWorker(s3Store, { retentionDays: LONG_RETENTION }).archiver?.archiveCancellationEvent(companyId, cancellationId, WORKER)).toMatchObject({
+      kind: 'ARCHIVED',
+    });
+
+    // Recém-arquivado: a releitura do arquivamento conta como conferência; nada na vez hoje.
+    expect(await fiscalWorker().archiveVerifier?.verifyCompany(companyId, WORKER)).toEqual({ checked: 0, failed: 0, more: false });
+
+    const later = new Date(Date.now() + 31 * DAY);
+    const before = alerts.length;
+    await verifyAt(later);
+    expect(alerts.length).toBe(before);
+    for (const [kind, documentId] of [['NFSE', id], ['CANCELLATION_EVENT', cancellationId]] as const) {
+      const verified = await check(kind, documentId);
+      expect(verified?.last_verified_at).not.toBeNull();
+      expect([verified?.last_failed_at, verified?.failure_code]).toEqual([null, null]);
+    }
+
+    const next = await superuser.db.execute<{ run_at: string }>(
+      sql`select run_at from jobs where queue = 'nfse.verify-archives' and singleton_key = ${`${companyId}:${runDay(nextDailyRun(later))}`} and state = 'queued'`,
+    );
+    expect(next.rows).toHaveLength(1);
+    expect(new Date(next.rows[0]?.run_at ?? 0).getTime()).toBe(nextDailyRun(later).getTime());
+
+    // Conferido agora: não volta na vez no mesmo dia.
+    expect(await fiscalWorker(s3Store, { now: () => later }).archiveVerifier?.verifyCompany(companyId, WORKER)).toMatchObject({ checked: 0 });
+  });
+
+  it('XML do banco alterado, objeto ausente, bytes trocados e objeto sem trava: alerta, auditoria e nova conferência no dia seguinte', async () => {
+    const dbTampered = await archived('conferencia-banco');
+    const missing = await archived('conferencia-ausente');
+    const forged = await archived('conferencia-trocado');
+    const unlocked = await archived('conferencia-sem-trava');
+    const s3 = new S3Client({ endpoint: storage().endpoint, region: 'us-east-1', forcePathStyle: true, credentials: CREDENTIALS });
+    const putRaw = async (objectKey: string, body: string) => {
+      await s3.send(
+        new PutObjectCommand({ Bucket: storage().artifactBucket, Key: objectKey, Body: body, ContentMD5: createHash('md5').update(body, 'utf8').digest('base64') }),
+      );
+    };
+    try {
+      await bypass(sql`update service_invoices set nfse_xml = nfse_xml || ' ' where id = ${dbTampered}`);
+      await bypass(sql`update service_invoices set nfse_xml_object_key = 'company/' || company_id || '/ausente/' || nfse_xml_sha256 || '.xml' where id = ${missing}`);
+      const forgedRow = await row(forged);
+      const forgedKey = `company/${companyId}/trocado/${forgedRow.nfse_xml_sha256 ?? ''}.xml`;
+      await putRaw(forgedKey, `${forgedRow.nfse_xml}<!-- outro -->`);
+      await bypass(sql`update service_invoices set nfse_xml_object_key = ${forgedKey} where id = ${forged}`);
+      const unlockedRow = await row(unlocked);
+      const unlockedKey = `company/${companyId}/sem-trava/${unlockedRow.nfse_xml_sha256 ?? ''}.xml`;
+      await putRaw(unlockedKey, unlockedRow.nfse_xml);
+      await bypass(sql`update service_invoices set nfse_xml_object_key = ${unlockedKey} where id = ${unlocked}`);
+    } finally {
+      s3.destroy();
+    }
+
+    const later = new Date(Date.now() + 31 * DAY);
+    alerts.length = 0;
+    await verifyAt(later);
+    const expected = {
+      [dbTampered]: 'DB_XML_HASH_MISMATCH',
+      [missing]: 'ARCHIVE_OBJECT_MISSING',
+      [forged]: 'ARCHIVE_OBJECT_HASH_MISMATCH',
+      [unlocked]: 'ARCHIVE_OBJECT_NOT_LOCKED',
+    };
+    for (const [invoiceId, failureCode] of Object.entries(expected)) {
+      const failed = await check('NFSE', invoiceId);
+      expect(failed?.last_failed_at).not.toBeNull();
+      expect([failed?.last_verified_at, failed?.failure_code]).toEqual([null, failureCode]);
+      expect(alerts).toContainEqual({ companyId, kind: 'NFSE', documentId: invoiceId, invoiceId, failureCode });
+    }
+    expect(alerts).toHaveLength(4);
+    const audit = await superuser.db.execute<{ subject_id: string; details: { failureCode: string } }>(
+      sql`select subject_id, details from audit_log where company_id = ${companyId} and action = 'service_invoice.archived_xml_check_failed'`,
+    );
+    expect(Object.fromEntries(audit.rows.map((r) => [r.subject_id, r.details.failureCode]))).toEqual(expected);
+    // Nada do conteúdo do XML no alerta nem na auditoria.
+    expect(JSON.stringify(audit.rows)).not.toContain('<NFSe');
+
+    // No mesmo dia, a falha não é conferida (nem alertada) de novo; no dia seguinte, sim.
+    await verifyAt(new Date(later.getTime() + 60_000));
+    expect(alerts).toHaveLength(4);
+    await verifyAt(new Date(later.getTime() + DAY + 60_000));
+    expect(alerts).toHaveLength(8);
   });
 });

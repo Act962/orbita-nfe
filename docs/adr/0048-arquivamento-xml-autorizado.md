@@ -40,5 +40,5 @@ O motor já usa um bucket com Object Lock para a âncora da auditoria (ADR-0031)
 - Com Object Lock COMPLIANCE, nem a credencial de escrita apaga um objeto antes do prazo. Um prazo errado para mais não tem volta, por isso ele precisa ser confirmado.
 - **Ainda não fazem parte desta etapa:**
   - os XML de eventos (cancelamento): feito no [ADR-0049](0049-arquivamento-xml-evento-cancelamento.md);
-  - a verificação periódica dos objetos contra o hash;
+  - a verificação periódica dos objetos contra o hash: feita no [ADR-0051](0051-conferencia-periodica-xml-arquivado.md);
   - o download pela API: feito no [ADR-0050](0050-download-xml-pela-api.md), servido do banco, sem URL pré-assinada.

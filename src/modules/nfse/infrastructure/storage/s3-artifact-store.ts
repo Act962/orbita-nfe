@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, NoSuchKey, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { InternalError } from '../../../../shared/application/errors.js';
-import type { NfseArtifactStore } from '../../application/ports.js';
+import type { NfseArtifactStore, StoredArtifact } from '../../application/ports.js';
 
 export interface S3ArtifactStoreOptions {
   readonly endpoint: string;
@@ -46,12 +46,28 @@ export class S3ArtifactStore implements NfseArtifactStore {
         ObjectLockRetainUntilDate: object.retainUntil,
       }),
     );
-    const stored = await this.client.send(new GetObjectCommand({ Bucket: this.options.bucket, Key: object.key }));
-    if (stored.ObjectLockMode !== 'COMPLIANCE' || stored.ObjectLockRetainUntilDate === undefined || stored.ObjectLockRetainUntilDate.getTime() < object.retainUntil.getTime() - 1000) {
+    const stored = await this.read(object.key);
+    if (stored === undefined) throw new InternalError('ARTIFACT_NOT_FOUND_AFTER_PUT');
+    if (stored.lockMode !== 'COMPLIANCE' || stored.retainUntil === null || stored.retainUntil.getTime() < object.retainUntil.getTime() - 1000) {
       // O bucket aceitou o PUT, mas o objeto não está travado como pedido: não conta como arquivado.
       throw new InternalError('ARTIFACT_NOT_LOCKED');
     }
-    return Buffer.from((await stored.Body?.transformToByteArray()) ?? new Uint8Array());
+    return stored.body;
+  }
+
+  /** Só "não existe" vira `undefined`; qualquer outro erro sobe (rede, credencial, provedor fora). */
+  async read(key: string): Promise<StoredArtifact | undefined> {
+    try {
+      const stored = await this.client.send(new GetObjectCommand({ Bucket: this.options.bucket, Key: key }));
+      return {
+        body: Buffer.from((await stored.Body?.transformToByteArray()) ?? new Uint8Array()),
+        lockMode: stored.ObjectLockMode ?? null,
+        retainUntil: stored.ObjectLockRetainUntilDate ?? null,
+      };
+    } catch (error) {
+      if (error instanceof NoSuchKey) return undefined;
+      throw error;
+    }
   }
 
   close(): void {

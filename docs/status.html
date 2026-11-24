@@ -82,7 +82,7 @@
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">786 ✓</div>
+    <div class="value">788 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -187,6 +187,7 @@
 <li><span class="tag done">Pronto</span><div>Cópia imutável de cada nota autorizada fora do servidor<small>O XML de cada nota autorizada ganha uma "impressão digital" (hash) e vai para um depósito em nuvem onde não pode ser apagado nem alterado até o fim do prazo de guarda. <b>Decisão sua com o contador:</b> qual é esse prazo, e qual provedor usar. Sem isso, a produção não sobe.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Cópia imutável também do comprovante de cancelamento<small>Quando uma nota é cancelada, o comprovante do cancelamento devolvido pelo autorizador vai para o mesmo depósito, ao lado da nota, com a mesma proteção.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Baixar o XML da nota e do cancelamento pela API<small>O sistema que emitiu pode baixar o XML autorizado e o comprovante do cancelamento. Antes de entregar, o motor confere a impressão digital do arquivo: se alguém tiver mexido nele, nada é entregue.</small></div></li>
+<li><span class="tag done">Pronto</span><div>Conferência diária das cópias guardadas<small>Todo dia o motor relê as cópias imutáveis dos XML (cada uma a cada 30 dias) e confere se continuam iguais e travadas. Se alguma sumir ou mudar, gera um alerta todos os dias até alguém resolver; nada é corrigido sozinho.</small></div></li>
     <li><span class="tag block">Você</span><div>Envio real à produção restrita (precisa do CNPJ e do certificado A1)</div></li>
   </ul>
 </div>

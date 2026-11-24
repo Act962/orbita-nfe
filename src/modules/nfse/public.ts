@@ -20,6 +20,15 @@ export { ManualResolutionDesk, ResolutionApplier, type ApplyResult, type Resolut
 export { UnknownEscalator, type EscalationResult } from './application/unknown-escalator.js';
 export { AuthorizedXmlArchiver, archiveKey, cancellationArchiveKey, type ArchiveResult } from './application/xml-archiver.js';
 export { S3ArtifactStore, type S3ArtifactStoreOptions } from './infrastructure/storage/s3-artifact-store.js';
+export {
+  ArchivedXmlVerifier,
+  scheduleArchiveVerification,
+  VERIFY_BATCH,
+  VERIFY_CONTINUE_AFTER_MS,
+  type ArchiveCheckFailure,
+  type ArchiveIntegrityAlertSink,
+  type VerifyOutcome,
+} from './application/archive-verifier.js';
 export { XmlNfseVerifier } from './infrastructure/dps/xml-nfse-verifier.js';
 export { nfseDeskReader, nfseDeskUnitOfWork } from './infrastructure/persistence/resolution-repositories.js';
 export type { EscalationLevel } from './domain/unknown-escalation.js';

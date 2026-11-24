@@ -45,6 +45,10 @@ import {
   ResolutionApplier,
   UnknownEscalator,
   AuthorizedXmlArchiver,
+  ArchivedXmlVerifier,
+  scheduleArchiveVerification,
+  VERIFY_CONTINUE_AFTER_MS,
+  type ArchiveIntegrityAlertSink,
   nfseApiUnitOfWork,
   nfseDeskReader,
   nfseDeskUnitOfWork,
@@ -271,7 +275,12 @@ export interface FiscalWorkerDependencies {
      * Arquivamento do XML autorizado no bucket com Object Lock (ADR-0048). Sem isto, a fila
      * `nfse.archive` fica sem handler e os jobs esperam (a configuração exige em produção).
      */
-    readonly archive?: { readonly store: NfseArtifactStore; readonly retentionDays: number };
+    readonly archive?: {
+      readonly store: NfseArtifactStore;
+      readonly retentionDays: number;
+      /** Falhas da conferência periódica dos objetos (ADR-0051). */
+      readonly alerts: ArchiveIntegrityAlertSink;
+    };
   };
   readonly now?: () => Date;
 }
@@ -286,6 +295,7 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
   cancellations?: CancellationProcessor;
   cancellationReconciler?: CancellationReconciler;
   archiver?: AuthorizedXmlArchiver;
+  archiveVerifier?: ArchivedXmlVerifier;
   handlers: Partial<Record<QueueName, JobHandler>>;
 } {
   const transactions = new CompanyTransactions(deps.db);
@@ -353,7 +363,20 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
   handlers['nfse.archive-cancellation'] = async (job) => {
     await archiver.archiveCancellationEvent(payloadId(job, 'companyId'), payloadId(job, 'cancellationId'), systemContext('worker-fiscal', job));
   };
-  return { vault, processor, reconciler, resolutions, escalator, cancellations, cancellationReconciler, archiver, handlers };
+  const now = deps.now ?? (() => new Date());
+  const archiveVerifier = new ArchivedXmlVerifier(nfseUow, deps.nfse.archive.store, deps.nfse.archive.alerts, now);
+  handlers['nfse.verify-archives'] = async (job) => {
+    const companyId = payloadId(job, 'companyId');
+    // A de amanhã primeiro: a corrente não para se esta execução falhar até o job morrer.
+    await nfseUow.inCompany(companyId, (r) => scheduleArchiveVerification(r.jobs, companyId, now(), job.correlationId));
+    const outcome = await archiveVerifier.verifyCompany(companyId, systemContext('worker-fiscal', job));
+    if (!outcome.more) return;
+    const at = new Date(now().getTime() + VERIFY_CONTINUE_AFTER_MS);
+    await nfseUow.inCompany(companyId, (r) =>
+      r.jobs.enqueue({ queue: 'nfse.verify-archives', payload: { companyId }, singletonKey: `${companyId}:more:${at.toISOString()}`, runAt: at, correlationId: job.correlationId }),
+    );
+  };
+  return { vault, processor, reconciler, resolutions, escalator, cancellations, cancellationReconciler, archiver, archiveVerifier, handlers };
 }
 
 export interface GeneralWorkerDependencies {

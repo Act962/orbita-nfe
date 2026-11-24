@@ -3,6 +3,7 @@ import type { AuditContext } from '../../../shared/application/audit.js';
 import { InternalError } from '../../../shared/application/errors.js';
 import { PermanentJobError, type JobScheduler } from '../../../shared/application/job-queue.js';
 import type { UnitOfWork } from '../../../shared/application/unit-of-work.js';
+import { scheduleArchiveVerification } from './archive-verifier.js';
 import type { NfseArtifactStore, NfseWorkerRepositories } from './ports.js';
 
 const DAY_MS = 86_400_000;
@@ -93,6 +94,7 @@ export class AuthorizedXmlArchiver {
         subject: { type: 'service_invoice', id: invoiceId },
         details: { objectKey, sha256: hash, retainUntil: retainUntil.toISOString() },
       });
+      await scheduleArchiveVerification(r.jobs, companyId, this.now(), context.correlationId);
       return { kind: 'ARCHIVED', objectKey };
     });
   }
@@ -111,6 +113,7 @@ export class AuthorizedXmlArchiver {
         subject: { type: 'service_invoice', id: stored.invoiceId },
         details: { cancellationId, objectKey, sha256: hash, retainUntil: retainUntil.toISOString() },
       });
+      await scheduleArchiveVerification(r.jobs, companyId, this.now(), context.correlationId);
       return { kind: 'ARCHIVED', objectKey };
     });
   }

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, char, check, index, integer, jsonb, pgTable, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { bigint, char, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 
 /**
  * NFS-e (ADR-0032). FKs compostas para establishments e document_series, RLS, grants por
@@ -185,6 +185,31 @@ export const serviceInvoiceCancellations = pgTable(
     check('ck_service_invoice_cancellations_signed', sql`(${t.signedXml} is null) = (${t.signedSha256} is null)`),
     check('ck_service_invoice_cancellations_registered', sql`${t.state} <> 'REGISTERED' or ${t.registeredAt} is not null`),
     index('ix_service_invoice_cancellations_company').on(t.companyId),
+  ],
+);
+
+/**
+ * Conferência periódica dos XML arquivados no bucket (ADR-0051). Uma linha por objeto, criada na
+ * primeira conferência: guarda só a situação (quando conferiu, quando falhou e o código). Fica fora
+ * das tabelas do documento para não mexer no `updated_at` da nota nem nas travas de gravação única.
+ */
+export const archivedXmlChecks = pgTable(
+  'archived_xml_checks',
+  {
+    companyId: uuid('company_id').notNull(),
+    /** NFSE (XML autorizado) | CANCELLATION_EVENT (XML do evento de cancelamento) */
+    kind: text('kind').notNull(),
+    /** Nota (NFSE) ou pedido de cancelamento (CANCELLATION_EVENT). */
+    documentId: uuid('document_id').notNull(),
+    lastVerifiedAt: timestamp('last_verified_at', { withTimezone: true }),
+    lastFailedAt: timestamp('last_failed_at', { withTimezone: true }),
+    /** Código estável da última falha; limpo quando a conferência volta a bater. */
+    failureCode: text('failure_code'),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_archived_xml_checks', columns: [t.companyId, t.kind, t.documentId] }),
+    check('ck_archived_xml_checks_kind', sql`${t.kind} in ('NFSE', 'CANCELLATION_EVENT')`),
+    check('ck_archived_xml_checks_failure', sql`${t.failureCode} is null or ${t.lastFailedAt} is not null`),
   ],
 );
 

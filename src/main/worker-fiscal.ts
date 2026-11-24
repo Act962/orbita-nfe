@@ -9,6 +9,7 @@ import {
   XmlCancellationPreparer,
   XmlDpsPreparer,
   XmlNfseVerifier,
+  type ArchiveIntegrityAlertSink,
   type UnknownAlertSink,
 } from '../modules/nfse/public.js';
 import { createDatabase } from '../shared/infrastructure/database/database.js';
@@ -41,6 +42,16 @@ const alerts: UnknownAlertSink = {
   },
 };
 
+/**
+ * Falha da conferência periódica dos XML arquivados (ADR-0051): log de erro com o evento
+ * `nfse.archive_integrity`, só identificadores e o código. Repete uma vez por dia até ser resolvida.
+ */
+const archiveAlerts: ArchiveIntegrityAlertSink = {
+  raise: (alert) => {
+    logger.error({ event: 'nfse.archive_integrity', ...alert }, 'XML arquivado não confere com o hash ou a trava gravados; análise manual obrigatória');
+  },
+};
+
 const archiveOptions = artifactArchiveOptions(config);
 const artifactStore = archiveOptions === undefined ? undefined : new S3ArtifactStore(archiveOptions.store);
 if (artifactStore === undefined && config.NFSE_GATEWAY !== 'none') {
@@ -60,7 +71,7 @@ const nfse =
         verifier: new XmlNfseVerifier(schemas),
         alerts,
         cancellationPreparer: new XmlCancellationPreparer(schemas, `orbita-nfe-${config.APP_VERSION}`),
-        ...(artifactStore === undefined || archiveOptions === undefined ? {} : { archive: { store: artifactStore, retentionDays: archiveOptions.retentionDays } }),
+        ...(artifactStore === undefined || archiveOptions === undefined ? {} : { archive: { store: artifactStore, retentionDays: archiveOptions.retentionDays, alerts: archiveAlerts } }),
       };
 if (config.NFSE_GATEWAY === 'simulator') logger.warn('NFS-e com autorizador SIMULADO (NFSE_GATEWAY=simulator): nada é enviado a órgão nenhum');
 if (config.NFSE_GATEWAY === 'real') {
