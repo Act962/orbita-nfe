@@ -34,4 +34,4 @@ O banco já guarda o XML byte a byte e o SHA-256 gravado na mesma transação da
 - O download funciona com ou sem o bucket. O bucket continua sendo a cópia imutável fora da VPS. Ler de lá só vai ser preciso se o banco for perdido, e esse caminho é a restauração, não a API.
 - A API continua sem credencial do bucket de artefatos.
 - O 302 para URL pré-assinada do ADR-0026 item 8 continua valendo para arquivos grandes, que ainda não existem: o PDF e o ZIP mensal para o contador. Para o XML, vale este ADR.
-- Ainda fora: a verificação periódica dos objetos do bucket contra o hash, e `links` com essas URLs no corpo da nota.
+- Feitos depois: a verificação periódica dos objetos ([ADR-0051](0051-conferencia-periodica-xml-arquivado.md)) e os `links` no corpo da nota ([ADR-0052](0052-links-no-corpo-da-nota.md)).

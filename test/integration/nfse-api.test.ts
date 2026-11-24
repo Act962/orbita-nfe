@@ -176,6 +176,55 @@ describe('POST /v1/service-invoices → worker → GET', () => {
   });
 });
 
+describe('Prefer: wait na emissão (ADR-0053)', () => {
+  const postWaiting = (body: Record<string, unknown>, idempotencyKey: string, prefer: string) =>
+    t.app.inject({ method: 'POST', url: '/v1/service-invoices', headers: { ...bearer(key, companyId), 'idempotency-key': idempotencyKey, prefer }, payload: body });
+  /** O id da nota aceita, lido no banco enquanto a requisição ainda espera. */
+  const acceptedId = async (idempotencyKey: string): Promise<string> => {
+    for (let i = 0; i < 100; i += 1) {
+      const rows = await new CompanyTransactions(worker.db).run(companyId, (tx) =>
+        tx.execute<{ id: string }>(sql`select id from service_invoices where idempotency_key = ${idempotencyKey}`),
+      );
+      const id = rows.rows[0]?.id;
+      if (id !== undefined) return id;
+      await new Promise((done) => setTimeout(done, 50));
+    }
+    throw new Error('nota não aceita');
+  };
+
+  it('a nota termina dentro da espera → 201 AUTHORIZED com Preference-Applied; repetir → 200 sem esperar', async () => {
+    const body = { establishmentId, ...sampleDpsData() };
+    const waiting = postWaiting(body, 'wait-1', 'wait=10');
+    const id = await acceptedId('wait-1');
+    expect(await fiscalWorker().processor.process(companyId, id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'AUTHORIZED' });
+    const res = await waiting;
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json<{ id: string; status: string }>()).toMatchObject({ id, status: 'AUTHORIZED' });
+    expect(res.headers['preference-applied']).toBe('wait=10');
+    expect(res.headers['location']).toBe(`/v1/service-invoices/${id}`);
+
+    // Já terminada: a repetição não espera, mesmo pedindo mais que o máximo (limitado a 20 s).
+    const started = Date.now();
+    const again = await postWaiting(body, 'wait-1', 'wait=999');
+    expect(again.statusCode).toBe(200);
+    expect(again.headers['preference-applied']).toBe('wait=20');
+    expect(Date.now() - started).toBeLessThan(5000);
+  }, 60_000);
+
+  it('ninguém processa dentro da espera → 202 PENDING depois do prazo; sem Prefer, nenhum Preference-Applied', async () => {
+    const started = Date.now();
+    const res = await postWaiting({ establishmentId, ...sampleDpsData() }, 'wait-2', 'wait=1');
+    expect(res.statusCode, res.body).toBe(202);
+    expect(res.json<{ status: string }>().status).toBe('PENDING');
+    expect(res.headers['preference-applied']).toBe('wait=1');
+    expect(Date.now() - started).toBeGreaterThanOrEqual(900);
+
+    const plain = await post({ establishmentId, ...sampleDpsData() }, 'wait-3');
+    expect(plain.statusCode).toBe(202);
+    expect(plain.headers['preference-applied']).toBeUndefined();
+  });
+});
+
 describe('consulta pela referência externa (ADR-0047)', () => {
   const byReference = (reference: string, token = key) =>
     t.app.inject({ method: 'GET', url: `/v1/service-invoices?externalReference=${encodeURIComponent(reference)}`, headers: bearer(token, companyId) });
@@ -559,6 +608,20 @@ describe('substituição pela API (ADR-0036)', () => {
     expect(await w.processor.process(companyId, accepted.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'AUTHORIZED' });
     expect((await get(originalId)).json()).toMatchObject({ status: 'SUBSTITUTED', substitutedById: accepted.id });
     expect((await get(accepted.id)).json()).toMatchObject({ status: 'AUTHORIZED', substitutedById: null });
+    // ADR-0052: os links apontam uma para a outra, e as duas têm XML.
+    expect((await get(originalId)).json<{ links: unknown }>().links).toEqual({
+      self: `/v1/service-invoices/${originalId}`,
+      xml: `/v1/service-invoices/${originalId}/xml`,
+      cancellation: null,
+      cancellationXml: null,
+      substitutes: null,
+      substitutedBy: `/v1/service-invoices/${accepted.id}`,
+    });
+    expect((await get(accepted.id)).json<{ links: unknown }>().links).toMatchObject({
+      xml: `/v1/service-invoices/${accepted.id}/xml`,
+      substitutes: `/v1/service-invoices/${originalId}`,
+      substitutedBy: null,
+    });
 
     const stored = await new CompanyTransactions(worker.db).run(companyId, (tx) =>
       tx.execute<{ signed_dps: string; layout_package: string }>(sql`select signed_dps, layout_package from service_invoices where id = ${accepted.id}`),

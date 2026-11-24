@@ -298,6 +298,15 @@ describe('download do XML pela API (ADR-0050)', () => {
     });
     expect(res.statusCode, res.body).toBe(202);
     const id = res.json<{ id: string }>().id;
+    // ADR-0052: enquanto não há XML, o link é nulo.
+    expect(res.json<{ links: unknown }>().links).toEqual({
+      self: `/v1/service-invoices/${id}`,
+      xml: null,
+      cancellation: null,
+      cancellationXml: null,
+      substitutes: null,
+      substitutedBy: null,
+    });
     const pending = await get(`/v1/service-invoices/${id}/xml`);
     expect(pending.statusCode).toBe(404);
     expect(pending.json<{ code: string }>().code).toBe('NFSE_XML_NOT_AVAILABLE');
@@ -341,6 +350,14 @@ describe('download do XML pela API (ADR-0050)', () => {
     const invoice = await get(`/v1/service-invoices/${id}`);
     expect(invoice.json<{ status: string }>().status).toBe('CANCELLED');
     expect((await get(`/v1/service-invoices/${id}/xml`)).statusCode).toBe(200);
+    // ADR-0052: os links da nota cancelada levam às três rotas, e todas respondem 200.
+    const links = invoice.json<{ links: { xml: string; cancellation: string; cancellationXml: string } }>().links;
+    expect(links).toMatchObject({
+      xml: `/v1/service-invoices/${id}/xml`,
+      cancellation: `/v1/service-invoices/${id}/cancellation`,
+      cancellationXml: `/v1/service-invoices/${id}/cancellation/xml`,
+    });
+    for (const path of [links.xml, links.cancellation, links.cancellationXml]) expect((await get(path)).statusCode).toBe(200);
   });
 
   it('XML alterado por fora das travas: 500 sem os bytes (o hash não bate)', async () => {

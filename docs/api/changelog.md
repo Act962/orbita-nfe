@@ -8,6 +8,18 @@ last_updated: 2026-11-24
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
 
+## 2026-11-24 — v1 (Prefer: wait na emissão)
+
+**Adicionado:**
+
+- `Prefer: wait=<segundos>` (RFC 7240, até 20 s) em `POST /v1/service-invoices` e `POST /v1/service-invoices/{id}/substitution`. Responde `201` se a nota terminou dentro da espera (`AUTHORIZED`, `REJECTED` ou `FAILED`) e `202` se ainda não, com `Preference-Applied`. Sem o cabeçalho, nada muda.
+
+## 2026-11-24 — v1 (links na nota)
+
+**Adicionado:**
+
+- `links` em toda resposta com a NFS-e: `self`, `xml`, `cancellation`, `cancellationXml`, `substitutes` e `substitutedBy`. Caminhos relativos ao endereço da API, com a mesma autenticação; `null` enquanto o recurso não existe. Campo novo: mudança compatível.
+
 ## 2026-11-24 — v1 (download do XML)
 
 **Adicionado:**

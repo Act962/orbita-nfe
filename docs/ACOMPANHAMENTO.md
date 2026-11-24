@@ -70,6 +70,18 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Prefer: wait na emissão (2026-11-24)
+Decisão: [ADR-0053](adr/0053-prefer-wait-na-emissao.md).
+- [x] **`Prefer: wait=<segundos>`** (até 20) na emissão e na substituição: 201 com o resultado final, 202 se ainda em andamento ou em `UNKNOWN`, 200 na repetição; `Preference-Applied` na resposta.
+- [x] **A espera não muda o processamento:** a API só consulta o banco, sem transação aberta, e para se o cliente desconectar. Falha na consulta responde 202 com o último estado.
+- [ ] Depois: espera no cancelamento e, na Fase 3, na NFC-e.
+
+### Links no corpo da nota (2026-11-24)
+Decisão: [ADR-0052](adr/0052-links-no-corpo-da-nota.md).
+- [x] **`links` em toda resposta com a NFS-e:** `self`, `xml`, `cancellation`, `cancellationXml`, `substitutes` e `substitutedBy`, sempre presentes e nulos enquanto o recurso não existe.
+- [x] **Caminhos relativos**, com a mesma credencial; nenhum aponta para URL pré-assinada.
+- [ ] Depois: links de PDF e do ZIP mensal, quando esses arquivos existirem.
+
 ### Conferência periódica dos XML arquivados (2026-11-24)
 Decisão: [ADR-0051](adr/0051-conferencia-periodica-xml-arquivado.md).
 - [x] **Fila `nfse.verify-archives`** no worker-fiscal: uma conferência diária por empresa, que nasce no primeiro arquivamento e agenda a seguinte antes de conferir.
@@ -84,7 +96,7 @@ Decisão: [ADR-0050](adr/0050-download-xml-pela-api.md). Revê o item 8 do ADR-0
 - [x] **Servido do banco, sem URL pré-assinada:** a API continua sem a credencial do bucket, nenhum link fica valendo sem credencial, e o download funciona mesmo antes do arquivamento.
 - [x] **Hash conferido antes de responder:** se não bater, 500 sem os bytes e `NFSE_XML_HASH_MISMATCH` no log. `ETag` e `Repr-Digest` para o cliente conferir.
 - [x] **Migration 0027:** a API passa a ler `event_xml`.
-- [ ] Depois: `links` no corpo da nota. A verificação periódica foi feita no ADR-0051.
+- [x] Feitos depois: a verificação periódica (ADR-0051) e os `links` no corpo da nota (ADR-0052).
 
 ### Arquivamento do XML do evento de cancelamento (2026-11-24)
 Decisão: [ADR-0049](adr/0049-arquivamento-xml-evento-cancelamento.md). O mesmo desenho do ADR-0048.
@@ -595,6 +607,8 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-24 | XML do evento de cancelamento arquivado no bucket com Object Lock, no mesmo desenho do XML autorizado | 0049 |
 | 2026-11-24 | Download do XML da nota e do cancelamento pela API, servido do banco com o hash conferido, sem URL pré-assinada | 0050 |
 | 2026-11-24 | Conferência diária dos XML arquivados contra o hash e a trava, com alerta e auditoria das falhas | 0051 |
+| 2026-11-24 | `links` no corpo da nota para o XML, o cancelamento e a substituição | 0052 |
+| 2026-11-24 | `Prefer: wait` na emissão e na substituição: 201 com o resultado dentro da espera | 0053 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |

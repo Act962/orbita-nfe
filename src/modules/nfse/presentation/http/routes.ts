@@ -8,6 +8,7 @@ import type { CancellationService } from '../../application/cancellation.js';
 import type { ServiceInvoiceService } from '../../application/service-invoice-service.js';
 import type { ServiceInvoice, ServiceInvoiceCancellation } from '../../application/ports.js';
 import type { XmlDownload } from '../../application/stored-xml.js';
+import { MAX_WAIT_SECONDS, settle } from './prefer-wait.js';
 import { CANCELLATION_REASON_CODES, CANCELLATION_STATES, REASON_TEXT_MAX, REASON_TEXT_MIN } from '../../domain/cancellation.js';
 import {
   FOREIGN_TRADE_MODES,
@@ -290,7 +291,32 @@ const IdempotencyHeaders = CompanyHeaders.extend({
     .min(1)
     .max(255)
     .meta({ description: 'Obrigatório. Repetir a mesma chave com o mesmo corpo devolve a mesma nota (nunca emite outra).' }),
+  prefer: z
+    .string()
+    .optional()
+    .meta({
+      description:
+        `Opcional, RFC 7240: \`wait=<segundos>\` (até ${String(MAX_WAIT_SECONDS)}) espera o resultado antes de responder. 201 se a nota terminou (AUTHORIZED, REJECTED ou FAILED); ` +
+        '202 se ainda está em andamento ou em verificação (UNKNOWN). A espera não muda o processamento; a resposta traz `Preference-Applied`.',
+    }),
 });
+
+/**
+ * Caminhos relativos ao endereço da API (ADR-0052): o mesmo host e a mesma credencial da consulta.
+ * Nulo quando o recurso ainda não existe, para o cliente não precisar deduzir pelo status.
+ */
+const ServiceInvoiceLinks = z
+  .object({
+    self: z.string(),
+    xml: z.string().nullable().meta({ description: 'XML autorizado (AUTHORIZED, CANCELLED, SUBSTITUTED).' }),
+    cancellation: z.string().nullable().meta({ description: 'Pedido de cancelamento registrado (CANCELLED).' }),
+    cancellationXml: z.string().nullable().meta({ description: 'XML do evento de cancelamento (CANCELLED).' }),
+    substitutes: z.string().nullable().meta({ description: 'Nesta substituta: a NFS-e que ela substitui.' }),
+    substitutedBy: z.string().nullable().meta({ description: 'Na nota SUBSTITUTED: a substituta.' }),
+  })
+  .meta({ id: 'ServiceInvoiceLinks', description: 'Caminhos relativos ao endereço da API, com a mesma autenticação. Nulo enquanto o recurso não existe.' });
+
+const invoicePath = (id: string): string => `/v1/service-invoices/${id}`;
 
 const ServiceInvoiceResponse = z
   .object({
@@ -318,6 +344,7 @@ const ServiceInvoiceResponse = z
     substitutedById: z.uuid().nullable().meta({ description: 'Na nota SUBSTITUTED: a substituta autorizada.' }),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
+    links: ServiceInvoiceLinks,
   })
   .meta({ id: 'ServiceInvoice' });
 
@@ -338,6 +365,16 @@ const invoiceJson = (i: ServiceInvoice): z.infer<typeof ServiceInvoiceResponse> 
   substitutedById: i.substitutedById,
   createdAt: i.createdAt.toISOString(),
   updatedAt: i.updatedAt.toISOString(),
+  links: {
+    self: invoicePath(i.id),
+    // A chave de acesso e o XML são gravados juntos na autorização (ADR-0048).
+    xml: i.nfseAccessKey === null ? null : `${invoicePath(i.id)}/xml`,
+    // CANCELLED só com o evento registrado, que sempre traz o XML (ADR-0035, ADR-0049).
+    cancellation: i.status === 'CANCELLED' ? `${invoicePath(i.id)}/cancellation` : null,
+    cancellationXml: i.status === 'CANCELLED' ? `${invoicePath(i.id)}/cancellation/xml` : null,
+    substitutes: i.substitution === null ? null : invoicePath(i.substitution.invoiceId),
+    substitutedBy: i.substitutedById === null ? null : invoicePath(i.substitutedById),
+  },
 });
 
 const ValidationResponse = z
@@ -600,6 +637,7 @@ export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService,
         body: SubstitutionBody,
         response: {
           200: ServiceInvoiceResponse.describe('Repetição idempotente: a substituta já aceita.'),
+          201: ServiceInvoiceResponse.describe('Com `Prefer: wait`: a substituta terminou dentro da espera (AUTHORIZED, REJECTED ou FAILED).'),
           202: ServiceInvoiceResponse,
           ...commonErrorResponses,
           400: ProblemSchema.describe('VALIDATION_FAILED: corpo fora do contrato, DPS fora do XSD, ou motivo 99 sem descrição (SUBSTITUTION_REASON_TEXT_REQUIRED).'),
@@ -637,10 +675,11 @@ export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService,
           auditContextOf(request),
         ),
       );
-      return reply
-        .status(result.replayed ? 200 : 202)
-        .header('location', `/v1/service-invoices/${result.invoice.id}`)
-        .send(invoiceJson(result.invoice));
+      const settled = await settle(request.headers.prefer, reply.raw, result, () =>
+        service.get(companyIdOf(request), caller.clientApplicationId, environment, result.invoice.id),
+      );
+      if (settled.applied !== undefined) reply.header('preference-applied', settled.applied);
+      return reply.status(settled.status).header('location', `/v1/service-invoices/${result.invoice.id}`).send(invoiceJson(settled.invoice));
     },
   );
 
@@ -654,12 +693,14 @@ export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService,
         description:
           'Aceita a DPS, reserva o número e devolve 202 com status PENDING; a transmissão é assíncrona (acompanhe por GET ou pelo webhook `service_invoice.status_changed`). ' +
           'O ambiente vem da credencial: `fk_test_…` emite em homologação (produção restrita) e `fk_live_…` em produção, só com a habilitação ativa. ' +
-          'Repetir a mesma `Idempotency-Key` com o mesmo corpo devolve 200 com a mesma nota.',
+          'Repetir a mesma `Idempotency-Key` com o mesmo corpo devolve 200 com a mesma nota. ' +
+          'Com `Prefer: wait=<segundos>`, a resposta espera o resultado: 201 se a nota terminou dentro do prazo, 202 se ainda não.',
         security: [{ apiKey: [] }],
         headers: IdempotencyHeaders,
         body: DpsBody,
         response: {
           200: ServiceInvoiceResponse.describe('Repetição idempotente: a nota já aceita.'),
+          201: ServiceInvoiceResponse.describe('Com `Prefer: wait`: a nota terminou dentro da espera (AUTHORIZED, REJECTED ou FAILED).'),
           202: ServiceInvoiceResponse,
           ...commonErrorResponses,
           400: ProblemSchema.describe('VALIDATION_FAILED: corpo fora do contrato, ou DPS fora do XSD oficial do ambiente (issues com code DPS_SCHEMA_INVALID). Falta de Idempotency-Key também.'),
@@ -694,10 +735,11 @@ export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService,
           auditContextOf(request),
         ),
       );
-      return reply
-        .status(result.replayed ? 200 : 202)
-        .header('location', `/v1/service-invoices/${result.invoice.id}`)
-        .send(invoiceJson(result.invoice));
+      const settled = await settle(request.headers.prefer, reply.raw, result, () =>
+        service.get(companyIdOf(request), caller.clientApplicationId, environment, result.invoice.id),
+      );
+      if (settled.applied !== undefined) reply.header('preference-applied', settled.applied);
+      return reply.status(settled.status).header('location', `/v1/service-invoices/${result.invoice.id}`).send(invoiceJson(settled.invoice));
     },
   );
 

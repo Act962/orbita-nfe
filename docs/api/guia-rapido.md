@@ -143,6 +143,7 @@ Content-Type: application/json
 
 - **Os valores fiscais são seus** (ou do seu contador): opção do Simples, regime, códigos, alíquota, retenção e totais aproximados. A API só confere se cada um existe no XSD oficial. A tabela de campos está no contrato v1 da DPS.
 - **Resposta `202`** com `status: PENDING` e `Location`. A transmissão é assíncrona: consulte `GET /v1/service-invoices/{id}` ou assine o webhook `service_invoice.status_changed`.
+- **Quer o resultado na mesma chamada?** Envie `Prefer: wait=10` (até 20 segundos). Se a nota terminar a tempo, a resposta é `201` com `AUTHORIZED`, `REJECTED` ou `FAILED`. Se não, é `202`, como sem o cabeçalho. **`202` depois da espera não quer dizer que a nota não foi emitida:** não reemita; consulte depois ou espere o webhook. Em `UNKNOWN`, a espera acaba na hora.
 - **`Idempotency-Key` é obrigatório.** Repetir a mesma chave com o mesmo corpo devolve `200` com a mesma nota. Use uma chave nova só para uma nota nova.
 - **Perdeu a resposta?** Não emita de novo. Repita o pedido com a mesma `Idempotency-Key`. Se não guardou a chave, consulte pela referência: `GET /v1/service-invoices?externalReference=pedido-123`. Se vier uma nota que não seja `REJECTED` nem `FAILED`, ela é a sua. Emita de novo só se a lista vier vazia ou só com notas `REJECTED`/`FAILED`.
 - **Validar antes de emitir:** `POST /v1/service-invoices/validation`, com o mesmo corpo e sem `Idempotency-Key`, faz as mesmas conferências da emissão e devolve os mesmos erros, mas não numera nem grava nada. A resposta `200` diz o canal e a série que seriam usados. Passar na validação não garante a autorização: o autorizador ainda confere o cadastro e a parametrização do município.
@@ -169,6 +170,7 @@ Content-Type: application/json
   - `ROUTE_AMBIGUOUS` / `ROUTE_NOT_FOUND`: caso não coberto pela tabela.
 - **Ambientes:** uma credencial `test` não enxerga notas de produção, e vice-versa. A `externalReference` também é por ambiente: a mesma referência pode ser usada em homologação e em produção.
 - **XML:** `GET /v1/service-invoices/{id}/xml` devolve o XML autorizado (`application/xml`), também depois de cancelada ou substituída; antes da autorização, `404 NFSE_XML_NOT_AVAILABLE`. O `ETag` traz o SHA-256 dos bytes, para você conferir o que recebeu. O XML do cancelamento registrado sai em `GET /v1/service-invoices/{id}/cancellation/xml`.
+- **Links:** a nota traz `links` com o caminho de cada rota que já existe para ela (`xml`, `cancellationXml`, `substitutedBy`…). Use o link em vez de montar a URL: se ele é `null`, o recurso ainda não existe.
 
 ## 8. Cancelar NFS-e
 
