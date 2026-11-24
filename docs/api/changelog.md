@@ -1,12 +1,20 @@
 ---
 title: Changelog da API
 status: current
-last_updated: 2026-11-13
+last_updated: 2026-11-24
 ---
 
 # Changelog da API
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
+
+## 2026-11-24 — v1 (download do XML)
+
+**Adicionado:**
+
+- `GET /v1/service-invoices/{id}/xml`: o XML da NFS-e devolvido pelo autorizador, também na nota cancelada ou substituída. `404 NFSE_XML_NOT_AVAILABLE` enquanto a nota não for autorizada.
+- `GET /v1/service-invoices/{id}/cancellation/xml`: o XML do evento de cancelamento registrado. `404 CANCELLATION_XML_NOT_AVAILABLE` enquanto o pedido não for registrado.
+- As duas respondem `application/xml` com `ETag` (SHA-256 dos bytes), `Repr-Digest` (RFC 9530) e `Cache-Control: private, no-store`.
 
 ## 2026-11-23 — v1 (consulta pela referência e validação sem efeitos)
 

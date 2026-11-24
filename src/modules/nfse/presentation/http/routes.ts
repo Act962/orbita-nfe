@@ -7,6 +7,7 @@ import { auditContextOf, authErrorResponses, callerOf, companyIdOf, CompanyHeade
 import type { CancellationService } from '../../application/cancellation.js';
 import type { ServiceInvoiceService } from '../../application/service-invoice-service.js';
 import type { ServiceInvoice, ServiceInvoiceCancellation } from '../../application/ports.js';
+import type { XmlDownload } from '../../application/stored-xml.js';
 import { CANCELLATION_REASON_CODES, CANCELLATION_STATES, REASON_TEXT_MAX, REASON_TEXT_MIN } from '../../domain/cancellation.js';
 import {
   FOREIGN_TRADE_MODES,
@@ -350,6 +351,26 @@ const ValidationResponse = z
   })
   .meta({ id: 'ServiceInvoiceValidation' });
 
+/** Download de XML (ADR-0050): os bytes do banco, conferidos contra o hash, sem redirecionar. */
+const XmlResponse = (description: string) => ({
+  description,
+  content: { 'application/xml': { schema: z.string().meta({ description: 'XML exatamente como devolvido pelo autorizador (UTF-8).' }) } },
+});
+
+const xmlDownloadHeaders = 'Cabeçalhos: `ETag` com o SHA-256 dos bytes e `Repr-Digest: sha-256=:…:` (RFC 9530), para conferir o que chegou; `Cache-Control: private, no-store` (dados pessoais).';
+
+type Reply = { header(name: string, value: string): Reply; type(contentType: string): Reply; send(payload: string): unknown };
+
+function sendXml(reply: Reply, download: XmlDownload): void {
+  reply
+    .type('application/xml; charset=utf-8')
+    .header('content-disposition', `attachment; filename="${download.fileName}"`)
+    .header('etag', `"${download.sha256}"`)
+    .header('repr-digest', `sha-256=:${Buffer.from(download.sha256, 'hex').toString('base64')}:`)
+    .header('cache-control', 'private, no-store')
+    .send(download.xml);
+}
+
 /** JSON canônico (chaves ordenadas) para o hash do pedido (ADR-0007). */
 function canonical(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
@@ -504,6 +525,60 @@ export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService,
       const caller = callerOf(request);
       const environment = caller.environment === 'live' ? 'PRODUCTION' : 'HOMOLOGATION';
       return cancellationJson(await cancellations.get(companyIdOf(request), caller.clientApplicationId, environment, request.params.id));
+    },
+  );
+
+  app.get(
+    '/v1/service-invoices/:id/cancellation/xml',
+    {
+      config: { auth: { scope: 'nfse:read', company: true } },
+      schema: {
+        tags: [TAG],
+        summary: 'Baixar o XML do cancelamento',
+        description: `XML do evento de cancelamento (e101101) registrado pelo autorizador, do pedido mais recente da nota. ${xmlDownloadHeaders}`,
+        security: [{ apiKey: [] }],
+        headers: CompanyHeaders,
+        params: z.object({ id: z.uuid() }),
+        response: {
+          200: XmlResponse('XML do evento registrado.'),
+          ...commonErrorResponses,
+          ...authErrorResponses,
+          404: ProblemSchema.describe('SERVICE_INVOICE_NOT_FOUND, CANCELLATION_NOT_FOUND ou CANCELLATION_XML_NOT_AVAILABLE (pedido ainda não REGISTERED).'),
+        },
+      },
+    },
+    async (request, reply) => {
+      const caller = callerOf(request);
+      const environment = caller.environment === 'live' ? 'PRODUCTION' : 'HOMOLOGATION';
+      sendXml(reply, await cancellations.eventXml(companyIdOf(request), caller.clientApplicationId, environment, request.params.id));
+    },
+  );
+
+  app.get(
+    '/v1/service-invoices/:id/xml',
+    {
+      config: { auth: { scope: 'nfse:read', company: true } },
+      schema: {
+        tags: [TAG],
+        summary: 'Baixar o XML da NFS-e',
+        description:
+          'XML da NFS-e devolvido pelo autorizador, na nota AUTHORIZED, CANCELLED ou SUBSTITUTED (a nota cancelada ou substituída foi autorizada, e o XML é o mesmo; a situação atual está no `GET` da nota). ' +
+          xmlDownloadHeaders,
+        security: [{ apiKey: [] }],
+        headers: CompanyHeaders,
+        params: z.object({ id: z.uuid() }),
+        response: {
+          200: XmlResponse('XML autorizado.'),
+          ...commonErrorResponses,
+          ...authErrorResponses,
+          404: ProblemSchema.describe('SERVICE_INVOICE_NOT_FOUND ou NFSE_XML_NOT_AVAILABLE (nota que não chegou a ser autorizada).'),
+        },
+      },
+    },
+    async (request, reply) => {
+      const caller = callerOf(request);
+      const environment = caller.environment === 'live' ? 'PRODUCTION' : 'HOMOLOGATION';
+      sendXml(reply, await service.authorizedXml(companyIdOf(request), caller.clientApplicationId, environment, request.params.id));
     },
   );
 

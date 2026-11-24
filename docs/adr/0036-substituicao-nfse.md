@@ -91,7 +91,7 @@ Fontes, conferidas nesta data:
 9. **Simulador.** Autoriza a substituta só se a chave for de nota autorizada nele (senão `E0044`) e não cancelada nem substituída (senão `E0046`). Ao autorizar, registra sozinho o e105102 na original.
 
 ## Fora deste ADR
-- **Consulta do e105102 na original:** o autorizador o gera junto com a substituta, e a NFS-e substituta já é a evidência. Baixar o evento fica para quando houver o download de XML.
+- **Consulta do e105102 na original:** o autorizador o gera junto com a substituta, e a NFS-e substituta já é a evidência. Baixar o evento fica para quando houver o download de XML. (O download do XML da substituta existe desde o [ADR-0050](0050-download-xml-pela-api.md); o XML do e105102 continua sem chegar ao motor.)
 - **Liberação da `externalReference`:** como na nota cancelada, a original `SUBSTITUTED` continua ocupando a referência. A substituta precisa de outra referência ou de nenhuma. A revisão é decisão do responsável, a mesma pendência do ADR-0035.
 - O prazo do município (E0050) e as regras que dependem da parametrização municipal (E0056, E0058, E0074).
 

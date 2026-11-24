@@ -214,6 +214,14 @@ export function serviceInvoiceRepository(tx: Transaction): ServiceInvoiceReposit
         .limit(1);
       return rows[0] === undefined ? undefined : toInvoice(rows[0] as InvoiceRow);
     },
+    async storedXml(id) {
+      const rows = await tx
+        .select({ xml: serviceInvoices.nfseXml, sha256: serviceInvoices.nfseXmlSha256 })
+        .from(serviceInvoices)
+        .where(eq(serviceInvoices.id, id))
+        .limit(1);
+      return rows[0];
+    },
   };
 }
 

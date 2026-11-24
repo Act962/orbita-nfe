@@ -119,6 +119,14 @@ export const QUEUES = {
     timeoutSeconds: 60,
     priority: 4,
   },
+  /** Arquivamento do XML do evento de cancelamento (ADR-0049), enfileirado na transação do REGISTERED. */
+  'nfse.archive-cancellation': {
+    lane: 'fiscal',
+    maxAttempts: 24,
+    backoff: { baseSeconds: 60, maxSeconds: 3600, jitter: 0.2 },
+    timeoutSeconds: 60,
+    priority: 4,
+  },
   /** Alerta de NFS-e em UNKNOWN pela idade (doc 12 §6); a próxima verificação é um job novo. */
   'nfse.escalate': {
     lane: 'fiscal',

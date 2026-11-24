@@ -8,6 +8,7 @@ import { checkChannelRules, checkChannelSeries } from '../domain/channel-rules.j
 import { layoutEnvironmentOf, route, SUPPORTED_CHANNELS, type RoutingTable } from '../domain/routing.js';
 import { checkSubstitutionReason, lockedFieldChanges, type SubstitutionReason } from '../domain/substitution.js';
 import type { ActiveSeries, DpsValidator, FiscalEnvironment, IssuerEstablishment, NfseApiRepositories, ServiceInvoice, SubstitutionOf } from './ports.js';
+import { verifiedXml, type XmlDownload } from './stored-xml.js';
 
 export interface AcceptServiceInvoice {
   readonly companyId: string;
@@ -132,6 +133,22 @@ export class ServiceInvoiceService {
     const found = await this.uow.inCompany(companyId, (r) => r.invoices.findById(id));
     if (found?.clientApplicationId !== clientApplicationId || found.environment !== environment) throw notFound();
     return found;
+  }
+
+  /**
+   * XML da NFS-e devolvido pelo autorizador (ADR-0050). Vale para a nota cancelada ou substituída:
+   * ela foi autorizada, e o XML é o mesmo. A mesma visibilidade do `get`.
+   */
+  async authorizedXml(companyId: string, clientApplicationId: string, environment: FiscalEnvironment, id: string): Promise<XmlDownload> {
+    return this.uow.inCompany(companyId, async (r) => {
+      const invoice = await r.invoices.findById(id);
+      if (invoice?.clientApplicationId !== clientApplicationId || invoice.environment !== environment) throw notFound();
+      const stored = await r.invoices.storedXml(id);
+      if (stored?.xml == null || invoice.nfseAccessKey === null) {
+        throw new NotFoundError('NFSE_XML_NOT_AVAILABLE', `A NFS-e não tem XML autorizado (a nota está em ${invoice.status}).`);
+      }
+      return verifiedXml({ xml: stored.xml, sha256: stored.sha256 }, `nfse-${invoice.nfseAccessKey}.xml`);
+    });
   }
 
   private async acceptIn(r: NfseApiRepositories, input: AcceptServiceInvoice, context: AuditContext): Promise<AcceptResult> {

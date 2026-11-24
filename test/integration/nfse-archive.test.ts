@@ -58,7 +58,7 @@ function fiscalWorker(store: NfseArtifactStore = s3Store) {
       archive: { store, retentionDays: RETENTION_DAYS },
     },
   });
-  if (composed.processor === undefined || composed.archiver === undefined) throw new Error('nfse não composto');
+  if (composed.processor === undefined || composed.archiver === undefined || composed.cancellations === undefined) throw new Error('nfse não composto');
   return composed;
 }
 
@@ -106,7 +106,7 @@ beforeAll(async () => {
   catalog = FiscalSchemaCatalog.load(ROOT);
   s3Store = new S3ArtifactStore({ endpoint: storage().endpoint, region: 'us-east-1', bucket: storage().artifactBucket, ...CREDENTIALS, forcePathStyle: true });
   const app = await createClientApp(t.admin, 'nfse-arquivo');
-  key = await app.key(['companies:create', 'companies:manage', 'fiscal-settings:manage', 'certificates:manage', 'nfse:issue', 'nfse:read']);
+  key = await app.key(['companies:create', 'companies:manage', 'fiscal-settings:manage', 'certificates:manage', 'nfse:issue', 'nfse:read', 'nfse:cancel']);
   const company = await createCompany(t.app, key);
   companyId = company.id;
   establishmentId = await createEstablishment(t.app, key, companyId, cnpjOf(company.root));
@@ -199,6 +199,63 @@ describe('arquivamento do XML autorizado (ADR-0048)', () => {
     expect(await attempt(sql`update service_invoices set nfse_xml_retain_until = now() where id = ${id}`)).toBe('ck_service_invoices_write_once');
   });
 
+  it('evento de cancelamento (ADR-0049): o REGISTERED grava o hash e enfileira nfse.archive-cancellation; o XML vai para a pasta da nota', async () => {
+    const id = await authorizedInvoice('arquivo-cancelamento');
+    const requested = await t.app.inject({
+      method: 'POST',
+      url: `/v1/service-invoices/${id}/cancellation`,
+      headers: bearer(key, companyId),
+      payload: { reasonCode: '1', reasonText: 'Erro na emissão: valor digitado errado' },
+    });
+    expect(requested.statusCode, requested.body).toBe(202);
+    const cancellationId = requested.json<{ id: string }>().id;
+    expect(await fiscalWorker().cancellations?.process(companyId, cancellationId, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'REGISTERED' });
+
+    const event = async () => {
+      const rows = await superuser.db.execute<{ event_xml: string; event_xml_sha256: string | null; event_xml_object_key: string | null; registered_at: string }>(
+        sql`select event_xml, event_xml_sha256, event_xml_object_key, registered_at from service_invoice_cancellations where id = ${cancellationId}`,
+      );
+      const found = rows.rows[0];
+      if (found === undefined) throw new Error('cancelamento não encontrado');
+      return found;
+    };
+    const before = await event();
+    expect(before.event_xml_sha256).toBe(createHash('sha256').update(before.event_xml, 'utf8').digest('hex'));
+    const jobs = await superuser.db.execute<{ state: string }>(
+      sql`select state from jobs where queue = 'nfse.archive-cancellation' and payload->>'cancellationId' = ${cancellationId}`,
+    );
+    expect(jobs.rows).toEqual([{ state: 'queued' }]);
+
+    const handler = fiscalWorker().handlers['nfse.archive-cancellation'];
+    if (handler === undefined) throw new Error('sem handler');
+    await handler({ id: crypto.randomUUID(), queue: 'nfse.archive-cancellation', payload: { companyId, cancellationId }, attempt: 1, correlationId: null }, new AbortController().signal);
+
+    const after = await event();
+    const registeredAt = new Date(before.registered_at);
+    const mm = String(registeredAt.getUTCMonth() + 1).padStart(2, '0');
+    expect(after.event_xml_object_key).toBe(
+      `company/${companyId}/nfse/${String(registeredAt.getUTCFullYear())}/${mm}/${id}/event-101101-${cancellationId}-${before.event_xml_sha256 ?? ''}.xml`,
+    );
+    const s3 = new S3Client({ endpoint: storage().endpoint, region: 'us-east-1', forcePathStyle: true, credentials: CREDENTIALS });
+    try {
+      const object = await s3.send(new GetObjectCommand({ Bucket: storage().artifactBucket, Key: after.event_xml_object_key ?? '' }));
+      expect(await object.Body?.transformToString('utf8')).toBe(before.event_xml);
+      expect(object.ObjectLockMode).toBe('COMPLIANCE');
+    } finally {
+      s3.destroy();
+    }
+    expect(await fiscalWorker().archiver?.archiveCancellationEvent(companyId, cancellationId, WORKER)).toEqual({ kind: 'ALREADY_ARCHIVED' });
+
+    // Gravado uma vez, como o da nota.
+    const update = new CompanyTransactions(worker.db)
+      .run(companyId, (tx) => tx.execute(sql`update service_invoice_cancellations set event_xml_object_key = 'outra' where id = ${cancellationId}`))
+      .then(
+        () => 'ok',
+        (error: unknown) => (error as { cause?: { constraint?: string } }).cause?.constraint ?? String(error),
+      );
+    expect(await update).toBe('ck_service_invoice_cancellations_write_once');
+  });
+
   it('a API não grava o arquivamento (privilégio só do worker-fiscal)', async () => {
     const id = await authorizedInvoice('arquivo-4');
     // Transação crua (sem a tradução de erros do CompanyTransactions), como nos testes de privilégio.
@@ -207,5 +264,91 @@ describe('arquivamento do XML autorizado (ADR-0048)', () => {
       return tx.execute(sql`update service_invoices set nfse_xml_object_key = 'x' where id = ${id}`);
     });
     await expect(update).rejects.toMatchObject({ cause: { code: '42501' } });
+  });
+});
+
+describe('download do XML pela API (ADR-0050)', () => {
+  const get = (url: string) => t.app.inject({ method: 'GET', url, headers: bearer(key, companyId) });
+  const sha = (xml: string) => createHash('sha256').update(xml, 'utf8').digest('hex');
+
+  it('a nota autorizada devolve os bytes do banco, com ETag, Repr-Digest e sem cache', async () => {
+    const id = await authorizedInvoice('download-1');
+    const stored = await row(id);
+    const res = await get(`/v1/service-invoices/${id}/xml`);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.body).toBe(stored.nfse_xml);
+    expect(res.headers['content-type']).toBe('application/xml; charset=utf-8');
+    expect(res.headers['etag']).toBe(`"${sha(stored.nfse_xml)}"`);
+    expect(res.headers['repr-digest']).toBe(`sha-256=:${createHash('sha256').update(stored.nfse_xml, 'utf8').digest('base64')}:`);
+    expect(res.headers['cache-control']).toBe('private, no-store');
+    const invoice = await get(`/v1/service-invoices/${id}`);
+    expect(res.headers['content-disposition']).toBe(`attachment; filename="nfse-${invoice.json<{ accessKey: string }>().accessKey}.xml"`);
+  });
+
+  it('nota ainda não autorizada: 404 NFSE_XML_NOT_AVAILABLE; outra aplicação: 404 SERVICE_INVOICE_NOT_FOUND', async () => {
+    const res = await t.app.inject({
+      method: 'POST',
+      url: '/v1/service-invoices',
+      headers: { ...bearer(key, companyId), 'idempotency-key': 'download-pendente' },
+      payload: { establishmentId, ...sampleDpsData() },
+    });
+    expect(res.statusCode, res.body).toBe(202);
+    const id = res.json<{ id: string }>().id;
+    const pending = await get(`/v1/service-invoices/${id}/xml`);
+    expect(pending.statusCode).toBe(404);
+    expect(pending.json<{ code: string }>().code).toBe('NFSE_XML_NOT_AVAILABLE');
+
+    const other = await createClientApp(t.admin, 'nfse-download-outra');
+    const otherKey = await other.key(['nfse:read']);
+    await t.admin.grantCompany(other.id, companyId);
+    const authorized = await authorizedInvoice('download-outra-app');
+    const denied = await t.app.inject({ method: 'GET', url: `/v1/service-invoices/${authorized}/xml`, headers: bearer(otherKey, companyId) });
+    expect(denied.statusCode).toBe(404);
+    expect(denied.json<{ code: string }>().code).toBe('SERVICE_INVOICE_NOT_FOUND');
+  });
+
+  it('cancelamento: só o evento REGISTERED tem XML; a nota cancelada continua com o XML autorizado', async () => {
+    const id = await authorizedInvoice('download-cancelamento');
+    const none = await get(`/v1/service-invoices/${id}/cancellation/xml`);
+    expect(none.statusCode).toBe(404);
+    expect(none.json<{ code: string }>().code).toBe('CANCELLATION_NOT_FOUND');
+
+    const requested = await t.app.inject({
+      method: 'POST',
+      url: `/v1/service-invoices/${id}/cancellation`,
+      headers: bearer(key, companyId),
+      payload: { reasonCode: '2', reasonText: 'Serviço não prestado ao tomador' },
+    });
+    expect(requested.statusCode, requested.body).toBe(202);
+    const cancellationId = requested.json<{ id: string }>().id;
+    const pending = await get(`/v1/service-invoices/${id}/cancellation/xml`);
+    expect(pending.statusCode).toBe(404);
+    expect(pending.json<{ code: string }>().code).toBe('CANCELLATION_XML_NOT_AVAILABLE');
+
+    expect(await fiscalWorker().cancellations?.process(companyId, cancellationId, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'REGISTERED' });
+    const rows = await superuser.db.execute<{ event_xml: string }>(sql`select event_xml from service_invoice_cancellations where id = ${cancellationId}`);
+    const eventXml = rows.rows[0]?.event_xml ?? '';
+    const res = await get(`/v1/service-invoices/${id}/cancellation/xml`);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.body).toBe(eventXml);
+    expect(res.headers['etag']).toBe(`"${sha(eventXml)}"`);
+    expect(res.headers['content-disposition']).toMatch(/^attachment; filename="cancelamento-[0-9]+\.xml"$/);
+
+    const invoice = await get(`/v1/service-invoices/${id}`);
+    expect(invoice.json<{ status: string }>().status).toBe('CANCELLED');
+    expect((await get(`/v1/service-invoices/${id}/xml`)).statusCode).toBe(200);
+  });
+
+  it('XML alterado por fora das travas: 500 sem os bytes (o hash não bate)', async () => {
+    const id = await authorizedInvoice('download-adulterado');
+    // Simula uma alteração que passou por fora dos triggers (ex.: restauração de cópia corrompida).
+    await superuser.db.transaction(async (tx) => {
+      await tx.execute(sql`set local session_replication_role = replica`);
+      await tx.execute(sql`update service_invoices set nfse_xml = nfse_xml || ' ' where id = ${id}`);
+    });
+    const res = await get(`/v1/service-invoices/${id}/xml`);
+    expect(res.statusCode).toBe(500);
+    expect(res.json<{ code: string }>().code).toBe('INTERNAL_ERROR');
+    expect(res.body).not.toContain('<NFSe');
   });
 });

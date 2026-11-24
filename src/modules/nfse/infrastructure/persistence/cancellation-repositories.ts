@@ -1,4 +1,5 @@
-import { and, desc, eq, notInArray, sql } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
+import { and, desc, eq, isNull, notInArray, sql } from 'drizzle-orm';
 import { ConflictError } from '../../../../shared/application/errors.js';
 import { CANCELLATION_RACE } from '../../application/cancellation.js';
 import type { Transaction } from '../../../../shared/infrastructure/database/database.js';
@@ -62,6 +63,10 @@ export function cancellationRequestRepository(tx: Transaction): CancellationRequ
       if (found === undefined) throw new Error('INSERT sem linha');
       return found;
     },
+    async storedEventXml(id) {
+      const rows = await tx.select({ xml: c.eventXml, sha256: c.eventXmlSha256 }).from(c).where(eq(c.id, id)).limit(1);
+      return rows[0];
+    },
   };
 }
 
@@ -81,7 +86,10 @@ export function cancellationRepository(tx: Transaction): CancellationRepository 
           ...(change.clearSending === undefined ? {} : { sendingAt: null }),
           ...(change.outcomeCode === undefined ? {} : { outcomeCode: change.outcomeCode }),
           ...(change.rejectionMessage === undefined ? {} : { rejectionMessage: change.rejectionMessage }),
-          ...(change.eventXml === undefined ? {} : { eventXml: change.eventXml }),
+          // Hash junto com o XML do evento (ADR-0049): o arquivamento confere estes bytes.
+          ...(change.eventXml === undefined
+            ? {}
+            : { eventXml: change.eventXml, eventXmlSha256: createHash('sha256').update(change.eventXml, 'utf8').digest('hex') }),
           ...(change.registeredAt === undefined ? {} : { registeredAt: change.registeredAt }),
           ...(change.failureCode === undefined ? {} : { failureCode: change.failureCode }),
           ...(change.resetLookups === undefined ? {} : { firstNotFoundAt: null, consecutiveLookupErrors: 0 }),
@@ -98,6 +106,29 @@ export function cancellationRepository(tx: Transaction): CancellationRepository 
         .update(c)
         .set({ sendingAt: at, attempts: sql`${c.attempts} + 1` })
         .where(eq(c.id, id));
+    },
+    async eventXml(id) {
+      const rows = await tx
+        .select({
+          companyId: c.companyId,
+          invoiceId: c.invoiceId,
+          xml: c.eventXml,
+          sha256: c.eventXmlSha256,
+          registeredAt: c.registeredAt,
+          objectKey: c.eventXmlObjectKey,
+        })
+        .from(c)
+        .where(eq(c.id, id))
+        .limit(1);
+      return rows[0];
+    },
+    async markEventArchived(id, archive) {
+      const rows = await tx
+        .update(c)
+        .set({ eventXmlObjectKey: archive.objectKey, eventXmlArchivedAt: archive.archivedAt, eventXmlRetainUntil: archive.retainUntil })
+        .where(and(eq(c.id, id), isNull(c.eventXmlObjectKey)))
+        .returning({ id: c.id });
+      return rows.length === 1;
     },
     async recordLookup(id, state) {
       await tx

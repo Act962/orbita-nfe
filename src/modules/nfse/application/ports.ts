@@ -138,6 +138,15 @@ export interface ServiceInvoiceRepository {
   lockForEvents(invoiceId: string): Promise<void>;
   /** Substituta que ainda ocupa a original (não REJECTED/FAILED). */
   findActiveSubstitute(originalId: string): Promise<ServiceInvoice | undefined>;
+  /** XML autorizado e o hash gravado junto (download, ADR-0050). */
+  storedXml(id: string): Promise<StoredXml | undefined>;
+}
+
+/** XML guardado no banco com o SHA-256 gravado na mesma transação (ADR-0048, ADR-0049). */
+export interface StoredXml {
+  readonly xml: string | null;
+  /** Nulo só em linha anterior às migrations 0024/0026. */
+  readonly sha256: string | null;
 }
 
 export interface ServiceInvoiceStatusChange {
@@ -230,6 +239,8 @@ export interface CancellationRequestRepository {
   /** Pedido mais recente da nota, em qualquer estado. */
   findLatest(invoiceId: string): Promise<ServiceInvoiceCancellation | undefined>;
   insert(cancellation: NewCancellation): Promise<ServiceInvoiceCancellation>;
+  /** XML do evento registrado e o hash (download, ADR-0050). */
+  storedEventXml(id: string): Promise<StoredXml | undefined>;
 }
 
 export interface CancellationChange {
@@ -255,6 +266,19 @@ export interface CancellationRepository {
   /** Commit ANTES da rede: a partir daqui o pedido pode ter saído. */
   markSending(id: string, at: Date): Promise<void>;
   recordLookup(id: string, state: { firstNotFoundAt: Date | null; consecutiveLookupErrors: number }): Promise<void>;
+  /** XML do evento registrado e a situação do arquivamento (ADR-0049). */
+  eventXml(id: string): Promise<CancellationEventXml | undefined>;
+  /** Grava o arquivamento uma única vez. Devolve se gravou (falso: já estava arquivado). */
+  markEventArchived(id: string, archive: { readonly objectKey: string; readonly archivedAt: Date; readonly retainUntil: Date }): Promise<boolean>;
+}
+
+export interface CancellationEventXml {
+  readonly companyId: string;
+  readonly invoiceId: string;
+  readonly xml: string | null;
+  readonly sha256: string | null;
+  readonly registeredAt: Date | null;
+  readonly objectKey: string | null;
 }
 
 // ------------------------------------------------------------------ resolução manual (ADR-0034)

@@ -13,7 +13,8 @@ Recursos separados por modalidade (contratos diferentes), com consulta unificada
 | POST | `/v1/service-invoices/{id}/cancellation` | `nfse:cancel` — **implementado** (ADR-0035) |
 | GET | `/v1/service-invoices/{id}/cancellation` | `nfse:read` — **implementado** |
 | POST | `/v1/service-invoices/{id}/substitution` | `nfse:issue` — **implementado** (ADR-0036) |
-| GET | `/v1/service-invoices/{id}/xml` | `nfse:read` → redirect para URL pré-assinada |
+| GET | `/v1/service-invoices/{id}/xml` | `nfse:read` — **implementado** (bytes do banco com o hash conferido, sem redirecionar, ADR-0050) |
+| GET | `/v1/service-invoices/{id}/cancellation/xml` | `nfse:read` — **implementado** (XML do evento registrado, ADR-0050) |
 | GET | `/v1/service-invoices/{id}/pdf` | `nfse:read` |
 | POST | `/v1/product-invoices` / `/v1/consumer-invoices` | Fases 4 e 3 |
 | POST | `/v1/product-invoices/{id}/correction-letters` | NF-e apenas |
@@ -41,7 +42,7 @@ Recursos separados por modalidade (contratos diferentes), com consulta unificada
 - Ambiente fiscal derivado da credencial: chave `test` → homologação; `live` → produção (ADR-0026).
 - Erros no formato RFC 9457 (`application/problem+json`) com `code` estável (`VALIDATION_FAILED`, `IDEMPOTENCY_KEY_REUSED`, `CERTIFICATE_EXPIRED`, `COMPANY_ACCESS_DENIED`…). Rejeições fiscais não são erro HTTP: o documento existe com `status: REJECTED` e `rejection: { code, message, source }`.
 - Valores monetários como **string decimal** (`"1234.50"`), nunca number.
-- Respostas não incluem XML embutido; usam links.
+- Respostas JSON não incluem XML embutido. O XML tem rota própria, que devolve `application/xml` com `ETag` e `Repr-Digest` (ADR-0050).
 
 ## Exemplo (NFS-e — campos ilustrativos, contrato final na Fase 2)
 ```json

@@ -168,6 +168,7 @@ Content-Type: application/json
   - `ROUTE_REGIME_REQUIRED`: informe `provider.simplesNacionalRegime`;
   - `ROUTE_AMBIGUOUS` / `ROUTE_NOT_FOUND`: caso não coberto pela tabela.
 - **Ambientes:** uma credencial `test` não enxerga notas de produção, e vice-versa. A `externalReference` também é por ambiente: a mesma referência pode ser usada em homologação e em produção.
+- **XML:** `GET /v1/service-invoices/{id}/xml` devolve o XML autorizado (`application/xml`), também depois de cancelada ou substituída; antes da autorização, `404 NFSE_XML_NOT_AVAILABLE`. O `ETag` traz o SHA-256 dos bytes, para você conferir o que recebeu. O XML do cancelamento registrado sai em `GET /v1/service-invoices/{id}/cancellation/xml`.
 
 ## 8. Cancelar NFS-e
 

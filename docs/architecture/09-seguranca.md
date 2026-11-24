@@ -37,7 +37,8 @@ Configuração do sistema: variáveis de ambiente injetadas por secret manager; 
 - Webhooks: só URLs HTTPS; bloqueio de SSRF (rejeitar IPs privados/loopback/metadata no registro e na resolução DNS).
 - Dependências: `npm audit`/Dependabot, lockfile, imagem mínima, usuário não-root, SBOM no CI.
 - Banco: TLS, papéis mínimos, RLS, backups criptografados.
-- S3: bucket privado, criptografia server-side, URLs pré-assinadas de curta duração para download, Object Lock (modo compliance) para artefatos autorizados.
+- S3: bucket privado, criptografia server-side, Object Lock (modo compliance) para artefatos autorizados. Só o worker-fiscal tem a credencial do bucket de artefatos.
+- Download do XML ([ADR-0050](../adr/0050-download-xml-pela-api.md)): a API entrega os bytes do banco, com a mesma autenticação, concessão e RLS da consulta, depois de conferir o SHA-256 gravado. Se o hash não bater, responde 500 sem os bytes e registra `NFSE_XML_HASH_MISMATCH`. `Cache-Control: private, no-store`, por causa dos dados pessoais. URL pré-assinada fica para arquivos grandes (PDF, ZIP mensal).
 
 ## 5. Auditoria
 `audit_log` append-only com hash encadeado: criação/alteração de empresa, credenciais,
@@ -59,7 +60,7 @@ Implementado em 2026-11-10 (módulo `audit`, migration 0003):
   - empresa (resolução manual de UNKNOWN, [ADR-0034](../adr/0034-resolucao-manual-unknown.md)):
     - `service_invoice.resolution_requested`: pelo operador, com o resultado alegado e o SHA-256 da evidência, nunca o XML;
     - `service_invoice.resolution_applied` e `service_invoice.resolution_refused`: pelo worker-fiscal, com o código;
-  - empresa (arquivamento, [ADR-0048](../adr/0048-arquivamento-xml-autorizado.md)): `service_invoice.xml_archived`, pelo worker-fiscal, com a chave do objeto, o SHA-256 e a retenção, nunca o XML;
+  - empresa (arquivamento, [ADR-0048](../adr/0048-arquivamento-xml-autorizado.md)): `service_invoice.xml_archived` e `service_invoice.cancellation_xml_archived` ([ADR-0049](../adr/0049-arquivamento-xml-evento-cancelamento.md)), pelo worker-fiscal, com a chave do objeto, o SHA-256 e a retenção, nunca o XML;
   - empresa (cancelamento, [ADR-0035](../adr/0035-cancelamento-nfse.md)): `service_invoice.cancellation_requested`, `service_invoice.cancelled`, `service_invoice.cancellation_rejected`, `service_invoice.cancellation_failed`, `service_invoice.cancellation_unknown`, `service_invoice.cancellation_retransmission_scheduled`;
   - empresa (substituição, [ADR-0036](../adr/0036-substituicao-nfse.md)):
     - `service_invoice.substitution_requested`: na original, com o id da substituta e o motivo;

@@ -82,7 +82,7 @@
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">781 ✓</div>
+    <div class="value">786 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -185,6 +185,8 @@
 <li><span class="tag done">Pronto</span><div>Substituição de nota emitida pela DSF<small>Achado: uma substituta que mudasse o enquadramento podia ser mandada a outro autorizador, com a chave de uma nota que ele não emitiu. Agora isso é recusado na hora e travado no banco (regra oficial E0065). O cancelamento pela DSF espera resposta da SEMF.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Achar a nota pela referência do seu sistema e validar sem emitir<small>Quem perdeu a resposta da emissão agora acha a nota pelo número do pedido, em vez de emitir de novo. E dá para conferir uma nota antes de emitir, sem gastar número. Achado: a referência de um teste bloqueava a mesma referência em produção; agora cada ambiente tem a sua.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Cópia imutável de cada nota autorizada fora do servidor<small>O XML de cada nota autorizada ganha uma "impressão digital" (hash) e vai para um depósito em nuvem onde não pode ser apagado nem alterado até o fim do prazo de guarda. <b>Decisão sua com o contador:</b> qual é esse prazo, e qual provedor usar. Sem isso, a produção não sobe.</small></div></li>
+<li><span class="tag done">Pronto</span><div>Cópia imutável também do comprovante de cancelamento<small>Quando uma nota é cancelada, o comprovante do cancelamento devolvido pelo autorizador vai para o mesmo depósito, ao lado da nota, com a mesma proteção.</small></div></li>
+<li><span class="tag done">Pronto</span><div>Baixar o XML da nota e do cancelamento pela API<small>O sistema que emitiu pode baixar o XML autorizado e o comprovante do cancelamento. Antes de entregar, o motor confere a impressão digital do arquivo: se alguém tiver mexido nele, nada é entregue.</small></div></li>
     <li><span class="tag block">Você</span><div>Envio real à produção restrita (precisa do CNPJ e do certificado A1)</div></li>
   </ul>
 </div>
@@ -265,7 +267,7 @@
 <li><span class="tag done">Enviado</span><div><code>58950e7</code> Exportação de serviço e cliente no exterior; regras do intermediário com CNPJ corrigidas (CI verde)</div></li>
 <li><span class="tag done">Enviado</span><div><code>3aa9c2d</code> Serviço prestado no exterior e código NBS obrigatório na exportação (CI verde)</div></li>
 <li><span class="tag done">Enviado</span><div><code>90caf6f</code> Substituição de nota da DSF e trava de mesmo autorizador (E0065) (CI verde)</div></li>
-<li><span class="tag done">Enviado</span><div><code>4b5be98</code> Achar a nota pela referência, validar sem emitir e cópia imutável do XML autorizado</div></li>
+<li><span class="tag done">Enviado</span><div><code>4b5be98</code> Achar a nota pela referência, validar sem emitir e cópia imutável do XML autorizado (CI verde em <code>be73162</code>)</div></li>
   </ul>
 </div>
 

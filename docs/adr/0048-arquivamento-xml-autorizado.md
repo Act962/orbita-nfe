@@ -39,6 +39,6 @@ O motor já usa um bucket com Object Lock para a âncora da auditoria (ADR-0031)
 - O deploy de produção passa a depender de mais duas decisões: o prazo de retenção e o provedor S3 (decisão pendente 2, a mesma da âncora).
 - Com Object Lock COMPLIANCE, nem a credencial de escrita apaga um objeto antes do prazo. Um prazo errado para mais não tem volta, por isso ele precisa ser confirmado.
 - **Ainda não fazem parte desta etapa:**
-  - os XML de eventos (cancelamento);
+  - os XML de eventos (cancelamento): feito no [ADR-0049](0049-arquivamento-xml-evento-cancelamento.md);
   - a verificação periódica dos objetos contra o hash;
-  - o download pela API (URL pré-assinada, doc 11).
+  - o download pela API: feito no [ADR-0050](0050-download-xml-pela-api.md), servido do banco, sem URL pré-assinada.

@@ -18,6 +18,8 @@ import type {
   ServiceInvoice,
   ServiceInvoiceCancellation,
 } from './ports.js';
+import { verifiedXml, type XmlDownload } from './stored-xml.js';
+import { scheduleCancellationArchive } from './xml-archiver.js';
 import { channelOf, publishStatus } from './submission-processor.js';
 
 /** Código interno da corrida no índice de pedido ativo (constraint → releitura). */
@@ -66,6 +68,20 @@ export class CancellationService {
       const found = await r.cancellations.findLatest(invoiceId);
       if (found === undefined) throw new NotFoundError('CANCELLATION_NOT_FOUND', 'Não há pedido de cancelamento para esta NFS-e.');
       return found;
+    });
+  }
+
+  /** XML do evento de cancelamento registrado, do pedido mais recente (ADR-0050). */
+  async eventXml(companyId: string, clientApplicationId: string, environment: FiscalEnvironment, invoiceId: string): Promise<XmlDownload> {
+    return this.uow.inCompany(companyId, async (r) => {
+      const invoice = await visibleInvoice(r, clientApplicationId, environment, invoiceId);
+      const found = await r.cancellations.findLatest(invoiceId);
+      if (found === undefined) throw new NotFoundError('CANCELLATION_NOT_FOUND', 'Não há pedido de cancelamento para esta NFS-e.');
+      const stored = found.state === 'REGISTERED' ? await r.cancellations.storedEventXml(found.id) : undefined;
+      if (stored?.xml == null) {
+        throw new NotFoundError('CANCELLATION_XML_NOT_AVAILABLE', `O cancelamento não foi registrado pelo autorizador (o pedido está em ${found.state}).`);
+      }
+      return verifiedXml({ xml: stored.xml, sha256: stored.sha256 }, `cancelamento-${invoice.nfseAccessKey ?? invoice.id}.xml`);
     });
   }
 
@@ -426,6 +442,8 @@ async function registered(
 ): Promise<boolean> {
   if (!(await r.cancellations.changeState(cancellation.id, from, 'REGISTERED', { ...change, eventXml, registeredAt: at }))) return false;
   if (!(await r.invoices.changeStatus(invoice.id, 'AUTHORIZED', 'CANCELLED'))) throw new Error('SERVICE_INVOICE_NOT_AUTHORIZED_ON_CANCEL');
+  // Na mesma transação (ADR-0049): se o evento ficou registrado, o arquivamento do XML existe.
+  await scheduleCancellationArchive(r.jobs, { companyId: invoice.companyId, cancellationId: cancellation.id, correlationId: context.correlationId });
   await publishCancellation(r, cancellation, invoice, 'REGISTERED', context, {});
   await publishStatus(r, invoice, 'CANCELLED', context, { cancellationId: cancellation.id });
   return true;

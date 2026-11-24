@@ -165,6 +165,11 @@ export const serviceInvoiceCancellations = pgTable(
     rejectionMessage: text('rejection_message'),
     /** XML do evento registrado devolvido pelo autorizador. */
     eventXml: text('event_xml'),
+    /** SHA-256 do XML do evento e arquivamento no bucket com Object Lock (ADR-0049). */
+    eventXmlSha256: char('event_xml_sha256', { length: 64 }),
+    eventXmlObjectKey: text('event_xml_object_key'),
+    eventXmlArchivedAt: timestamp('event_xml_archived_at', { withTimezone: true }),
+    eventXmlRetainUntil: timestamp('event_xml_retain_until', { withTimezone: true }),
     registeredAt: timestamp('registered_at', { withTimezone: true }),
     failureCode: text('failure_code'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

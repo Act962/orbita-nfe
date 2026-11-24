@@ -350,6 +350,9 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
   handlers['nfse.archive'] = async (job) => {
     await archiver.archive(payloadId(job, 'companyId'), payloadId(job, 'invoiceId'), systemContext('worker-fiscal', job));
   };
+  handlers['nfse.archive-cancellation'] = async (job) => {
+    await archiver.archiveCancellationEvent(payloadId(job, 'companyId'), payloadId(job, 'cancellationId'), systemContext('worker-fiscal', job));
+  };
   return { vault, processor, reconciler, resolutions, escalator, cancellations, cancellationReconciler, archiver, handlers };
 }
 

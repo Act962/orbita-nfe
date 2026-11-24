@@ -33,6 +33,7 @@ Filas implementadas (catálogo fechado em `job-queue.ts`):
 | `nfse.cancel` | fiscal (`fiscal_worker`) | 20 | 30 s → 30 min | 180 s |
 | `nfse.cancel-reconcile` | fiscal (`fiscal_worker`) | 20 | 1 min → 1 h | 120 s |
 | `nfse.archive` | fiscal (`fiscal_worker`) | 24 | 1 min → 1 h | 60 s |
+| `nfse.archive-cancellation` | fiscal (`fiscal_worker`) | 24 | 1 min → 1 h | 60 s |
 
 Jobs agendados (semana 7):
 - **`certificates.expiry-notice`:** a ativação do certificado (worker-fiscal) agenda um job por limiar: 30, 15, 7 e 1 dia antes do vencimento, mais o próprio vencimento. Na hora, o worker-general decide qual aviso vale e registra em `certificate_expiry_notices`, para não repetir. Não há varredura entre empresas.
@@ -54,6 +55,7 @@ Jobs agendados (semana 7):
   - A autorização agenda com a chave `<id>:archive`, na mesma transação, por qualquer caminho (envio, consulta ou resolução manual).
   - Grava, relê e confere o SHA-256; só então marca a nota. Repetir é seguro.
   - Sem o bucket configurado (só fora de produção), a fila fica sem handler e os jobs esperam.
+- **`nfse.archive-cancellation`** (ADR-0049): o mesmo para o XML do evento de cancelamento. O REGISTERED agenda com a chave `<cancelamento>:archive`, na mesma transação.
 
 Filas previstas:
 
