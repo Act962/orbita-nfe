@@ -52,6 +52,10 @@ jobs:
           GENERAL_DATABASE_URL: postgres://ci
           AUDIT_ANCHOR_S3_ENDPOINT: https://s3.invalid
           AUDIT_ANCHOR_S3_BUCKET: ci-anchors
+          ARTIFACTS_S3_ENDPOINT: https://s3.invalid
+          ARTIFACTS_S3_BUCKET: ci-artifacts
+          # Valor fictício, só para interpolar o compose: o prazo real é decisão do responsável (ADR-0048).
+          ARTIFACTS_RETENTION_DAYS: '1'
         run: docker compose -f docker/coolify/docker-compose.yml config --quiet
 
   # Publica as imagens no GHCR só em push na main que passou em tudo (ADR-0020: o Coolify só faz
