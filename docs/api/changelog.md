@@ -8,6 +8,31 @@ last_updated: 2026-11-24
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
 
+## 2026-11-24 — v1 (reenvio de webhook por documento)
+
+**Adicionado:**
+
+- `POST /v1/webhook-deliveries/redeliveries` (`webhooks:manage`) com `{ subjectId }`: reenvia o evento mais recente do documento para cada assinatura ativa da aplicação que já o recebeu, com o mesmo `webhook-id`.
+- Filtro `subjectId` em `GET /v1/webhook-deliveries`.
+
+## 2026-11-24 — v1 (Prefer: wait no cancelamento)
+
+**Adicionado:**
+
+- `Prefer: wait=<segundos>` em `POST /v1/service-invoices/{id}/cancellation`: `201` se o pedido terminou dentro da espera (`REGISTERED`, `REJECTED` ou `FAILED`), `202` se não.
+
+## 2026-11-24 — v1 (diagnóstico da nota)
+
+**Adicionado:**
+
+- `GET /v1/service-invoices/{id}/diagnostics`, com o escopo novo `nfse:debug`: canal, pacote de leiaute, hashes, arquivamento, cada tentativa de transmissão e todos os pedidos de cancelamento. Só metadados e códigos, sem XML e sem dados do tomador.
+
+## 2026-11-24 — v1 (situação do autorizador)
+
+**Adicionado:**
+
+- `authorizerStatus { code, message, source }` na NFS-e. Na nota gerada, `code` é o `cStat` do XML (100 NFS-e Gerada, 102 Decisão Judicial, 103 Avulsa, 107 MEI, pelas descrições do XSD oficial); na rejeitada, o código e a mensagem da rejeição. `null` enquanto o autorizador não respondeu. `rejection` continua igual.
+
 ## 2026-11-24 — v1 (Prefer: wait na emissão)
 
 **Adicionado:**

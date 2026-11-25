@@ -63,4 +63,5 @@ function verify(secret, headers, rawBody) {
 - Sucesso é uma resposta `2xx` em até 10 segundos. Redirecionamentos não são seguidos.
 - Se a entrega falhar, novas tentativas acontecem depois de 1 min, 5 min, 15 min, 1 h, 3 h, 6 h e 12 h. São 8 tentativas em cerca de 22 horas.
 - Esgotadas as tentativas, a entrega fica `FAILED`. Consulte em `GET /v1/webhook-deliveries` e reenvie em `POST /v1/webhook-deliveries/{id}/redeliver`. O reenvio usa o mesmo `webhook-id`.
+- **Perdeu a notificação de um documento e só sabe o id dele?** `POST /v1/webhook-deliveries/redeliveries` com `{ "subjectId": "<id da nota>" }` reenvia, para cada assinatura ativa da sua aplicação, o evento mais recente desse documento que ela já recebeu, com o mesmo `webhook-id`. `GET /v1/webhook-deliveries?subjectId=<id>` lista tudo o que foi entregue sobre ele.
 - Responda rápido e processe depois: grave o evento e devolva `2xx`.

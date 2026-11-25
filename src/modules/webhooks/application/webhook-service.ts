@@ -166,7 +166,7 @@ export class WebhookService {
   async listDeliveries(
     companyId: string,
     clientApplicationId: string,
-    filter: { subscriptionId?: string; eventId?: string; status?: DeliveryStatus; limit: number },
+    filter: { subscriptionId?: string; eventId?: string; status?: DeliveryStatus; subjectId?: string; limit: number },
   ): Promise<WebhookDelivery[]> {
     return this.uow.inCompany(companyId, (r) => r.deliveries.listForApplication(clientApplicationId, filter));
   }
@@ -196,6 +196,36 @@ export class WebhookService {
         details: { originalDeliveryId: original.id, eventId: original.eventId },
       });
       return delivery;
+    });
+  }
+
+  /**
+   * Reenvio por documento (ADR-0056, doc 16 A10): para cada assinatura ativa da aplicação, reenvia
+   * o evento mais recente do documento que ela recebeu (mesmo `webhook-id`). Não cria evento novo
+   * nem alcança assinatura de outra aplicação.
+   */
+  async redeliverLatestForSubject(companyId: string, subjectId: string, context: AuditContext & { clientApplicationId: string }): Promise<WebhookDelivery[]> {
+    return this.uow.inCompany(companyId, async (r) => {
+      const originals = await r.deliveries.latestOriginalsForSubject(context.clientApplicationId, subjectId);
+      if (originals.length === 0) {
+        throw new NotFoundError('WEBHOOK_DELIVERY_NOT_FOUND', 'Nenhuma assinatura ativa desta aplicação recebeu evento deste documento.');
+      }
+      const created: WebhookDelivery[] = [];
+      for (const original of originals) {
+        const delivery = await this.scheduleDelivery(r, companyId, {
+          subscriptionId: original.subscriptionId,
+          eventId: original.eventId,
+          redeliveryOf: original.id,
+          correlationId: context.correlationId,
+        });
+        await r.audit.record(context, {
+          action: 'webhook_delivery.redelivered',
+          subject: { type: 'webhook_delivery', id: delivery.id },
+          details: { originalDeliveryId: original.id, eventId: original.eventId, bySubject: subjectId },
+        });
+        created.push(delivery);
+      }
+      return created;
     });
   }
 

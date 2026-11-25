@@ -1,0 +1,1 @@
+ALTER TABLE "service_invoices" ADD COLUMN "nfse_status_code" char(3);

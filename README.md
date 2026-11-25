@@ -20,6 +20,8 @@ cp .env.example .env && npm run db:migrate          # migrations com o dono das 
 npm run dev:api                                     # documentação em http://localhost:3000/docs/
 ```
 
+Para emitir, consultar e cancelar uma NFS-e de ponta a ponta nesta máquina, com o autorizador simulado e um certificado fictício, use `npm run sandbox` ([roteiro](docs/runbooks/sandbox-local.md)).
+
 Regras do projeto (resumo):
 - Domínio sem dependências de infraestrutura (verificado por `npm run deps` e ESLint).
 - Nenhuma regra fiscal sem fonte oficial registrada em `docs/fiscal/` e sem teste.

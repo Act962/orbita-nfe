@@ -5,10 +5,10 @@ import { withIssueFields } from '../../../../shared/presentation/http/issue-fiel
 import { ProblemSchema, commonErrorResponses } from '../../../../shared/presentation/http/problem.js';
 import { auditContextOf, authErrorResponses, callerOf, companyIdOf, CompanyHeaders } from '../../../../shared/presentation/http/request-context.js';
 import type { CancellationService } from '../../application/cancellation.js';
-import type { ServiceInvoiceService } from '../../application/service-invoice-service.js';
+import type { ServiceInvoiceDiagnostics, ServiceInvoiceService } from '../../application/service-invoice-service.js';
 import type { ServiceInvoice, ServiceInvoiceCancellation } from '../../application/ports.js';
 import type { XmlDownload } from '../../application/stored-xml.js';
-import { MAX_WAIT_SECONDS, settle } from './prefer-wait.js';
+import { CANCELLATION_WAIT, INVOICE_WAIT, MAX_WAIT_SECONDS, settle } from './prefer-wait.js';
 import { CANCELLATION_REASON_CODES, CANCELLATION_STATES, REASON_TEXT_MAX, REASON_TEXT_MIN } from '../../domain/cancellation.js';
 import {
   FOREIGN_TRADE_MODES,
@@ -27,6 +27,7 @@ import {
   SIMPLES_NACIONAL_REGIMES,
   SPECIAL_TAX_REGIMES,
 } from '../../domain/dps.js';
+import { nfseStatusDescription } from '../../domain/nfse-status.js';
 import { SERVICE_INVOICE_STATUSES } from '../../domain/service-invoice.js';
 import { SUBSTITUTION_REASON_CODES } from '../../domain/substitution.js';
 
@@ -285,20 +286,24 @@ const DpsBody = z
     description: 'Contrato da DPS (v1, ADR-0033, com os acréscimos opcionais do v2, ADR-0040). Os valores fiscais são do contribuinte: o motor não escolhe nenhum.',
   });
 
+const preferHeader = z
+  .string()
+  .optional()
+  .meta({
+    description:
+      `Opcional, RFC 7240: \`wait=<segundos>\` (até ${String(MAX_WAIT_SECONDS)}) espera o resultado antes de responder: 201 se terminou, ` +
+      '202 se ainda está em andamento ou em verificação (UNKNOWN). A espera não muda o processamento; a resposta traz `Preference-Applied`.',
+  });
+
+const PreferHeaders = CompanyHeaders.extend({ prefer: preferHeader });
+
 const IdempotencyHeaders = CompanyHeaders.extend({
   'idempotency-key': z
     .string()
     .min(1)
     .max(255)
     .meta({ description: 'Obrigatório. Repetir a mesma chave com o mesmo corpo devolve a mesma nota (nunca emite outra).' }),
-  prefer: z
-    .string()
-    .optional()
-    .meta({
-      description:
-        `Opcional, RFC 7240: \`wait=<segundos>\` (até ${String(MAX_WAIT_SECONDS)}) espera o resultado antes de responder. 201 se a nota terminou (AUTHORIZED, REJECTED ou FAILED); ` +
-        '202 se ainda está em andamento ou em verificação (UNKNOWN). A espera não muda o processamento; a resposta traz `Preference-Applied`.',
-    }),
+  prefer: preferHeader,
 });
 
 /**
@@ -317,6 +322,16 @@ const ServiceInvoiceLinks = z
   .meta({ id: 'ServiceInvoiceLinks', description: 'Caminhos relativos ao endereço da API, com a mesma autenticação. Nulo enquanto o recurso não existe.' });
 
 const invoicePath = (id: string): string => `/v1/service-invoices/${id}`;
+
+/**
+ * ADR-0054: rejeição → o código e a mensagem do autorizador; nota gerada → o `cStat` do XML, com
+ * a descrição do XSD (TStat). Nada é deduzido do status quando o autorizador não informou.
+ */
+function authorizerStatusOf(i: ServiceInvoice): { code: string; message: string | null; source: string | null } | null {
+  if (i.status === 'REJECTED' && i.rejectionCode !== null) return { code: i.rejectionCode, message: i.rejectionMessage, source: i.routingChannel };
+  if (i.nfseStatusCode !== null) return { code: i.nfseStatusCode, message: nfseStatusDescription(i.nfseStatusCode), source: i.routingChannel };
+  return null;
+}
 
 const ServiceInvoiceResponse = z
   .object({
@@ -342,6 +357,14 @@ const ServiceInvoiceResponse = z
       .nullable()
       .meta({ description: 'Nesta nota substituta: a NFS-e que ela substitui e o motivo.' }),
     substitutedById: z.uuid().nullable().meta({ description: 'Na nota SUBSTITUTED: a substituta autorizada.' }),
+    authorizerStatus: z
+      .object({
+        code: z.string().meta({ description: 'Na nota gerada: `cStat` do XML (100, 102, 103 ou 107). Na rejeitada: o código da rejeição (ex.: E0039).' }),
+        message: z.string().nullable().meta({ description: 'Descrição oficial do código (anotação do XSD, ou a mensagem do autorizador na rejeição); nula se não houver.' }),
+        source: z.string().nullable().meta({ description: 'Autorizador que respondeu: NATIONAL_SEFIN ou MUNICIPAL_TERESINA_DSF.' }),
+      })
+      .nullable()
+      .meta({ description: 'O que o autorizador respondeu, quando respondeu (ADR-0054). Nulo em andamento, em UNKNOWN e em FAILED.' }),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
     links: ServiceInvoiceLinks,
@@ -363,6 +386,7 @@ const invoiceJson = (i: ServiceInvoice): z.infer<typeof ServiceInvoiceResponse> 
   failureCode: i.failureCode,
   substitution: i.substitution === null ? null : { serviceInvoiceId: i.substitution.invoiceId, reasonCode: i.substitution.reasonCode, reasonText: i.substitution.reasonText },
   substitutedById: i.substitutedById,
+  authorizerStatus: authorizerStatusOf(i),
   createdAt: i.createdAt.toISOString(),
   updatedAt: i.updatedAt.toISOString(),
   links: {
@@ -477,6 +501,91 @@ const CancellationResponse = z
   })
   .meta({ id: 'ServiceInvoiceCancellation' });
 
+/** Diagnóstico (ADR-0055): só metadados e códigos. Nenhum XML, nenhum dado do tomador. */
+const DiagnosticsResponse = z
+  .object({
+    serviceInvoiceId: z.uuid(),
+    status: z.enum(SERVICE_INVOICE_STATUSES),
+    protocol: z.object({
+      channel: z.string().nullable().meta({ description: 'Autorizador escolhido no aceite (NATIONAL_SEFIN ou MUNICIPAL_TERESINA_DSF).' }),
+      routingTableVersion: z.string().nullable(),
+      layoutPackage: z.string().nullable().meta({ description: 'Pacote de XSD usado para montar e validar a DPS.' }),
+      signedDpsSha256: z.string().nullable().meta({ description: 'SHA-256 da DPS assinada: a mesma em toda retransmissão.' }),
+      nfseXmlSha256: z.string().nullable().meta({ description: 'SHA-256 do XML autorizado (o mesmo do ETag do download).' }),
+      archivedAt: z.iso.datetime().nullable().meta({ description: 'Quando a cópia imutável foi gravada no bucket (ADR-0048).' }),
+      retainUntil: z.iso.datetime().nullable(),
+    }),
+    attempts: z
+      .array(
+        z.object({
+          seq: z.number().int(),
+          state: z.string().meta({ description: 'PREPARED, SENDING ou CLOSED.' }),
+          outcome: z.string().nullable().meta({ description: 'AUTHORIZED, REJECTED, NOT_SENT, UNKNOWN, ALREADY_EXISTS, RECOVERED_NOT_SENT ou RECOVERED_UNKNOWN.' }),
+          outcomeCode: z.string().nullable().meta({ description: 'Código do erro de transporte ou da rejeição oficial. Nunca mensagem livre.' }),
+          preparedAt: z.iso.datetime(),
+          sendingAt: z.iso.datetime().nullable(),
+          closedAt: z.iso.datetime().nullable(),
+          lookups: z.number().int().meta({ description: 'Consultas de reconciliação desta tentativa.' }),
+          consecutiveLookupErrors: z.number().int(),
+        }),
+      )
+      .meta({ description: 'Tentativas de transmissão, da primeira para a última.' }),
+    cancellations: z
+      .array(
+        z.object({
+          id: z.uuid(),
+          status: z.enum(CANCELLATION_STATES),
+          attempts: z.number().int().meta({ description: 'Envios do pedido ao autorizador.' }),
+          lookups: z.number().int(),
+          outcomeCode: z.string().nullable(),
+          failureCode: z.string().nullable(),
+          sendingAt: z.iso.datetime().nullable(),
+          registeredAt: z.iso.datetime().nullable(),
+          createdAt: z.iso.datetime(),
+        }),
+      )
+      .meta({ description: 'Todos os pedidos de cancelamento da nota, do mais antigo para o mais novo.' }),
+  })
+  .meta({ id: 'ServiceInvoiceDiagnostics' });
+
+const iso = (at: Date | null): string | null => at?.toISOString() ?? null;
+
+const diagnosticsJson = (d: ServiceInvoiceDiagnostics): z.infer<typeof DiagnosticsResponse> => ({
+  serviceInvoiceId: d.invoice.id,
+  status: d.invoice.status,
+  protocol: {
+    channel: d.invoice.routingChannel,
+    routingTableVersion: d.invoice.routingTableVersion,
+    layoutPackage: d.invoice.layoutPackage,
+    signedDpsSha256: d.invoice.signedDpsSha256,
+    nfseXmlSha256: d.archive.sha256,
+    archivedAt: iso(d.archive.archivedAt),
+    retainUntil: iso(d.archive.retainUntil),
+  },
+  attempts: d.attempts.map((a) => ({
+    seq: a.seq,
+    state: a.state,
+    outcome: a.outcome,
+    outcomeCode: a.outcomeCode,
+    preparedAt: a.preparedAt.toISOString(),
+    sendingAt: iso(a.sendingAt),
+    closedAt: iso(a.closedAt),
+    lookups: a.lookups,
+    consecutiveLookupErrors: a.consecutiveLookupErrors,
+  })),
+  cancellations: d.cancellations.map((c) => ({
+    id: c.id,
+    status: c.state,
+    attempts: c.attempts,
+    lookups: c.lookups,
+    outcomeCode: c.outcomeCode,
+    failureCode: c.failureCode,
+    sendingAt: iso(c.sendingAt),
+    registeredAt: iso(c.registeredAt),
+    createdAt: c.createdAt.toISOString(),
+  })),
+});
+
 const cancellationJson = (c: ServiceInvoiceCancellation): z.infer<typeof CancellationResponse> => ({
   id: c.id,
   serviceInvoiceId: c.invoiceId,
@@ -500,13 +609,15 @@ export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService,
         summary: 'Cancelar NFS-e',
         description:
           'Pede o cancelamento (evento e101101) de uma NFS-e AUTHORIZED. Devolve 202 com status PENDING; o registro é assíncrono (GET da cancelação ou webhook `service_invoice.cancellation_changed`). ' +
-          'Repetir o mesmo corpo devolve 200 com o mesmo pedido. O motivo é do contribuinte. O prazo é o do município: se vencido, o autorizador rejeita.',
+          'Repetir o mesmo corpo devolve 200 com o mesmo pedido. O motivo é do contribuinte. O prazo é o do município: se vencido, o autorizador rejeita. ' +
+          'Com `Prefer: wait=<segundos>`, a resposta espera o resultado: 201 se o pedido terminou dentro do prazo, 202 se não.',
         security: [{ apiKey: [] }],
-        headers: CompanyHeaders,
+        headers: PreferHeaders,
         params: z.object({ id: z.uuid() }),
         body: CancellationBody,
         response: {
           200: CancellationResponse.describe('Repetição: o pedido já existente.'),
+          201: CancellationResponse.describe('Com `Prefer: wait`: o pedido terminou dentro da espera (REGISTERED, REJECTED ou FAILED).'),
           202: CancellationResponse,
           ...commonErrorResponses,
           ...authErrorResponses,
@@ -532,10 +643,15 @@ export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService,
           auditContextOf(request),
         ),
       );
-      return reply
-        .status(result.replayed ? 200 : 202)
-        .header('location', `/v1/service-invoices/${request.params.id}/cancellation`)
-        .send(cancellationJson(result.cancellation));
+      const settled = await settle(
+        request.headers.prefer,
+        reply.raw,
+        { value: result.cancellation, replayed: result.replayed },
+        () => cancellations.get(companyIdOf(request), caller.clientApplicationId, environment, request.params.id),
+        CANCELLATION_WAIT,
+      );
+      if (settled.applied !== undefined) reply.header('preference-applied', settled.applied);
+      return reply.status(settled.status).header('location', `/v1/service-invoices/${request.params.id}/cancellation`).send(cancellationJson(settled.value));
     },
   );
 
@@ -619,6 +735,34 @@ export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService,
     },
   );
 
+  app.get(
+    '/v1/service-invoices/:id/diagnostics',
+    {
+      config: { auth: { scope: 'nfse:debug', company: true } },
+      schema: {
+        tags: [TAG],
+        summary: 'Diagnóstico da NFS-e',
+        description:
+          'Para investigar uma nota: canal, pacote de leiaute, hashes, arquivamento, cada tentativa de transmissão (com o código do resultado e as consultas de reconciliação) ' +
+          'e todos os pedidos de cancelamento. Só metadados e códigos: nenhum XML e nenhum dado do tomador. Exige o escopo próprio `nfse:debug` (ADR-0055), que `nfse:read` não inclui.',
+        security: [{ apiKey: [] }],
+        headers: CompanyHeaders,
+        params: z.object({ id: z.uuid() }),
+        response: {
+          200: DiagnosticsResponse,
+          ...commonErrorResponses,
+          ...authErrorResponses,
+          404: ProblemSchema.describe('SERVICE_INVOICE_NOT_FOUND (inexistente, de outra empresa, de outra aplicação ou de outro ambiente).'),
+        },
+      },
+    },
+    async (request) => {
+      const caller = callerOf(request);
+      const environment = caller.environment === 'live' ? 'PRODUCTION' : 'HOMOLOGATION';
+      return diagnosticsJson(await service.diagnostics(companyIdOf(request), caller.clientApplicationId, environment, request.params.id));
+    },
+  );
+
   app.post(
     '/v1/service-invoices/:id/substitution',
     {
@@ -675,11 +819,15 @@ export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService,
           auditContextOf(request),
         ),
       );
-      const settled = await settle(request.headers.prefer, reply.raw, result, () =>
-        service.get(companyIdOf(request), caller.clientApplicationId, environment, result.invoice.id),
+      const settled = await settle(
+        request.headers.prefer,
+        reply.raw,
+        { value: result.invoice, replayed: result.replayed },
+        () => service.get(companyIdOf(request), caller.clientApplicationId, environment, result.invoice.id),
+        INVOICE_WAIT,
       );
       if (settled.applied !== undefined) reply.header('preference-applied', settled.applied);
-      return reply.status(settled.status).header('location', `/v1/service-invoices/${result.invoice.id}`).send(invoiceJson(settled.invoice));
+      return reply.status(settled.status).header('location', `/v1/service-invoices/${result.invoice.id}`).send(invoiceJson(settled.value));
     },
   );
 
@@ -735,11 +883,15 @@ export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService,
           auditContextOf(request),
         ),
       );
-      const settled = await settle(request.headers.prefer, reply.raw, result, () =>
-        service.get(companyIdOf(request), caller.clientApplicationId, environment, result.invoice.id),
+      const settled = await settle(
+        request.headers.prefer,
+        reply.raw,
+        { value: result.invoice, replayed: result.replayed },
+        () => service.get(companyIdOf(request), caller.clientApplicationId, environment, result.invoice.id),
+        INVOICE_WAIT,
       );
       if (settled.applied !== undefined) reply.header('preference-applied', settled.applied);
-      return reply.status(settled.status).header('location', `/v1/service-invoices/${result.invoice.id}`).send(invoiceJson(settled.invoice));
+      return reply.status(settled.status).header('location', `/v1/service-invoices/${result.invoice.id}`).send(invoiceJson(settled.value));
     },
   );
 

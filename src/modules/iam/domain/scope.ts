@@ -20,6 +20,8 @@ export const SCOPES = [
   'nfse:issue',
   'nfse:read',
   'nfse:cancel',
+  /** Diagnóstico da nota (tentativas, protocolo, pedidos de cancelamento), ADR-0055. Não implica nenhum outro. */
+  'nfse:debug',
 ] as const;
 
 export type Scope = (typeof SCOPES)[number];

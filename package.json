@@ -27,6 +27,7 @@
     "sefin:docs": "node scripts/sefin-docs-probe.mjs",
     "sefin:test": "node --import tsx src/main/sefin-test-cli.ts",
     "dev:object-storage": "node --env-file-if-exists=.env scripts/dev-object-storage.mjs",
+    "sandbox": "node --env-file-if-exists=.env --import tsx scripts/sandbox.ts",
     "drill:backup": "bash scripts/backup-drill.sh"
   },
   "license": "UNLICENSED",

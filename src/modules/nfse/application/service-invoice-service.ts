@@ -7,7 +7,17 @@ import { buildDpsId } from '../domain/dps-id.js';
 import { checkChannelRules, checkChannelSeries } from '../domain/channel-rules.js';
 import { layoutEnvironmentOf, route, SUPPORTED_CHANNELS, type RoutingTable } from '../domain/routing.js';
 import { checkSubstitutionReason, lockedFieldChanges, type SubstitutionReason } from '../domain/substitution.js';
-import type { ActiveSeries, DpsValidator, FiscalEnvironment, IssuerEstablishment, NfseApiRepositories, ServiceInvoice, SubstitutionOf } from './ports.js';
+import type {
+  ActiveSeries,
+  DpsValidator,
+  FiscalEnvironment,
+  InvoiceDiagnostics,
+  IssuerEstablishment,
+  NfseApiRepositories,
+  ServiceInvoice,
+  ServiceInvoiceCancellation,
+  SubstitutionOf,
+} from './ports.js';
 import { verifiedXml, type XmlDownload } from './stored-xml.js';
 
 export interface AcceptServiceInvoice {
@@ -46,6 +56,11 @@ export interface ValidationResult {
 
 /** Teto da consulta por referência: a referência só se repete depois de falha definitiva. */
 export const REFERENCE_LIST_LIMIT = 50;
+
+export interface ServiceInvoiceDiagnostics extends InvoiceDiagnostics {
+  readonly invoice: ServiceInvoice;
+  readonly cancellations: readonly ServiceInvoiceCancellation[];
+}
 
 export interface AcceptResult {
   readonly invoice: ServiceInvoice;
@@ -148,6 +163,19 @@ export class ServiceInvoiceService {
         throw new NotFoundError('NFSE_XML_NOT_AVAILABLE', `A NFS-e não tem XML autorizado (a nota está em ${invoice.status}).`);
       }
       return verifiedXml({ xml: stored.xml, sha256: stored.sha256 }, `nfse-${invoice.nfseAccessKey}.xml`);
+    });
+  }
+
+  /**
+   * Diagnóstico da nota (ADR-0055): protocolo, tentativas de transmissão e pedidos de cancelamento.
+   * Só metadados e códigos: nenhum XML, nenhum dado do tomador. A mesma visibilidade do `get`.
+   */
+  async diagnostics(companyId: string, clientApplicationId: string, environment: FiscalEnvironment, id: string): Promise<ServiceInvoiceDiagnostics> {
+    return this.uow.inCompany(companyId, async (r) => {
+      const invoice = await r.invoices.findById(id);
+      if (invoice?.clientApplicationId !== clientApplicationId || invoice.environment !== environment) throw notFound();
+      const { archive, attempts } = await r.invoices.diagnostics(id);
+      return { invoice, archive, attempts, cancellations: await r.cancellations.listByInvoice(id) };
     });
   }
 

@@ -153,7 +153,7 @@ export class SimulatedNfseGateway implements NfseGateway {
   private authorize(dpsId: string): { accessKey: string; nfseXml: string } {
     const digits = BigInt(`0x${createHash('sha256').update(dpsId).digest('hex')}`).toString().padStart(41, '0').slice(0, 41);
     const accessKey = `000000022${digits}`;
-    const authorization = { accessKey, nfseXml: `<NFSeSimulada dps="${dpsId}" chave="${accessKey}"/>` };
+    const authorization = { accessKey, nfseXml: `<NFSeSimulada dps="${dpsId}" chave="${accessKey}"><infNFSe xmlns="http://www.sped.fazenda.gov.br/nfse"><cStat>100</cStat></infNFSe></NFSeSimulada>` };
     this.authorized.set(dpsId, authorization);
     return authorization;
   }

@@ -70,11 +70,36 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Sandbox local (2026-11-25)
+Roteiro: [sandbox-local](runbooks/sandbox-local.md).
+- [x] **`npm run sandbox`** (`init`, `setup`, `emit`, `get`, `cancel`, `status`): credencial de teste, e-CNPJ fictício, empresa, estabelecimento, série e certificado pela API; emissão com `Prefer: wait`, XML salvo e cancelamento.
+- [x] Conferido em 2026-11-25 com API, worker-fiscal e worker-general locais. Resultados: `201 AUTHORIZED` com `authorizerStatus` 100; cancelamento `201 REGISTERED`, nota `CANCELLED`; os dois XML baixados. A chave não apareceu nos logs.
+- [x] **Travas:** recusa `NODE_ENV=production` e API fora desta máquina. A chave fica só em `secrets/sandbox.json` (0600, fora do git), nunca no terminal. A DPS padrão usa os valores fictícios dos testes; para dados reais, use `--dps`.
+
+### Reenvio de webhook por documento (2026-11-24)
+Decisão: [ADR-0056](adr/0056-reenvio-de-webhook-por-documento.md).
+- [x] **`POST /v1/webhook-deliveries/redeliveries`** com o `subjectId`: o evento mais recente do documento, para cada assinatura ativa da aplicação que já o recebeu, com o mesmo `webhook-id`.
+- [x] **Nada novo:** nenhum evento criado, nenhuma assinatura de outra aplicação alcançada. Entrou na matriz de isolamento.
+- [x] Filtro `subjectId` na lista de entregas.
+
+### Diagnóstico da nota (2026-11-24)
+Decisão: [ADR-0055](adr/0055-diagnostico-da-nota.md). Revê a forma do `include=` do ADR-0026.
+- [x] **`GET /v1/service-invoices/{id}/diagnostics`** com o escopo novo `nfse:debug`: protocolo, tentativas de transmissão e pedidos de cancelamento.
+- [x] **Só metadados e códigos:** nenhum XML, nenhum dado do tomador; a mesma visibilidade da consulta. Entrou na matriz de isolamento.
+
+### Situação do autorizador na nota (2026-11-24)
+Decisão: [ADR-0054](adr/0054-situacao-do-autorizador-na-nota.md). Fonte do código: XSD oficial, tipo `TStat`.
+- [x] **`authorizerStatus { code, message, source }`:** `cStat` da nota gerada com a descrição do XSD, ou a rejeição; nulo enquanto o autorizador não respondeu.
+- [x] **`cStat` lido uma vez na autorização** (envio, consulta ou resolução manual) e gravado com o XML. Informativo: XML sem o grupo grava nulo.
+- [x] **Migrations 0030 e 0031:** coluna `nfse_status_code` gravada uma vez, só com o XML; só o worker-fiscal grava.
+- [ ] Depois: conferir o `cStat` numa nota real (SEFIN e DSF), quando os bloqueios R-43 e R-44 caírem.
+
 ### Prefer: wait na emissão (2026-11-24)
 Decisão: [ADR-0053](adr/0053-prefer-wait-na-emissao.md).
 - [x] **`Prefer: wait=<segundos>`** (até 20) na emissão e na substituição: 201 com o resultado final, 202 se ainda em andamento ou em `UNKNOWN`, 200 na repetição; `Preference-Applied` na resposta.
 - [x] **A espera não muda o processamento:** a API só consulta o banco, sem transação aberta, e para se o cliente desconectar. Falha na consulta responde 202 com o último estado.
-- [ ] Depois: espera no cancelamento e, na Fase 3, na NFC-e.
+- [x] **Também no pedido de cancelamento** (acréscimo ao ADR-0053): 201 com `REGISTERED`, `REJECTED` ou `FAILED`.
+- [ ] Depois: na Fase 3, na NFC-e.
 
 ### Links no corpo da nota (2026-11-24)
 Decisão: [ADR-0052](adr/0052-links-no-corpo-da-nota.md).
@@ -609,6 +634,10 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-24 | Conferência diária dos XML arquivados contra o hash e a trava, com alerta e auditoria das falhas | 0051 |
 | 2026-11-24 | `links` no corpo da nota para o XML, o cancelamento e a substituição | 0052 |
 | 2026-11-24 | `Prefer: wait` na emissão e na substituição: 201 com o resultado dentro da espera | 0053 |
+| 2026-11-24 | `authorizerStatus` na nota, com o `cStat` do XML e a descrição do XSD | 0054 |
+| 2026-11-24 | Diagnóstico da nota em rota própria, com o escopo `nfse:debug` | 0055 |
+| 2026-11-24 | `Prefer: wait` também no pedido de cancelamento | 0053 |
+| 2026-11-24 | Reenvio de webhook pelo documento, sem saber o id do evento | 0056 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |
@@ -673,6 +702,7 @@ R-01 duplicidade · R-03 Reforma Tributária · R-07 NFC-e offline · R-17 VPS �
 | Alerta automático de fila morta (ex.: `audit.anchor-*`) | Hoje só `ops dead` e log (R-34) | Fase 5 (observabilidade) ou antes, se houver incidente |
 | Imagem do banco no PostgreSQL 17.10 (17.11 tem menos de 2 semanas) | Prudência com versão recém-publicada | Atualizar para 17.11 e rodar `npm run drill:backup` |
 | `scripts/dev-test-certificate.ts` usa a PKI de teste | Teste de fumaça local | Permanente (somente desenvolvimento) |
+| `scripts/sandbox.ts` usa a PKI de teste, a DPS fictícia dos testes e o simulador | Sandbox local de ponta a ponta | Permanente (somente desenvolvimento) |
 | Porta do PostgreSQL local alterada para 15432 | Evitar conflito com outro PostgreSQL (5432) e com as faixas que o Windows/Hyper-V reserva na faixa dinâmica (a 54329 foi reservada após reinício) | Configurável por `POSTGRES_PORT` |
 
 ## Evidências de homologação

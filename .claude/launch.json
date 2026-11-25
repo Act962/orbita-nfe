@@ -6,6 +6,18 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:api"],
       "port": 3000
+    },
+    {
+      "name": "worker-fiscal",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:worker-fiscal"],
+      "port": 3101
+    },
+    {
+      "name": "worker-general",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:worker-general"],
+      "port": 3102
     }
   ]
 }

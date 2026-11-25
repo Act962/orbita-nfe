@@ -60,12 +60,19 @@ export interface DeliveryFilter {
   readonly subscriptionId?: string;
   readonly eventId?: string;
   readonly status?: DeliveryStatus;
+  /** Documento do evento (`subject.id`), ex.: o id da NFS-e (ADR-0056). */
+  readonly subjectId?: string;
   readonly limit: number;
 }
 
 export interface DeliveryRepository {
   listForApplication(clientApplicationId: string, filter: DeliveryFilter): Promise<WebhookDelivery[]>;
   findForApplication(clientApplicationId: string, id: string): Promise<WebhookDelivery | undefined>;
+  /**
+   * Por assinatura ATIVA da aplicação: a entrega original (não um reenvio) do evento mais recente
+   * do documento (ADR-0056). Só o que a assinatura já recebeu: nada de evento novo para ela.
+   */
+  latestOriginalsForSubject(clientApplicationId: string, subjectId: string): Promise<WebhookDelivery[]>;
   /** Nova entrega do mesmo evento para a mesma assinatura (reenvio manual ou teste). */
   insert(input: { id: string; subscriptionId: string; eventId: string; redeliveryOf: string | null }): Promise<WebhookDelivery>;
 }

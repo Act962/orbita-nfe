@@ -374,6 +374,39 @@ describe('webhooks (ADR-0015, ADR-0027 B6)', () => {
     await t.app.inject({ method: 'PATCH', url: `/v1/webhook-subscriptions/${sub.id}`, headers: bearer(key, companyId), payload: { status: 'DISABLED' } });
   });
 
+  it('reenvio por documento (ADR-0056): reenvia o último evento do documento, com o mesmo webhook-id; outra aplicação e assinatura desativada → 404', async () => {
+    const sub = await subscribe(['certificate.activated', 'certificate.revoked'], '/por-documento');
+    const certificateId = await uploadCertificate();
+    await drainAll();
+    await t.app.inject({ method: 'POST', url: `/v1/establishments/${establishmentId}/certificates/${certificateId}/revocation`, headers: bearer(key, companyId) });
+    await drainAll();
+    const original = received.filter((r) => r.path === '/por-documento');
+    expect(original.map((r) => (JSON.parse(r.body) as { type: string }).type)).toEqual(['certificate.activated', 'certificate.revoked']);
+
+    const byDocument = await t.app.inject({ method: 'GET', url: `/v1/webhook-deliveries?subjectId=${certificateId}`, headers: bearer(key, companyId) });
+    expect(byDocument.json<{ items: { eventType: string }[] }>().items.map((d) => d.eventType)).toEqual(['certificate.revoked', 'certificate.activated']);
+
+    const res = await t.app.inject({ method: 'POST', url: '/v1/webhook-deliveries/redeliveries', headers: bearer(key, companyId), payload: { subjectId: certificateId } });
+    expect(res.statusCode, res.body).toBe(202);
+    const items = res.json<{ items: { subscriptionId: string; eventType: string; status: string; redeliveryOf: string | null }[] }>().items;
+    expect(items).toEqual([expect.objectContaining({ subscriptionId: sub.id, eventType: 'certificate.revoked', status: 'PENDING' })]);
+    await generalRunner.drain();
+    const again = received.filter((r) => r.path === '/por-documento');
+    expect(again).toHaveLength(3);
+    expect(again[2]?.headers['webhook-id']).toBe(original[1]?.headers['webhook-id']);
+    expect(verifySignature(sub.secret, again[2] as Received)).toBe(true);
+
+    const other = await createClientApp(t.admin, 'reenvio-outra');
+    await t.admin.grantCompany(other.id, companyId);
+    const denied = await t.app.inject({ method: 'POST', url: '/v1/webhook-deliveries/redeliveries', headers: bearer(await other.key(['webhooks:manage']), companyId), payload: { subjectId: certificateId } });
+    expect(denied.statusCode).toBe(404);
+    expect(problemCode(denied)).toBe('WEBHOOK_DELIVERY_NOT_FOUND');
+
+    await t.app.inject({ method: 'PATCH', url: `/v1/webhook-subscriptions/${sub.id}`, headers: bearer(key, companyId), payload: { status: 'DISABLED' } });
+    const disabled = await t.app.inject({ method: 'POST', url: '/v1/webhook-deliveries/redeliveries', headers: bearer(key, companyId), payload: { subjectId: certificateId } });
+    expect(disabled.statusCode).toBe(404);
+  });
+
   it('tentativas esgotadas → FAILED, sem novo agendamento', async () => {
     const sub = await subscribe(['certificate.activated'], '/sempre-falha');
     const deliveryId = (await t.app.inject({ method: 'POST', url: `/v1/webhook-subscriptions/${sub.id}/test`, headers: bearer(key, companyId) })).json<{ id: string }>().id;

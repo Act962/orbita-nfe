@@ -37,6 +37,8 @@ export const serviceInvoices = pgTable(
     nfseXml: text('nfse_xml'),
     /** SHA-256 do XML autorizado, gravado junto com ele (ADR-0048). */
     nfseXmlSha256: char('nfse_xml_sha256', { length: 64 }),
+    /** `infNFSe/cStat` do XML autorizado (ADR-0054), gravado junto com ele. */
+    nfseStatusCode: char('nfse_status_code', { length: 3 }),
     /** Arquivamento no object storage com Object Lock (ADR-0010, ADR-0048). */
     nfseXmlObjectKey: text('nfse_xml_object_key'),
     nfseXmlArchivedAt: timestamp('nfse_xml_archived_at', { withTimezone: true }),

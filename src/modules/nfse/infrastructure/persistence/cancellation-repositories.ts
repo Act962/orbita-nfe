@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, desc, eq, isNull, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, notInArray, sql } from 'drizzle-orm';
 import { ConflictError } from '../../../../shared/application/errors.js';
 import { CANCELLATION_RACE } from '../../application/cancellation.js';
 import type { Transaction } from '../../../../shared/infrastructure/database/database.js';
@@ -53,6 +53,10 @@ export function cancellationRequestRepository(tx: Transaction): CancellationRequ
   return {
     findActive: (invoiceId) => one(tx, and(eq(c.invoiceId, invoiceId), notInArray(c.state, ['REJECTED', 'FAILED']))),
     findLatest: (invoiceId) => one(tx, and(eq(c.invoiceId, invoiceId))),
+    async listByInvoice(invoiceId) {
+      const rows = await tx.select(columns).from(c).where(eq(c.invoiceId, invoiceId)).orderBy(asc(c.createdAt), asc(c.id));
+      return rows.map(toCancellation);
+    },
     async insert(cancellation) {
       // SQL explícito: a API só tem INSERT nas colunas do pedido.
       await tx.execute(sql`

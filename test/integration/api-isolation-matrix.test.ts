@@ -134,6 +134,7 @@ const CASES: Record<string, MatrixCase> = {
   'GET /v1/service-invoices/:id/cancellation': { expectCrossCompany: expectNotFound('SERVICE_INVOICE_NOT_FOUND') },
   'GET /v1/service-invoices/:id/cancellation/xml': { expectCrossCompany: expectNotFound('SERVICE_INVOICE_NOT_FOUND') },
   'GET /v1/service-invoices/:id/xml': { expectCrossCompany: expectNotFound('SERVICE_INVOICE_NOT_FOUND') },
+  'GET /v1/service-invoices/:id/diagnostics': { expectCrossCompany: expectNotFound('SERVICE_INVOICE_NOT_FOUND') },
   'POST /v1/service-invoices/:id/substitution': {
     // B tenta substituir a nota de A.
     payload: () => ({ ...sampleDpsData(), substitution: { reasonCode: '99', reasonText: 'Tentativa de substituir nota de outra empresa' } }),
@@ -172,6 +173,11 @@ const CASES: Record<string, MatrixCase> = {
   },
   'GET /v1/webhook-deliveries/:deliveryId': { expectCrossCompany: expectNotFound('WEBHOOK_DELIVERY_NOT_FOUND') },
   'POST /v1/webhook-deliveries/:deliveryId/redeliver': { expectCrossCompany: expectNotFound('WEBHOOK_DELIVERY_NOT_FOUND') },
+  'POST /v1/webhook-deliveries/redeliveries': {
+    // B pede, na própria empresa, o reenvio do documento cujo evento foi entregue em A (a entrega de teste é da assinatura de A).
+    payload: ({ a }) => ({ subjectId: a.subscriptionId }),
+    expectCrossCompany: expectNotFound('WEBHOOK_DELIVERY_NOT_FOUND'),
+  },
 };
 
 /** Rotas /v1 sem empresa, revisadas uma a uma. */

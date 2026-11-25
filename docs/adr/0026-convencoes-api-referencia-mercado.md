@@ -14,7 +14,7 @@ Adotar, sem alterar ADRs 0006, 0007, 0012 e 0015:
 5. `hint` opcional nos problemas e nas rejeições; `authorizerStatus` com código e mensagem do autorizador.
 6. Rate limit por credencial (429 + `Retry-After` + `RateLimit-*`).
 7. Política de webhooks publicada (calendário de retentativas) e reenvio de notificações por documento.
-8. Links de arquivos com 302 para URL pré-assinada; `include=` para detalhes de depuração. (Para o XML, revisto pelo [ADR-0050](0050-download-xml-pela-api.md): a API entrega os bytes do banco, sem redirecionar. O 302 continua valendo para PDF e ZIP.)
+8. Links de arquivos com 302 para URL pré-assinada; `include=` para detalhes de depuração. (Para o XML, revisto pelo [ADR-0050](0050-download-xml-pela-api.md): a API entrega os bytes do banco, sem redirecionar. O 302 continua valendo para PDF e ZIP. O `include=` virou a rota `…/diagnostics` com o escopo `nfse:debug`, pelo [ADR-0055](0055-diagnostico-da-nota.md).)
 9. Changelog e política de descontinuação (`Deprecation`/`Sunset`).
 
 ## Consequências

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, desc, eq, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
 import type { AuditTrail } from '../../../../shared/application/audit.js';
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../../../shared/application/errors.js';
 import type { JobScheduler } from '../../../../shared/application/job-queue.js';
@@ -25,6 +25,7 @@ import type {
 import { IDEMPOTENCY_RACE } from '../../application/service-invoice-service.js';
 import type { AttemptState, ServiceInvoiceStatus } from '../../domain/service-invoice.js';
 import type { SubstitutionReasonCode } from '../../domain/substitution.js';
+import { nfseStatusCode } from '../dps/nfse-status-code.js';
 import { archivedXmlCheckRepository } from './archive-check-repository.js';
 import { CANCELLATION_CONSTRAINTS, cancellationRepository, cancellationRequestRepository } from './cancellation-repositories.js';
 import { RESOLUTION_CONSTRAINTS, resolutionRepository } from './resolution-repositories.js';
@@ -73,6 +74,7 @@ const toInvoice = (row: InvoiceRow): ServiceInvoice => ({
   signedDpsSha256: row.signedDpsSha256,
   layoutPackage: row.layoutPackage,
   nfseAccessKey: row.nfseAccessKey,
+  nfseStatusCode: row.nfseStatusCode,
   authorizedAt: row.authorizedAt,
   rejectionCode: row.rejectionCode,
   rejectionMessage: row.rejectionMessage,
@@ -129,6 +131,7 @@ const invoiceColumns = {
   signedDpsSha256: serviceInvoices.signedDpsSha256,
   layoutPackage: serviceInvoices.layoutPackage,
   nfseAccessKey: serviceInvoices.nfseAccessKey,
+  nfseStatusCode: serviceInvoices.nfseStatusCode,
   authorizedAt: serviceInvoices.authorizedAt,
   rejectionCode: serviceInvoices.rejectionCode,
   rejectionMessage: serviceInvoices.rejectionMessage,
@@ -215,6 +218,15 @@ export function serviceInvoiceRepository(tx: Transaction): ServiceInvoiceReposit
         .limit(1);
       return rows[0] === undefined ? undefined : toInvoice(rows[0] as InvoiceRow);
     },
+    async diagnostics(id) {
+      const archive = await tx
+        .select({ sha256: serviceInvoices.nfseXmlSha256, archivedAt: serviceInvoices.nfseXmlArchivedAt, retainUntil: serviceInvoices.nfseXmlRetainUntil })
+        .from(serviceInvoices)
+        .where(eq(serviceInvoices.id, id))
+        .limit(1);
+      const attempts = await tx.select().from(serviceInvoiceAttempts).where(eq(serviceInvoiceAttempts.invoiceId, id)).orderBy(asc(serviceInvoiceAttempts.seq));
+      return { archive: archive[0] ?? { sha256: null, archivedAt: null, retainUntil: null }, attempts: attempts.map(toAttempt) };
+    },
     async storedXml(id) {
       const rows = await tx
         .select({ xml: serviceInvoices.nfseXml, sha256: serviceInvoices.nfseXmlSha256 })
@@ -249,6 +261,8 @@ export function serviceInvoiceWorkerRepository(tx: Transaction): ServiceInvoiceW
                 nfseXml: change.authorization.nfseXml,
                 // Junto com o XML (ADR-0048): o arquivamento confere estes bytes antes de gravar no bucket.
                 nfseXmlSha256: createHash('sha256').update(change.authorization.nfseXml, 'utf8').digest('hex'),
+                // Também junto com o XML (ADR-0054): o cStat de infNFSe, informativo.
+                nfseStatusCode: nfseStatusCode(change.authorization.nfseXml),
                 authorizedAt: change.authorization.authorizedAt,
               }),
           ...(change.rejection === undefined ? {} : { rejectionCode: change.rejection.code, rejectionMessage: change.rejection.message }),

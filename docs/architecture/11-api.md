@@ -15,6 +15,7 @@ Recursos separados por modalidade (contratos diferentes), com consulta unificada
 | POST | `/v1/service-invoices/{id}/substitution` | `nfse:issue` — **implementado** (ADR-0036) |
 | GET | `/v1/service-invoices/{id}/xml` | `nfse:read` — **implementado** (bytes do banco com o hash conferido, sem redirecionar, ADR-0050) |
 | GET | `/v1/service-invoices/{id}/cancellation/xml` | `nfse:read` — **implementado** (XML do evento registrado, ADR-0050) |
+| GET | `/v1/service-invoices/{id}/diagnostics` | `nfse:debug` — **implementado** (tentativas, protocolo e pedidos de cancelamento, sem XML, ADR-0055) |
 | GET | `/v1/service-invoices/{id}/pdf` | `nfse:read` |
 | POST | `/v1/product-invoices` / `/v1/consumer-invoices` | Fases 4 e 3 |
 | POST | `/v1/product-invoices/{id}/correction-letters` | NF-e apenas |
@@ -30,6 +31,7 @@ Recursos separados por modalidade (contratos diferentes), com consulta unificada
 | POST / GET / PATCH | `/v1/webhook-subscriptions`, `/v1/webhook-subscriptions/{id}` | `webhooks:manage` / `webhooks:read` — **implementado** |
 | POST | `/v1/webhook-subscriptions/{id}/secret-rotation`, `/v1/webhook-subscriptions/{id}/test` | `webhooks:manage` — **implementado** |
 | GET / POST | `/v1/webhook-deliveries`, `/v1/webhook-deliveries/{id}`, `/v1/webhook-deliveries/{id}/redeliver` | `webhooks:read` / `webhooks:manage` — **implementado** |
+| POST | `/v1/webhook-deliveries/redeliveries` | `webhooks:manage` — **implementado** (reenvio do último evento de um documento, ADR-0056); a lista aceita `?subjectId=` |
 | GET | `/health/live`, `/health/ready`, `/metrics` | interno |
 
 ## Convenções
@@ -43,6 +45,7 @@ Recursos separados por modalidade (contratos diferentes), com consulta unificada
 - Erros no formato RFC 9457 (`application/problem+json`) com `code` estável (`VALIDATION_FAILED`, `IDEMPOTENCY_KEY_REUSED`, `CERTIFICATE_EXPIRED`, `COMPANY_ACCESS_DENIED`…). Rejeições fiscais não são erro HTTP: o documento existe com `status: REJECTED` e `rejection: { code, message, source }`.
 - Valores monetários como **string decimal** (`"1234.50"`), nunca number.
 - Respostas JSON não incluem XML embutido. O XML tem rota própria, que devolve `application/xml` com `ETag` e `Repr-Digest` (ADR-0050).
+- A nota traz `authorizerStatus` ([ADR-0054](../adr/0054-situacao-do-autorizador-na-nota.md)): na gerada, o `cStat` do XML com a descrição do XSD (100 NFS-e Gerada, 102, 103, 107); na rejeitada, o código e a mensagem da rejeição; `null` enquanto o autorizador não respondeu.
 - A nota traz `links` ([ADR-0052](../adr/0052-links-no-corpo-da-nota.md)): `self`, `xml`, `cancellation`, `cancellationXml`, `substitutes` e `substitutedBy`, sempre presentes, com caminhos relativos ao endereço da API e `null` enquanto o recurso não existe.
 
 ## Exemplo (NFS-e — campos ilustrativos, contrato final na Fase 2)
@@ -60,7 +63,7 @@ POST /v1/service-invoices
 → 202 { "id": "0192f…", "status": "PENDING", "links": { "self": "/v1/service-invoices/0192f…", "xml": null, … } }
 ```
 
-Com `Prefer: wait=10` ([ADR-0053](../adr/0053-prefer-wait-na-emissao.md)), a mesma chamada espera até 10 s (máximo 20) e responde `201` se a nota terminou (`AUTHORIZED`, `REJECTED`, `FAILED`), ou `202` se ainda está em andamento ou em `UNKNOWN`, com `Preference-Applied: wait=10`. A espera não muda o processamento.
+Com `Prefer: wait=10` ([ADR-0053](../adr/0053-prefer-wait-na-emissao.md)), a mesma chamada espera até 10 s (máximo 20) e responde `201` se a nota terminou (`AUTHORIZED`, `REJECTED`, `FAILED`), ou `202` se ainda está em andamento ou em `UNKNOWN`, com `Preference-Applied: wait=10`. A espera não muda o processamento. Vale também no pedido de cancelamento (201 com `REGISTERED`, `REJECTED` ou `FAILED`).
 
 ## Documentação interativa (ADR-0024)
 - Interface **Scalar**: `GET /docs/`, documento OpenAPI 3.1: `GET /docs/openapi.json` (ou `.yaml`).

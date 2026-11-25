@@ -201,6 +201,8 @@ describe('arquivamento do XML autorizado (ADR-0048)', () => {
     expect(await attempt(sql`update service_invoices set nfse_xml_sha256 = ${'0'.repeat(64)} where id = ${id}`)).toBe('ck_service_invoices_write_once');
     expect(await attempt(sql`update service_invoices set nfse_xml_object_key = 'outra' where id = ${id}`)).toBe('ck_service_invoices_write_once');
     expect(await attempt(sql`update service_invoices set nfse_xml_retain_until = now() where id = ${id}`)).toBe('ck_service_invoices_write_once');
+    // ADR-0054: o cStat também é gravado uma vez, junto com o XML.
+    expect(await attempt(sql`update service_invoices set nfse_status_code = '102' where id = ${id}`)).toBe('ck_service_invoices_write_once');
   });
 
   it('evento de cancelamento (ADR-0049): o REGISTERED grava o hash e enfileira nfse.archive-cancellation; o XML vai para a pasta da nota', async () => {

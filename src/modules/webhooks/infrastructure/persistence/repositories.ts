@@ -155,11 +155,29 @@ export function deliveryRepository(tx: Transaction): DeliveryRepository {
         ...(filter.subscriptionId !== undefined ? [eq(webhookDeliveries.subscriptionId, filter.subscriptionId)] : []),
         ...(filter.eventId !== undefined ? [eq(webhookDeliveries.eventId, filter.eventId)] : []),
         ...(filter.status !== undefined ? [eq(webhookDeliveries.status, filter.status)] : []),
+        ...(filter.subjectId !== undefined ? [eq(outboxEvents.subjectId, filter.subjectId)] : []),
       ];
       const rows = await forApplication(clientApplicationId)
         .where(and(...conditions))
         .orderBy(desc(webhookDeliveries.createdAt), desc(webhookDeliveries.id))
         .limit(filter.limit);
+      return rows.map(toDelivery);
+    },
+    async latestOriginalsForSubject(clientApplicationId, subjectId) {
+      const rows = await tx
+        .selectDistinctOn([webhookDeliveries.subscriptionId], deliveryColumns)
+        .from(webhookDeliveries)
+        .innerJoin(webhookSubscriptions, eq(webhookSubscriptions.id, webhookDeliveries.subscriptionId))
+        .innerJoin(outboxEvents, eq(outboxEvents.id, webhookDeliveries.eventId))
+        .where(
+          and(
+            eq(webhookSubscriptions.clientApplicationId, clientApplicationId),
+            eq(webhookSubscriptions.status, 'ACTIVE'),
+            eq(outboxEvents.subjectId, subjectId),
+            isNull(webhookDeliveries.redeliveryOf),
+          ),
+        )
+        .orderBy(webhookDeliveries.subscriptionId, desc(outboxEvents.occurredAt), desc(outboxEvents.id));
       return rows.map(toDelivery);
     },
     async findForApplication(clientApplicationId, id) {

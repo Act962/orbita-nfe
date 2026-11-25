@@ -86,8 +86,13 @@ const DeliveryQuery = z.object({
   subscriptionId: z.uuid().optional(),
   eventId: z.uuid().optional(),
   status: z.enum(DELIVERY_STATUSES).optional(),
+  subjectId: z.string().min(1).max(100).optional().meta({ description: 'Documento do evento (`subject.id`), ex.: o id da NFS-e.' }),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
+
+const SubjectRedeliveryBody = z
+  .object({ subjectId: z.string().min(1).max(100).meta({ description: 'Documento do evento (`subject.id`), ex.: o id da NFS-e.' }) })
+  .strict();
 
 const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
 
@@ -276,7 +281,7 @@ export function registerWebhookRoutes(app: HttpApp, service: WebhookService): vo
       schema: {
         tags: [TAG],
         summary: 'Listar entregas',
-        description: 'Entregas das assinaturas da aplicação, mais recentes primeiro. Filtre por assinatura, evento ou status.',
+        description: 'Entregas das assinaturas da aplicação, mais recentes primeiro. Filtre por assinatura, evento, status ou documento (`subjectId`).',
         security: [{ apiKey: [] }],
         headers: CompanyHeaders,
         querystring: DeliveryQuery,
@@ -290,6 +295,7 @@ export function registerWebhookRoutes(app: HttpApp, service: WebhookService): vo
           ...(request.query.subscriptionId !== undefined ? { subscriptionId: request.query.subscriptionId } : {}),
           ...(request.query.eventId !== undefined ? { eventId: request.query.eventId } : {}),
           ...(request.query.status !== undefined ? { status: request.query.status } : {}),
+          ...(request.query.subjectId !== undefined ? { subjectId: request.query.subjectId } : {}),
         })
       ).map(deliveryJson),
     }),
@@ -309,6 +315,31 @@ export function registerWebhookRoutes(app: HttpApp, service: WebhookService): vo
       },
     },
     async (request) => deliveryJson(await service.getDelivery(companyIdOf(request), callerOf(request).clientApplicationId, request.params.deliveryId)),
+  );
+
+  app.post(
+    '/v1/webhook-deliveries/redeliveries',
+    {
+      config: { auth: { scope: 'webhooks:manage', company: true } },
+      schema: {
+        tags: [TAG],
+        summary: 'Reenviar o último evento de um documento',
+        description:
+          'Para cada assinatura ATIVA da aplicação, reenvia o evento mais recente do documento que ela já recebeu (ex.: o último `service_invoice.status_changed` de uma NFS-e), ' +
+          'com o mesmo `webhook-id` e tentativas zeradas. Não cria evento novo nem alcança assinatura de outra aplicação (ADR-0056).',
+        security: [{ apiKey: [] }],
+        headers: CompanyHeaders,
+        body: SubjectRedeliveryBody,
+        response: {
+          202: z.object({ items: z.array(DeliveryResponse) }),
+          ...commonErrorResponses,
+          ...authErrorResponses,
+          404: ProblemSchema.describe('WEBHOOK_DELIVERY_NOT_FOUND: nenhuma assinatura ativa da aplicação recebeu evento deste documento.'),
+        },
+      },
+    },
+    async (request, reply) =>
+      reply.status(202).send({ items: (await service.redeliverLatestForSubject(companyIdOf(request), request.body.subjectId, ownerContext(request))).map(deliveryJson) }),
   );
 
   app.post(

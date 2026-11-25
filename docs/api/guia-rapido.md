@@ -170,6 +170,8 @@ Content-Type: application/json
   - `ROUTE_AMBIGUOUS` / `ROUTE_NOT_FOUND`: caso não coberto pela tabela.
 - **Ambientes:** uma credencial `test` não enxerga notas de produção, e vice-versa. A `externalReference` também é por ambiente: a mesma referência pode ser usada em homologação e em produção.
 - **XML:** `GET /v1/service-invoices/{id}/xml` devolve o XML autorizado (`application/xml`), também depois de cancelada ou substituída; antes da autorização, `404 NFSE_XML_NOT_AVAILABLE`. O `ETag` traz o SHA-256 dos bytes, para você conferir o que recebeu. O XML do cancelamento registrado sai em `GET /v1/service-invoices/{id}/cancellation/xml`.
+- **Diagnóstico:** para investigar uma nota (demora, `UNKNOWN`, rejeição), `GET /v1/service-invoices/{id}/diagnostics` mostra cada tentativa de envio, o código do resultado e as consultas de reconciliação. Exige o escopo `nfse:debug`, que não vem com `nfse:read`: peça uma credencial de suporte.
+- **Situação no autorizador:** `authorizerStatus` mostra o que o autorizador respondeu. Na nota gerada, o `code` vem do XML: `100` é a NFS-e gerada normalmente, `107` é NFS-e de MEI. Na rejeitada, é o código da rejeição (ex.: `E0039`), o mesmo de `rejection`.
 - **Links:** a nota traz `links` com o caminho de cada rota que já existe para ela (`xml`, `cancellationXml`, `substitutedBy`…). Use o link em vez de montar a URL: se ele é `null`, o recurso ainda não existe.
 
 ## 8. Cancelar NFS-e
@@ -184,6 +186,7 @@ Content-Type: application/json
 ```
 
 - **Escopo:** `nfse:cancel`. Só nota `AUTHORIZED`.
+- **`Prefer: wait=10`** também vale aqui: `201` se o cancelamento terminou dentro da espera (`REGISTERED`, `REJECTED` ou `FAILED`), `202` se não. Em `UNKNOWN`, não peça de novo: o motor consulta e resolve.
 - **O motivo é seu:**
   - `reasonCode` (cMotivo): `1` Erro na Emissão, `2` Serviço não Prestado ou `9` Outros;
   - `reasonText` (xMotivo): de 15 a 255 caracteres.

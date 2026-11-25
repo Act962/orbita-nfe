@@ -107,6 +107,9 @@ describe('POST /v1/service-invoices → worker → GET', () => {
     expect(after.statusCode).toBe(200);
     expect(after.json<{ status: string; accessKey: string | null }>()).toMatchObject({ status: 'AUTHORIZED', accessKey: expect.stringMatching(/^000000022\d{41}$/) as unknown });
     expect(gateway.received.get(accepted.dpsId)).toBe(1);
+    // ADR-0054: o cStat do XML autorizado (o simulador devolve 100), com a descrição do XSD.
+    expect(after.json<{ authorizerStatus: unknown }>().authorizerStatus).toEqual({ code: '100', message: 'NFS-e Gerada', source: 'NATIONAL_SEFIN' });
+    expect(res.json<{ authorizerStatus: unknown }>().authorizerStatus).toBeNull();
 
     // O XML transmitido: leiaute da produção restrita, válido no XSD oficial e com assinatura que confere.
     const stored = await new CompanyTransactions(worker.db).run(companyId, (tx) =>
@@ -247,6 +250,8 @@ describe('consulta pela referência externa (ADR-0047)', () => {
       [secondId, 'PENDING'],
       [firstId, 'REJECTED'],
     ]);
+    // ADR-0054: na rejeitada, o código e a mensagem do autorizador.
+    expect((await get(firstId)).json<{ authorizerStatus: unknown }>().authorizerStatus).toEqual({ code: 'E9999', message: 'Rejeição simulada.', source: 'NATIONAL_SEFIN' });
 
     expect((await byReference('pedido-que-nao-existe')).json<{ items: unknown[] }>().items).toEqual([]);
     expect((await byReference('pedido-ref-1', otherAppKey)).json<{ items: unknown[] }>().items).toEqual([]);
@@ -680,7 +685,63 @@ describe('cancelamento pela API (ADR-0035)', () => {
       tx.execute<{ signed_xml: string }>(sql`select signed_xml from service_invoice_cancellations where id = ${cancellationId}`),
     );
     expect(signed.rows[0]?.signed_xml).toContain('<e101101><xDesc>Cancelamento de NFS-e</xDesc>');
+
+    // ADR-0055: o diagnóstico mostra a tentativa autorizada e o pedido registrado, sem XML.
+    const diagnostics = (token: string) => t.app.inject({ method: 'GET', url: `/v1/service-invoices/${id}/diagnostics`, headers: bearer(token, companyId) });
+    const denied = await diagnostics(key);
+    expect(denied.statusCode).toBe(403);
+    expect(problemCode(denied)).toBe('INSUFFICIENT_SCOPE');
+    const res2 = await diagnostics(await mainApp.key(['nfse:debug']));
+    expect(res2.statusCode, res2.body).toBe(200);
+    const body = res2.json<{
+      status: string;
+      protocol: { channel: string; layoutPackage: string; signedDpsSha256: string };
+      attempts: { seq: number; state: string; outcome: string; sendingAt: string | null }[];
+      cancellations: { id: string; status: string; attempts: number }[];
+    }>();
+    expect(body.status).toBe('CANCELLED');
+    expect(body.protocol).toMatchObject({ channel: 'NATIONAL_SEFIN', layoutPackage: 'nfse-nacional/1.01-20261020-prodrest', signedDpsSha256: expect.stringMatching(/^[0-9a-f]{64}$/) as unknown });
+    expect(body.attempts).toEqual([expect.objectContaining({ seq: 1, state: 'CLOSED', outcome: 'AUTHORIZED' })]);
+    expect(body.attempts[0]?.sendingAt).not.toBeNull();
+    expect(body.cancellations).toEqual([expect.objectContaining({ id: cancellationId, status: 'REGISTERED', attempts: 1 })]);
+    expect(res2.body).not.toContain('<');
+    // Outra aplicação, mesmo com o escopo: 404.
+    const outsider = await createClientApp(t.admin, 'nfse-api-debug-outra');
+    await t.admin.grantCompany(outsider.id, companyId);
+    expect(problemCode(await diagnostics(await outsider.key(['nfse:debug'])))).toBe('SERVICE_INVOICE_NOT_FOUND');
   });
+
+  it('Prefer: wait (ADR-0053): o pedido registra dentro da espera → 201 REGISTERED; sem worker → 202 depois do prazo', async () => {
+    const issued = await post({ establishmentId, ...sampleDpsData() }, 'cancel-wait-1');
+    const id = issued.json<{ id: string }>().id;
+    const w = fiscalWorker();
+    await w.processor.process(companyId, id, WORKER);
+
+    const waiting = t.app.inject({ method: 'POST', url: `/v1/service-invoices/${id}/cancellation`, headers: { ...bearer(key, companyId), prefer: 'wait=10' }, payload: reason });
+    let cancellationId: string | undefined;
+    for (let i = 0; i < 100 && cancellationId === undefined; i += 1) {
+      const rows = await new CompanyTransactions(worker.db).run(companyId, (tx) =>
+        tx.execute<{ id: string }>(sql`select id from service_invoice_cancellations where invoice_id = ${id}`),
+      );
+      cancellationId = rows.rows[0]?.id;
+      if (cancellationId === undefined) await new Promise((done) => setTimeout(done, 50));
+    }
+    if (cancellationId === undefined) throw new Error('pedido não aceito');
+    expect(await w.cancellations.process(companyId, cancellationId, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'REGISTERED' });
+    const res = await waiting;
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json<{ id: string; status: string }>()).toMatchObject({ id: cancellationId, status: 'REGISTERED' });
+    expect(res.headers['preference-applied']).toBe('wait=10');
+
+    const other = await post({ establishmentId, ...sampleDpsData() }, 'cancel-wait-2');
+    const otherId = other.json<{ id: string }>().id;
+    await w.processor.process(companyId, otherId, WORKER);
+    const started = Date.now();
+    const pending = await t.app.inject({ method: 'POST', url: `/v1/service-invoices/${otherId}/cancellation`, headers: { ...bearer(key, companyId), prefer: 'wait=1' }, payload: reason });
+    expect(pending.statusCode, pending.body).toBe(202);
+    expect(pending.json<{ status: string }>().status).toBe('PENDING');
+    expect(Date.now() - started).toBeGreaterThanOrEqual(900);
+  }, 60_000);
 
   it('motivo fora de TSCodJustCanc/TSMotivo → 400; nota não autorizada → 422; outra aplicação → 404', async () => {
     const issued = await post({ establishmentId, ...sampleDpsData() }, 'cancel-e2e-2');

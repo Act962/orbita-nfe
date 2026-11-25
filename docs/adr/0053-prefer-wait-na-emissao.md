@@ -28,4 +28,12 @@ A emissão é assíncrona: a API aceita, reserva o número e responde 202; o wor
 ## Consequências
 - Cada requisição com espera ocupa uma conexão HTTP e faz algumas consultas curtas ao banco. Com o limite de 20 s e o intervalo crescente, são no máximo cerca de 25 consultas por requisição.
 - Timeout continua sem provar nada: 202 depois da espera **não** quer dizer que a nota não foi emitida (regra do doc 12). O guia diz para consultar depois ou esperar o webhook.
-- **Ainda fora:** a espera no cancelamento, e na NFC-e (Fase 3), onde o PDV deve ter espera curta por padrão.
+- **Ainda fora:** a NFC-e (Fase 3), onde o PDV deve ter espera curta por padrão.
+
+## Acréscimo (2026-11-24): pedido de cancelamento
+A mesma preferência vale em `POST /v1/service-invoices/{id}/cancellation`, com as mesmas regras:
+- **201:** pedido novo que terminou dentro da espera (`REGISTERED`, `REJECTED` ou `FAILED`);
+- **202:** ainda em andamento ou em `UNKNOWN` (a espera acaba na hora; **não** peça de novo);
+- **200:** repetição do mesmo corpo.
+
+A espera é a mesma rotina, com a regra de "em andamento" e de "final" de cada recurso.

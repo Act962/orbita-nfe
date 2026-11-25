@@ -1,21 +1,33 @@
 import type { ServerResponse } from 'node:http';
 import { setTimeout as sleep } from 'node:timers/promises';
-import type { ServiceInvoice } from '../../application/ports.js';
+import type { ServiceInvoice, ServiceInvoiceCancellation } from '../../application/ports.js';
 
 /**
- * `Prefer: wait=<segundos>` na emissão e na substituição (RFC 7240, ADR-0026 A3, ADR-0053).
+ * `Prefer: wait=<segundos>` (RFC 7240, ADR-0026 A3) na emissão e na substituição (ADR-0053) e no
+ * pedido de cancelamento (ADR-0053, acréscimo de 24/11).
  *
- * A emissão continua assíncrona: o worker-fiscal transmite. A API só espera, consultando o banco,
- * até a nota sair do andamento ou o prazo acabar. Nenhuma transação fica aberta durante a espera.
+ * O processamento continua assíncrono: o worker-fiscal transmite. A API só espera, consultando o
+ * banco, até o recurso sair do andamento ou o prazo acabar. Nenhuma transação fica aberta durante
+ * a espera.
  */
 export const MAX_WAIT_SECONDS = 20;
 
-/** Em andamento: a espera continua. UNKNOWN encerra a espera (a reconciliação leva mais tempo). */
-const IN_FLIGHT: ReadonlySet<ServiceInvoice['status']> = new Set(['PENDING', 'PROCESSING']);
-/** Resultado final de uma nota recém-aceita: responde 201. */
-const FINAL: ReadonlySet<ServiceInvoice['status']> = new Set(['AUTHORIZED', 'REJECTED', 'FAILED', 'CANCELLED', 'SUBSTITUTED']);
+/** Quando continuar esperando e quando o resultado é final (responde 201). */
+export interface WaitPolicy<T> {
+  /** Em andamento: a espera continua. UNKNOWN NÃO está aqui: a reconciliação leva mais tempo. */
+  inFlight(value: T): boolean;
+  final(value: T): boolean;
+}
 
-export const isFinal = (invoice: ServiceInvoice): boolean => FINAL.has(invoice.status);
+export const INVOICE_WAIT: WaitPolicy<ServiceInvoice> = {
+  inFlight: (i) => i.status === 'PENDING' || i.status === 'PROCESSING',
+  final: (i) => ['AUTHORIZED', 'REJECTED', 'FAILED', 'CANCELLED', 'SUBSTITUTED'].includes(i.status),
+};
+
+export const CANCELLATION_WAIT: WaitPolicy<ServiceInvoiceCancellation> = {
+  inFlight: (c) => c.state === 'PENDING' || c.state === 'PROCESSING',
+  final: (c) => c.state === 'REGISTERED' || c.state === 'REJECTED' || c.state === 'FAILED',
+};
 
 /**
  * Segundos pedidos, limitados a {@link MAX_WAIT_SECONDS}. `undefined` sem a preferência, com valor
@@ -34,54 +46,56 @@ export function preferredWait(header: string | readonly string[] | undefined): n
   return undefined;
 }
 
-export interface Settled {
-  readonly invoice: ServiceInvoice;
-  /** 200 repetição; 201 nova com resultado final dentro da espera; 202 nova ainda em andamento. */
+export interface Settled<T> {
+  readonly value: T;
+  /** 200 repetição; 201 novo com resultado final dentro da espera; 202 novo ainda em andamento. */
   readonly status: 200 | 201 | 202;
   /** Valor para `Preference-Applied`, quando a espera foi aplicada. */
   readonly applied: string | undefined;
 }
 
 /**
- * Aplica a preferência a uma nota recém-aceita (ou repetida). A espera para se a conexão fechar
+ * Aplica a preferência a um recurso recém-aceito (ou repetido). A espera para se a conexão fechar
  * (`close` na resposta antes de enviada).
  */
-export async function settle(
+export async function settle<T>(
   prefer: string | readonly string[] | undefined,
   response: Pick<ServerResponse, 'once' | 'off'>,
-  accepted: { readonly invoice: ServiceInvoice; readonly replayed: boolean },
-  load: () => Promise<ServiceInvoice>,
-): Promise<Settled> {
+  accepted: { readonly value: T; readonly replayed: boolean },
+  load: () => Promise<T>,
+  policy: WaitPolicy<T>,
+): Promise<Settled<T>> {
   const seconds = preferredWait(prefer);
-  if (seconds === undefined) return { invoice: accepted.invoice, status: accepted.replayed ? 200 : 202, applied: undefined };
+  if (seconds === undefined) return { value: accepted.value, status: accepted.replayed ? 200 : 202, applied: undefined };
   const controller = new AbortController();
   const onClose = (): void => {
     controller.abort();
   };
   response.once('close', onClose);
   try {
-    const invoice = await waitWhileInFlight(accepted.invoice, load, seconds, controller.signal);
-    return { invoice, status: accepted.replayed ? 200 : isFinal(invoice) ? 201 : 202, applied: `wait=${String(seconds)}` };
+    const value = await waitWhileInFlight(accepted.value, load, policy, seconds, controller.signal);
+    return { value, status: accepted.replayed ? 200 : policy.final(value) ? 201 : 202, applied: `wait=${String(seconds)}` };
   } finally {
     response.off('close', onClose);
   }
 }
 
 /**
- * Consulta a nota até ela sair do andamento, o prazo acabar ou o cliente desconectar. Intervalo
+ * Consulta até o recurso sair do andamento, o prazo acabar ou o cliente desconectar. Intervalo
  * crescente (200 ms até 1 s) para não pesar no banco. Devolve a última leitura.
  */
-export async function waitWhileInFlight(
-  first: ServiceInvoice,
-  load: () => Promise<ServiceInvoice>,
+export async function waitWhileInFlight<T>(
+  first: T,
+  load: () => Promise<T>,
+  policy: WaitPolicy<T>,
   seconds: number,
   signal: AbortSignal,
   now: () => number = Date.now,
-): Promise<ServiceInvoice> {
+): Promise<T> {
   const deadline = now() + seconds * 1000;
-  let invoice = first;
+  let value = first;
   let interval = 200;
-  while (IN_FLIGHT.has(invoice.status) && !signal.aborted) {
+  while (policy.inFlight(value) && !signal.aborted) {
     const left = deadline - now();
     if (left <= 0) break;
     try {
@@ -90,12 +104,12 @@ export async function waitWhileInFlight(
       break; // cliente desconectou: nada a responder
     }
     try {
-      invoice = await load();
+      value = await load();
     } catch {
-      // A nota já foi aceita: uma falha só na consulta não pode virar erro da emissão. Responde o último estado.
+      // O pedido já foi aceito: uma falha só na consulta não pode virar erro dele. Responde o último estado.
       break;
     }
     interval = Math.min(Math.round(interval * 1.5), 1000);
   }
-  return invoice;
+  return value;
 }

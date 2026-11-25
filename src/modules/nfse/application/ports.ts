@@ -42,6 +42,8 @@ export interface ServiceInvoice {
   readonly signedDpsSha256: string | null;
   readonly layoutPackage: string | null;
   readonly nfseAccessKey: string | null;
+  /** `infNFSe/cStat` do XML autorizado (ADR-0054); nulo se o XML não o trouxer. */
+  readonly nfseStatusCode: string | null;
   readonly authorizedAt: Date | null;
   readonly rejectionCode: string | null;
   readonly rejectionMessage: string | null;
@@ -140,6 +142,14 @@ export interface ServiceInvoiceRepository {
   findActiveSubstitute(originalId: string): Promise<ServiceInvoice | undefined>;
   /** XML autorizado e o hash gravado junto (download, ADR-0050). */
   storedXml(id: string): Promise<StoredXml | undefined>;
+  /** Metadados de diagnóstico (ADR-0055): arquivamento e tentativas de transmissão, sem XML. */
+  diagnostics(id: string): Promise<InvoiceDiagnostics>;
+}
+
+export interface InvoiceDiagnostics {
+  readonly archive: { readonly sha256: string | null; readonly archivedAt: Date | null; readonly retainUntil: Date | null };
+  /** Da primeira para a última. */
+  readonly attempts: readonly TransmissionAttempt[];
 }
 
 /** XML guardado no banco com o SHA-256 gravado na mesma transação (ADR-0048, ADR-0049). */
@@ -276,6 +286,8 @@ export interface CancellationRequestRepository {
   findActive(invoiceId: string): Promise<ServiceInvoiceCancellation | undefined>;
   /** Pedido mais recente da nota, em qualquer estado. */
   findLatest(invoiceId: string): Promise<ServiceInvoiceCancellation | undefined>;
+  /** Todos os pedidos da nota, do mais antigo para o mais novo (diagnóstico, ADR-0055). */
+  listByInvoice(invoiceId: string): Promise<readonly ServiceInvoiceCancellation[]>;
   insert(cancellation: NewCancellation): Promise<ServiceInvoiceCancellation>;
   /** XML do evento registrado e o hash (download, ADR-0050). */
   storedEventXml(id: string): Promise<StoredXml | undefined>;
