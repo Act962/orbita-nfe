@@ -284,6 +284,29 @@ describe('regras do Anexo I conferidas no aceite (ADR-0037)', () => {
     expect(codes(service(base, { municipalityCode: '9999999' }))).not.toContain('E0302');
   });
 
+  it('E0246, E0299 e E0304: país fora da tabela ISO2 do ANEXO_A (ADR-0060), além de BR', () => {
+    const iso2 = new Set(['PT', 'US', 'ZZ']);
+    const withTable = (d: DpsData, environment: RuleEnvironment = 'HOMOLOGATION') =>
+      checkDpsRules(d, { ...ctx(environment), countryExists: (code) => iso2.has(code) }).map((v) => v.code);
+    const takerIn = (countryCode: string): DpsData => exported({ ...base, taker: { ...foreignTaker, address: { ...FOREIGN, countryCode } } });
+    const intermIn = (countryCode: string): DpsData =>
+      exported({ ...base, intermediary: { document: { type: 'NIF', value: 'X1' }, name: 'Intermediário', address: { ...FOREIGN, countryCode } } });
+
+    for (const environment of ['PRODUCTION', 'HOMOLOGATION'] as const) {
+      expect(withTable(takerIn('PT'), environment)).not.toContain('E0246');
+      expect(withTable(takerIn('XX'), environment)).toContain('E0246');
+      expect(withTable(intermIn('XX'), environment)).toContain('E0299');
+      expect(withTable(intermIn('PT'), environment)).not.toContain('E0299');
+      expect(withTable(exported(service(base, { municipalityCode: undefined, countryCode: 'XX' })), environment)).toContain('E0304');
+      expect(withTable(exported(service(base, { municipalityCode: undefined, countryCode: 'US' })), environment)).not.toContain('E0304');
+    }
+    // ZZ está na tabela: aceito na produção, recusado na produção restrita (Obs. 2 da E0246).
+    expect(withTable(takerIn('ZZ'), 'PRODUCTION')).not.toContain('E0246');
+    expect(withTable(takerIn('ZZ'), 'HOMOLOGATION')).toContain('E0246');
+    // Sem a tabela, só a parte que independe dela (BR).
+    expect(codes(takerIn('XX'))).not.toContain('E0246');
+  });
+
   it('cada regra tem código do Anexo I, campo, mensagem e ao menos um ambiente', () => {
     for (const rule of DPS_RULES) {
       expect(rule.code).toMatch(/^E[0-9]{4}$/);

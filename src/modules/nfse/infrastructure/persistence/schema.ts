@@ -168,6 +168,8 @@ export const serviceInvoiceCancellations = pgTable(
     consecutiveLookupErrors: integer('consecutive_lookup_errors').notNull().default(0),
     outcomeCode: text('outcome_code'),
     rejectionMessage: text('rejection_message'),
+    /** Todos os erros da rejeição do evento (ADR-0059): `[{ code, message }]`. */
+    rejectionErrors: jsonb('rejection_errors').$type<RejectionError[]>(),
     /** XML do evento registrado devolvido pelo autorizador. */
     eventXml: text('event_xml'),
     /** SHA-256 do XML do evento e arquivamento no bucket com Object Lock (ADR-0049). */

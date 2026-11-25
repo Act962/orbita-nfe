@@ -13,7 +13,7 @@ import type {
   FiscalEnvironment,
   InvoiceDiagnostics,
   IssuerEstablishment,
-  MunicipalityDirectory,
+  FiscalReferenceTables,
   NfseApiRepositories,
   ServiceInvoice,
   ServiceInvoiceCancellation,
@@ -87,8 +87,8 @@ export class ServiceInvoiceService {
     private readonly routing: RoutingTable,
     /** Sem validador (testes do núcleo), o aceite não pré-valida no XSD. */
     private readonly validator?: DpsValidator,
-    /** Tabela do IBGE (ADR-0058); sem ela, E0238/E0294/E0302 ficam com o autorizador. */
-    private readonly municipalities?: MunicipalityDirectory,
+    /** ANEXO_A e IBGE (ADR-0058, ADR-0060); sem elas, as regras que consultam tabela ficam com o autorizador. */
+    private readonly references?: FiscalReferenceTables,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
@@ -368,7 +368,8 @@ export class ServiceInvoiceService {
         environment: rulesEnvironment,
         providerCnpj: establishment.cnpj,
         issueDate: brasiliaDate(this.now()),
-        municipalityExists: this.municipalities === undefined ? undefined : (code) => this.municipalities?.exists(code) ?? true,
+        municipalityExists: this.references === undefined ? undefined : (code) => this.references?.municipalityExists(code) ?? true,
+        countryExists: this.references === undefined ? undefined : (code) => this.references?.countryExists(code) ?? true,
       }).map((v) => ({ ...v, ruleId: 'NFSE-DPS' })),
       ...checkChannelRules(channel, input.dps).map((v) => ({ ...v, ruleId: 'NFSE-TERESINA-DSF' })),
     ];

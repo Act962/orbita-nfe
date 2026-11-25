@@ -274,6 +274,8 @@ export interface ServiceInvoiceCancellation {
   /** Último resultado do autorizador (código de transporte, rejeição ou ALREADY_EXISTS). */
   readonly outcomeCode: string | null;
   readonly rejectionMessage: string | null;
+  /** Todos os erros da rejeição do evento (ADR-0059); nulo antes dele ou sem rejeição. */
+  readonly rejectionErrors: readonly RejectionError[] | null;
   readonly registeredAt: Date | null;
   readonly failureCode: string | null;
   readonly createdAt: Date;
@@ -301,6 +303,7 @@ export interface CancellationChange {
   readonly clearSending?: true;
   readonly outcomeCode?: string | null;
   readonly rejectionMessage?: string;
+  readonly rejectionErrors?: readonly RejectionError[];
   readonly eventXml?: string;
   readonly registeredAt?: Date;
   readonly failureCode?: string;
@@ -422,6 +425,12 @@ export interface MunicipalityDirectory {
   exists(code: string): boolean;
 }
 
+/** Tabelas de referência do aceite (ADR-0058, ADR-0060): ANEXO_A do Sistema Nacional e IBGE. */
+export interface FiscalReferenceTables {
+  municipalityExists(code: string): boolean;
+  countryExists(code: string): boolean;
+}
+
 /**
  * Gerador do DANFSe (ADR-0057; NT 008 SE/CGNFS-e v1.02): PDF a partir do XML autorizado. A marca
  * d'água vem da situação ATUAL da nota (CANCELADA, SUBSTITUÍDA), que o XML autorizado não traz.
@@ -514,7 +523,8 @@ export type LookupOutcome =
 /** Resultado do registro de evento. Mesma regra: sem prova de não envio, é UNKNOWN. */
 export type EventOutcome =
   | { readonly kind: 'REGISTERED'; readonly eventXml: string }
-  | { readonly kind: 'REJECTED'; readonly code: string; readonly message: string }
+  /** `code` é o primeiro erro; `errors`, todos, na ordem do autorizador (ADR-0059). */
+  | { readonly kind: 'REJECTED'; readonly code: string; readonly message: string; readonly errors?: readonly RejectionError[] }
   /** O autorizador já tem este evento para a nota: leva à consulta imediata. */
   | { readonly kind: 'ALREADY_EXISTS' }
   | { readonly kind: 'NOT_SENT'; readonly errorCode: string }

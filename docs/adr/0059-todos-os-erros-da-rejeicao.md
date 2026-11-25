@@ -22,7 +22,9 @@ O que se perdia era outra coisa. Uma rejeição pode trazer vários erros, e o m
    - Migrations 0032 e 0033: lista não vazia, só com `rejection_code`; só o worker-fiscal grava.
 3. **Na API**, `rejection.errors` traz todos os erros. `rejection.code` e `rejection.message` continuam como antes, sem quebra de contrato.
    - Rejeição gravada antes desta mudança: `errors` sai com um item só, o código e a mensagem que já existiam.
-4. **Fora deste ADR:** o pedido de cancelamento rejeitado continua com o código e a mensagem. Leva a lista quando precisar.
+4. **Cancelamento** (acréscimo de 2026-11-25): o pedido de cancelamento rejeitado também traz `rejection.errors`.
+   - A lista é gravada em `service_invoice_cancellations.rejection_errors`, só em pedido `REJECTED` com código.
+   - Migrations 0034 e 0035: o worker-fiscal grava; a API e o operador leem.
 
 ## Consequências
 - O cliente corrige todos os erros de uma vez, lendo `rejection.errors[].code`, sem interpretar texto.

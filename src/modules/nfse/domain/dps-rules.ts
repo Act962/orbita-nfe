@@ -27,7 +27,13 @@ export interface DpsRuleContext {
    * E0294, E0302) não são conferidas aqui e ficam com o autorizador.
    */
   readonly municipalityExists?: ((code: string) => boolean) | undefined;
+  /** Países ISO2 do ANEXO_A (ADR-0060). Sem a tabela, a existência do país fica com o autorizador. */
+  readonly countryExists?: ((code: string) => boolean) | undefined;
 }
+
+/** País que NÃO está na tabela ISO2 do ANEXO_A (só com a tabela disponível). */
+const unknownCountry = (code: string | undefined, context: DpsRuleContext): boolean =>
+  code !== undefined && context.countryExists !== undefined && !context.countryExists(code);
 
 /** Código nacional que NÃO está na tabela do IBGE (só com a tabela disponível). */
 const unknownMunicipality = (code: string | undefined, context: DpsRuleContext): boolean =>
@@ -187,15 +193,15 @@ export const DPS_RULES: readonly DpsRule[] = [
     code: 'E0246',
     environments: PRODUCTION_ONLY,
     field: 'taker.address.countryCode',
-    message: 'O país do endereço no exterior do tomador não pode ser o Brasil (BR).',
-    violated: (d) => foreignCountry(d.taker) === 'BR',
+    message: 'O país do endereço no exterior do tomador deve existir na tabela ISO2 do ANEXO_A e não pode ser o Brasil (BR).',
+    violated: (d, c) => foreignCountry(d.taker) === 'BR' || unknownCountry(foreignCountry(d.taker), c),
   },
   {
     code: 'E0246',
     environments: HOMOLOGATION_ONLY,
     field: 'taker.address.countryCode',
-    message: 'O país do endereço no exterior do tomador não pode ser o Brasil (BR) nem ZZ (sem informação) na Sefin Nacional.',
-    violated: (d) => ['BR', 'ZZ'].includes(foreignCountry(d.taker) ?? ''),
+    message: 'O país do endereço no exterior do tomador deve existir na tabela ISO2 do ANEXO_A e não pode ser o Brasil (BR) nem ZZ (sem informação) na Sefin Nacional.',
+    violated: (d, c) => ['BR', 'ZZ'].includes(foreignCountry(d.taker) ?? '') || unknownCountry(foreignCountry(d.taker), c),
   },
   // ------------------------------------------------------------------ intermediário (contrato v2)
   {
@@ -258,8 +264,8 @@ export const DPS_RULES: readonly DpsRule[] = [
     code: 'E0299',
     environments: BOTH,
     field: 'intermediary.address.countryCode',
-    message: 'O país do endereço no exterior do intermediário não pode ser o Brasil (BR).',
-    violated: (d) => foreignCountry(d.intermediary) === 'BR',
+    message: 'O país do endereço no exterior do intermediário deve existir na tabela ISO2 do ANEXO_A e não pode ser o Brasil (BR).',
+    violated: (d, c) => foreignCountry(d.intermediary) === 'BR' || unknownCountry(foreignCountry(d.intermediary), c),
   },
   // ------------------------------------------------------------------ comércio exterior (ADR-0044)
   {
@@ -281,8 +287,8 @@ export const DPS_RULES: readonly DpsRule[] = [
     code: 'E0304',
     environments: BOTH,
     field: 'service.countryCode',
-    message: 'O país da prestação do serviço não pode ser o Brasil (BR).',
-    violated: (d) => d.service.countryCode === 'BR',
+    message: 'O país da prestação do serviço deve existir na tabela ISO2 do ANEXO_A e não pode ser o Brasil (BR).',
+    violated: (d, c) => d.service.countryCode === 'BR' || unknownCountry(d.service.countryCode, c),
   },
   ...(
     [

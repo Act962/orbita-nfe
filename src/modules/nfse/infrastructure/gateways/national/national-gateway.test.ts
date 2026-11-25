@@ -173,7 +173,7 @@ describe('NationalNfseGateway: eventos', () => {
       expect(await gateway().registerEvent(KEY, '<p/>', context())).toEqual({ kind: 'ALREADY_EXISTS' });
     }
     next[`POST /nfse/${KEY}/eventos`] = { status: 400, body: { ...meta, erro: { codigo: 'E0822', descricao: 'Prazo expirou' } } };
-    expect(await gateway().registerEvent(KEY, '<p/>', context())).toEqual({ kind: 'REJECTED', code: 'E0822', message: 'E0822: Prazo expirou' });
+    expect(await gateway().registerEvent(KEY, '<p/>', context())).toEqual({ kind: 'REJECTED', code: 'E0822', message: 'E0822: Prazo expirou', errors: [{ code: 'E0822', message: 'Prazo expirou' }] });
     next[`POST /nfse/${KEY}/eventos`] = { status: 500, body: {} };
     expect(await gateway().registerEvent(KEY, '<p/>', context())).toEqual({ kind: 'UNKNOWN', errorCode: 'HTTP_500' });
   });

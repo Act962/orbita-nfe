@@ -248,7 +248,7 @@ export class CancellationProcessor {
           await registered(r, cancellation, invoice, 'PROCESSING', outcome.eventXml, at, context, { leaseUntil: null, outcomeCode: null });
           return;
         case 'REJECTED':
-          await settle(r, cancellation, invoice, 'PROCESSING', 'REJECTED', context, { leaseUntil: null, outcomeCode: outcome.code, rejectionMessage: outcome.message });
+          await settle(r, cancellation, invoice, 'PROCESSING', 'REJECTED', context, { leaseUntil: null, outcomeCode: outcome.code, rejectionMessage: outcome.message, rejectionErrors: outcome.errors ?? [{ code: outcome.code, message: outcome.message }] });
           return;
         case 'NOT_SENT': {
           await r.cancellations.changeState(cancellation.id, 'PROCESSING', 'PENDING', { leaseUntil: null, clearSending: true, outcomeCode: outcome.errorCode });

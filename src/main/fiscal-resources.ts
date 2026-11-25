@@ -1,5 +1,15 @@
 import { resolve } from 'node:path';
-import { loadDanfseRenderer, loadMunicipalityTable, loadRoutingTable, type DanfseRenderer, type MunicipalityTable, type RoutingTable } from '../modules/nfse/public.js';
+import {
+  loadAnexoA,
+  loadDanfseRenderer,
+  loadMunicipalityTable,
+  loadRoutingTable,
+  referenceTables,
+  type DanfseRenderer,
+  type FiscalReferenceTables,
+  type MunicipalityTable,
+  type RoutingTable,
+} from '../modules/nfse/public.js';
 import { FiscalSchemaCatalog } from '../shared/infrastructure/xml/fiscal-schema-catalog.js';
 
 /**
@@ -35,4 +45,15 @@ export const DANFSE_DIR = resolve(import.meta.dirname, '../../resources/fiscal/d
 
 export function loadDanfse(municipalities: MunicipalityTable, dir: string = DANFSE_DIR): DanfseRenderer {
   return loadDanfseRenderer(dir, municipalities);
+}
+
+/** ANEXO_A do Sistema Nacional NFS-e (ADR-0060), com o hash conferido na carga. */
+export const ANEXO_A = {
+  dir: resolve(import.meta.dirname, '../../resources/fiscal/nfse-anexo-a'),
+  file: 'anexo-a-v1.00-20251210.json',
+} as const;
+
+/** Tabelas de referência do aceite: ANEXO_A + IBGE (ADR-0058, ADR-0060). */
+export function loadReferenceTables(municipalities: MunicipalityTable, anexoA: typeof ANEXO_A = ANEXO_A): FiscalReferenceTables {
+  return referenceTables(loadAnexoA(anexoA.dir, anexoA.file), municipalities);
 }

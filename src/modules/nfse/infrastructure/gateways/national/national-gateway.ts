@@ -177,7 +177,7 @@ export class NationalNfseGateway implements NfseGateway {
       const messages = authorizerMessages(json, this.profile.rejectionCode);
       if (messages.some((m) => EVENT_ALREADY_EXISTS.has(m.code))) return { kind: 'ALREADY_EXISTS' };
       const first = messages[0];
-      if (first !== undefined) return { kind: 'REJECTED', code: first.code, message: describe(messages) };
+      if (first !== undefined) return { kind: 'REJECTED', code: first.code, message: describe(messages), errors: rejectionErrors(messages) };
     }
     return { kind: 'UNKNOWN', errorCode: `HTTP_${outcome.status}` };
   }

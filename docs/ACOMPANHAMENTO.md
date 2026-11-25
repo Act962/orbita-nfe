@@ -13,7 +13,7 @@ Painel resumido: [status.html](status.html) (abrir no navegador; atualizado a ca
   - roteamento SEFIN × DSF.
 - **Operações:** cancelamento, substituição, `Prefer: wait`, XML e DANFSe (NT 008), diagnóstico, webhooks assinados com reenvio, auditoria encadeada e isolamento por empresa.
 - **Verificação de 25/11/2026:**
-  - `npm run check` com 819 testes, typecheck, lint e regras de camadas, mais o build;
+  - `npm run check` com 825 testes, typecheck, lint e regras de camadas, mais o build;
   - `npm run sandbox -- smoke` com 13 passos de ponta a ponta contra API, worker-fiscal e worker-general reais, com webhook recebido e assinatura conferida.
 
 **Falta para homologação real e produção (depende de terceiros ou do responsável):**
@@ -23,7 +23,7 @@ Painel resumido: [status.html](status.html) (abrir no navegador; atualizado a ca
 - Enquadramento da empresa-piloto pelo contador; prazo legal de guarda do XML e provedor S3; revisão do especialista fiscal (gates 1 e 2).
 - Deploy: VPS, domínio e buckets. Adiado por decisão do responsável.
 
-**Prioridade atual:** P2 de API: lista de erros no cancelamento rejeitado, tabela ANEXO_A do Sistema Nacional e inscrição municipal no cadastro. Depois, preparação da Fase 3 (NFC-e) sem emissão.
+**Prioridade atual:** inscrição municipal no cadastro (depende de decisão do responsável sobre preencher a IM na DPS). Depois, preparação da Fase 3 (NFC-e) sem emissão. Depois, preparação da Fase 3 (NFC-e) sem emissão.
 
 ## Status geral
 **Fase 1 — Fundação concluída no código** (deploy real adiado por decisão do responsável). **Fase 2a — NFS-e Nacional:** código concluído no que não depende de terceiros; a saída depende dos itens acima.
@@ -95,13 +95,13 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 Decisão: [ADR-0059](adr/0059-todos-os-erros-da-rejeicao.md).
 - [x] **Sem "XML de rejeição" na NFS-e:** a SEFIN e a DSF respondem JSON (`erros[]`). O item B7 fica para a NF-e e a NFC-e.
 - [x] **`rejection.errors[]`** com todos os erros, na ordem do autorizador; gravado pelo worker-fiscal em `rejection_errors` (migrations 0032 e 0033).
-- [ ] Depois: a mesma lista no pedido de cancelamento rejeitado.
+- [x] A mesma lista no pedido de cancelamento rejeitado (migrations 0034 e 0035).
 
 ### Municípios conferidos na tabela do IBGE (2026-11-25)
 Decisão: [ADR-0058](adr/0058-municipios-ibge-no-aceite.md).
 - [x] **E0238, E0294 e E0302 do Anexo I** no aceite e na validação, antes de numerar, com a tabela oficial do IBGE do ADR-0057. `0000000` ("Águas Marítimas") é aceito no local da prestação.
 - [x] O município do estabelecimento (`cLocEmi`) fica só no formato: pode ser trecho de concessão de rodovia, de outra tabela, e a regra dele (E0037) é do cadastro de convênio.
-- [ ] Depois: usar a tabela do ANEXO_A do Sistema Nacional (municípios e países ISO2), que fecharia também E0246, E0299 e E0304.
+- [x] ANEXO_A do Sistema Nacional baixado e versionado ([ADR-0060](adr/0060-anexo-a-municipios-e-paises.md)): E0246, E0299 e E0304 completas pela tabela ISO2; municípios pelo ANEXO_A **ou** pelo IBGE (o ANEXO_A v1.00 não tem o 5101837).
 
 ### DANFSe (2026-11-25)
 Decisão: [ADR-0057](adr/0057-danfse.md). Fonte: NT 008 SE/CGNFS-e v1.02, lida inteira (a API de DANFSe do ADN foi suspensa em 03/08/2026).
@@ -684,6 +684,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-25 | DANFSe gerado pelo motor (NT 008 v1.02), Helvetica no lugar das fontes proprietárias | 0057 |
 | 2026-11-25 | Códigos de município conferidos na tabela do IBGE no aceite (E0238, E0294, E0302) | 0058 |
 | 2026-11-25 | Todos os erros da rejeição na API; sem "XML de rejeição" na NFS-e (a resposta é JSON) | 0059 |
+| 2026-11-25 | ANEXO_A no aceite: países completos; município pelo ANEXO_A ou IBGE | 0060 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |

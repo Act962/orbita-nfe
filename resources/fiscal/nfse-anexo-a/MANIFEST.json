@@ -1,0 +1,17 @@
+{
+  "id": "nfse-anexo-a/v1.00-20251210",
+  "decision": "ADR-0060",
+  "source": "Portal da NFS-e — ANEXO_A-MUNICIPIO_IBGE-PAISES_ISO2-SNNFSe v1.00 (Documentação Atual), citado pelas regras E0246, E0299, E0302 e E0304 do Anexo I",
+  "sourceUrl": "https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/documentacao-atual/anexo_a-municipio_ibge-paises_iso2-v1-00-snnfse-20251210.xlsx",
+  "publishedOn": "2025-12-10",
+  "retrievedOn": "2026-11-25",
+  "generator": "scripts/anexo-a.mjs (só reorganiza: abas TAB.MUN_IBGE, TAB.PAÍS_ISO2 e TAB.LOC.GERAL, sem alterar códigos nem nomes)",
+  "files": {
+    "anexo-a-v1.00-20251210.xlsx": {
+      "sha256": "238b715ab2dcc2c9e0857c44d69048e0af806b45ec8499568342de4a37f4419d"
+    },
+    "anexo-a-v1.00-20251210.json": {
+      "sha256": "b63167d29b9310c39d9e4bdaa8f455129a718f6557cb9e82c289f09ebf0edd69"
+    }
+  }
+}

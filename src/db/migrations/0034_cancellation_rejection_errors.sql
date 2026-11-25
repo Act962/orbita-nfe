@@ -1,0 +1,1 @@
+ALTER TABLE "service_invoice_cancellations" ADD COLUMN "rejection_errors" jsonb;

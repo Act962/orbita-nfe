@@ -239,6 +239,20 @@
       "when": 1795614264741,
       "tag": "0033_security_service_invoice_rejection_errors",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1795615227297,
+      "tag": "0034_cancellation_rejection_errors",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1795615231371,
+      "tag": "0035_security_cancellation_rejection_errors",
+      "breakpoints": true
     }
   ]
 }

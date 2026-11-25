@@ -30,6 +30,7 @@ const columns = {
   consecutiveLookupErrors: c.consecutiveLookupErrors,
   outcomeCode: c.outcomeCode,
   rejectionMessage: c.rejectionMessage,
+  rejectionErrors: c.rejectionErrors,
   registeredAt: c.registeredAt,
   failureCode: c.failureCode,
   createdAt: c.createdAt,
@@ -90,6 +91,7 @@ export function cancellationRepository(tx: Transaction): CancellationRepository 
           ...(change.clearSending === undefined ? {} : { sendingAt: null }),
           ...(change.outcomeCode === undefined ? {} : { outcomeCode: change.outcomeCode }),
           ...(change.rejectionMessage === undefined ? {} : { rejectionMessage: change.rejectionMessage }),
+          ...(change.rejectionErrors === undefined ? {} : { rejectionErrors: [...change.rejectionErrors] }),
           // Hash junto com o XML do evento (ADR-0049): o arquivamento confere estes bytes.
           ...(change.eventXml === undefined
             ? {}

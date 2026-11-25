@@ -514,7 +514,13 @@ const CancellationResponse = z
     }),
     reasonCode: z.enum(CANCELLATION_REASON_CODES),
     reasonText: z.string(),
-    rejection: z.object({ code: z.string(), message: z.string() }).nullable(),
+    rejection: z
+      .object({
+        code: z.string(),
+        message: z.string(),
+        errors: z.array(z.object({ code: z.string(), message: z.string() })).meta({ description: 'Todos os erros, na ordem do autorizador (ADR-0059).' }),
+      })
+      .nullable(),
     failureCode: z.string().nullable(),
     registeredAt: z.iso.datetime().nullable(),
     createdAt: z.iso.datetime(),
@@ -613,7 +619,14 @@ const cancellationJson = (c: ServiceInvoiceCancellation): z.infer<typeof Cancell
   status: c.state,
   reasonCode: c.reasonCode,
   reasonText: c.reasonText,
-  rejection: c.state === 'REJECTED' ? { code: c.outcomeCode ?? '', message: c.rejectionMessage ?? '' } : null,
+  rejection:
+    c.state === 'REJECTED'
+      ? {
+          code: c.outcomeCode ?? '',
+          message: c.rejectionMessage ?? '',
+          errors: c.rejectionErrors === null ? [{ code: c.outcomeCode ?? '', message: c.rejectionMessage ?? '' }] : [...c.rejectionErrors],
+        }
+      : null,
   failureCode: c.failureCode,
   registeredAt: c.registeredAt?.toISOString() ?? null,
   createdAt: c.createdAt.toISOString(),

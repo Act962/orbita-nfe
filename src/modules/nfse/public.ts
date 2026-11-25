@@ -33,6 +33,7 @@ export {
 export { XmlNfseVerifier } from './infrastructure/dps/xml-nfse-verifier.js';
 export { loadDanfseRenderer, PdfDanfseRenderer } from './infrastructure/danfse/danfse-renderer.js';
 export { loadMunicipalityTable, ReferenceResourceError, type MunicipalityTable } from './infrastructure/reference/municipality-table.js';
+export { loadAnexoA, referenceTables, type AnexoA } from './infrastructure/reference/anexo-a.js';
 export { nfseDeskReader, nfseDeskUnitOfWork } from './infrastructure/persistence/resolution-repositories.js';
 export type { EscalationLevel } from './domain/unknown-escalation.js';
 export { route, SUPPORTED_CHANNELS, type RoutingChannel, type RoutingDecision, type RoutingTable } from './domain/routing.js';
@@ -42,6 +43,7 @@ export type {
   CancellationPreparer,
   CredentialAccess,
   DanfseRenderer,
+  FiscalReferenceTables,
   MunicipalityDirectory,
   DpsPreparer,
   EstablishmentReader,

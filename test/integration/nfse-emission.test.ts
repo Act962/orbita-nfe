@@ -660,8 +660,8 @@ function requestCancellation(invoiceId: string, reason: { reasonCode: '1' | '2' 
 
 async function cancellationState(id: string) {
   return new CompanyTransactions(worker.db).run(companyId, async (tx) => {
-    const rows = await tx.execute<{ state: string; attempts: number; signed_sha256: string | null; outcome_code: string | null; sending_at: Date | null }>(
-      sql`select state, attempts, signed_sha256, outcome_code, sending_at from service_invoice_cancellations where id = ${id}`,
+    const rows = await tx.execute<{ state: string; attempts: number; signed_sha256: string | null; outcome_code: string | null; sending_at: Date | null; rejection_errors: unknown }>(
+      sql`select state, attempts, signed_sha256, outcome_code, sending_at, rejection_errors from service_invoice_cancellations where id = ${id}`,
     );
     return rows.rows[0];
   });
@@ -709,6 +709,26 @@ describe('cancelamento (ADR-0035)', () => {
     expect((await state(invoice.id)).status).toBe('AUTHORIZED');
     expect(await cancelEvents(invoice.id)).toEqual(['REJECTED']);
     expect((await requestCancellation(invoice.id, { reasonCode: '9', reasonText: 'Novo pedido com outro motivo' })).replayed).toBe(false);
+  });
+
+  it('rejeição com vários erros (ADR-0059): todos gravados em rejection_errors, na ordem do autorizador', async () => {
+    const invoice = await authorizedInvoice();
+    // Códigos e textos fictícios do simulador: só exercitam o transporte da lista.
+    gateway.onEvent('REJECT').rejectWithErrors([
+      { code: 'E9101', message: 'Primeiro erro simulado do evento.' },
+      { code: 'E9102', message: 'Segundo erro simulado do evento.' },
+    ]);
+    const { cancellation } = await requestCancellation(invoice.id);
+    expect(await cancellations.process(companyId, cancellation.id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'REJECTED' });
+    gateway.rejectWith('E9999', 'Rejeição simulada.');
+    expect(await cancellationState(cancellation.id)).toMatchObject({
+      state: 'REJECTED',
+      outcome_code: 'E9101',
+      rejection_errors: [
+        { code: 'E9101', message: 'Primeiro erro simulado do evento.' },
+        { code: 'E9102', message: 'Segundo erro simulado do evento.' },
+      ],
+    });
   });
 
   it('"processa e derruba" → UNKNOWN → consulta do evento → REGISTERED, sem novo envio', async () => {

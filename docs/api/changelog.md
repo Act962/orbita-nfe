@@ -8,11 +8,18 @@ last_updated: 2026-11-24
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
 
+## 2026-11-25 — v1 (países na tabela ISO2 do ANEXO_A)
+
+**Alterado:**
+
+- O país do endereço no exterior do tomador (`E0246`) e do intermediário (`E0299`) e o país da prestação (`E0304`) precisam existir na tabela ISO2 do ANEXO_A do Sistema Nacional NFS-e. Antes, só o "BR" era recusado localmente.
+- O código de município passa a ser conferido no ANEXO_A ou na tabela atual do IBGE: o motor só recusa o que nenhuma das duas conhece.
+
 ## 2026-11-25 — v1 (todos os erros da rejeição)
 
 **Adicionado:**
 
-- `rejection.errors[]` na NFS-e rejeitada: todos os erros do autorizador (`code`, `message`), na ordem em que vieram. `rejection.code` e `rejection.message` não mudam.
+- `rejection.errors[]` na NFS-e rejeitada e no pedido de cancelamento rejeitado: todos os erros do autorizador (`code`, `message`), na ordem em que vieram. `rejection.code` e `rejection.message` não mudam.
 
 ## 2026-11-25 — v1 (municípios conferidos na tabela do IBGE)
 

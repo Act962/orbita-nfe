@@ -5,7 +5,7 @@ import { createLogger } from '../shared/infrastructure/logging/logger.js';
 import { buildApp } from './app.js';
 import { composeApi } from './compose.js';
 import { loadConfig } from './config.js';
-import { loadDanfse, loadFiscalSchemas, loadMunicipalities, loadNfseRouting } from './fiscal-resources.js';
+import { loadDanfse, loadFiscalSchemas, loadMunicipalities, loadNfseRouting, loadReferenceTables } from './fiscal-resources.js';
 
 const config = loadConfig();
 const logger = createLogger({ level: config.LOG_LEVEL, service: 'api' });
@@ -30,7 +30,7 @@ const modules = composeApi({
   schemaCatalog: loadFiscalSchemas(),
   nfseRouting: loadNfseRouting(),
   danfse: loadDanfse(municipalities),
-  municipalities,
+  references: loadReferenceTables(municipalities),
   rateLimit: {
     perCredential: perMinute(config.RATE_LIMIT_PER_MINUTE, config.RATE_LIMIT_BURST),
     perAddress: perMinute(config.RATE_LIMIT_ADDRESS_PER_MINUTE, config.RATE_LIMIT_ADDRESS_BURST),

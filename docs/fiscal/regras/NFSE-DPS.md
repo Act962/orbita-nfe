@@ -41,8 +41,8 @@ O código da regra é o código de rejeição do Anexo. Na API, cada violação 
 | E0226 | os dois | 2 | cNaoNIF do tomador = 0 não é aceito | `taker.document.reason` |
 | E0242 | produção | 1 | Tomador por NIF → `endExt` obrigatório | `taker.address` |
 | E0242 | produção restrita | 1 | Tomador por NIF **ou cNaoNIF** → `endExt` obrigatório | `taker.address` |
-| E0246 | produção | 1 | `cPais` do tomador ≠ BR. **Parcial:** a existência do código na tabela ISO2 fica com o autorizador | `taker.address.countryCode` |
-| E0246 | produção restrita | 1 | `cPais` do tomador ≠ BR e ≠ ZZ (Obs. 2: ZZ não é aceito na Sefin Nacional). **Parcial**, como acima | `taker.address.countryCode` |
+| E0246 | produção | 1 | `cPais` do tomador existe na tabela ISO2 do ANEXO_A e ≠ BR ([ADR-0060](../../adr/0060-anexo-a-municipios-e-paises.md)) | `taker.address.countryCode` |
+| E0246 | produção restrita | 1 | `cPais` do tomador existe na tabela ISO2 do ANEXO_A, ≠ BR e ≠ ZZ (Obs. 2: ZZ não é aceito na Sefin Nacional) | `taker.address.countryCode` |
 | E0248 | os dois | 1 | CNPJ do intermediário com DV inválido (v2) | `intermediary.document` |
 | E0262 | os dois | 2 | Raiz do CNPJ do intermediário igual à do prestador, 8 posições (v2) | `intermediary.document` |
 | E0264 | os dois | 2 | `tpRetISSQN` 3 → intermediário identificado por CNPJ ou CPF | `intermediary` |
@@ -51,10 +51,10 @@ O código da regra é o código de rejeição do Anexo. Na API, cada violação 
 | E0281 | os dois | 2 | Intermediário com `endExt` → NIF ou cNaoNIF | `intermediary.document` |
 | E0286 | os dois | 2 | cNaoNIF do intermediário = 0 não é aceito | `intermediary.document.reason` |
 | E0298 | os dois | 1 | Intermediário por NIF → `endExt` obrigatório | `intermediary.address` |
-| E0299 | os dois | 1 | `cPais` do intermediário ≠ BR (parcial, como a E0246) | `intermediary.address.countryCode` |
+| E0299 | os dois | 1 | `cPais` do intermediário existe na tabela ISO2 do ANEXO_A e ≠ BR (ADR-0060) | `intermediary.address.countryCode` |
 | E0330 | os dois | 1 | Tomador ou intermediário no exterior, `cPaisPrestacao` (ADR-0045) ou `tribISSQN` 3 → `comExt` obrigatório | `service.foreignTrade` |
 | E0318 | os dois | 2 | Tomador ou intermediário no exterior, ou `cPaisPrestacao` → `cNBS` obrigatório (ADR-0045) | `service.nbsCode` |
-| E0304 | os dois | 1 | `cPaisPrestacao` ≠ BR. **Parcial:** a existência na tabela ISO2 fica com o autorizador | `service.countryCode` |
+| E0304 | os dois | 1 | `cPaisPrestacao` existe na tabela ISO2 do ANEXO_A e ≠ BR (ADR-0060) | `service.countryCode` |
 | E0333, E0341, E0343, E0345 | os dois | 2 | `mdPrestacao` 0, `mecAFComexP` 00, `mecAFComexT` 00 e `movTempBens` 0 ("desconhecido") não são aceitos | `service.foreignTrade.*` |
 | E0352 | os dois | 2 | `movTempBens` 2 → `nDI` obrigatório | `service.foreignTrade.importDeclaration` |
 | E0354 | os dois | 2 | `movTempBens` 1 → sem `nDI` e sem `nRE` | `service.foreignTrade` |
@@ -62,7 +62,7 @@ O código da regra é o código de rejeição do Anexo. Na API, cada violação 
 | E1402 | os dois | — | `cTribNac` 200101 → `cLocPrestacao` não pode ser 0000000 | `service.municipalityCode` |
 | E0238 | os dois | 1 | `toma/end/endNac/cMun` existe na tabela de municípios do IBGE (ADR-0058) | `taker.address.municipalityCode` |
 | E0294 | os dois | 1 | `interm/end/endNac/cMun` existe na tabela de municípios do IBGE (ADR-0058) | `intermediary.address.municipalityCode` |
-| E0302 | os dois | 1 | `cLocPrestacao` existe na tabela de municípios do IBGE ou é 0000000, "Águas Marítimas" (ADR-0058) | `service.municipalityCode` |
+| E0302 | os dois | 1 | `cLocPrestacao` existe na tabela de municípios (ANEXO_A ou IBGE atual) ou é 0000000, "Águas Marítimas" (ADR-0058, ADR-0060) | `service.municipalityCode` |
 | E0309 | produção restrita | 1 | `cTribNac` 99.03.xx ou 99.04.01 é rejeitado (só existe nesse Anexo) | `service.nationalTaxCode` |
 | E0313 | produção restrita | 3* | MEI não informa `cTribMun` (só existe nesse Anexo) | `service.municipalTaxCode` |
 | E0315 | os dois | 1 | `cTribMun` não pode ser 000 | `service.municipalTaxCode` |
@@ -143,6 +143,6 @@ Antes destas regras, o motor aceitava esses casos e o autorizador os rejeitaria.
 
 ## Pendências
 - Revisão pelo especialista fiscal (gate fiscal 1).
-- Trocar a tabela da API de localidades do IBGE pela do "ANEXO_A-MUNICIPIO_IBGE-PAISES_ISO2-SNNFSe", citada pelo Anexo, que também traz os países ISO2 e completaria a E0246, a E0299 e a E0304 (ADR-0058).
+- Ao sair versão nova do ANEXO_A, regenerar com `scripts/anexo-a.mjs` (ADR-0060).
 - Ao trocar o pacote de produção, repetir o confronto entre os Anexos e ajustar os ambientes de cada regra.
 - CPF-001 (DV do CPF) com fonte, para ligar a E0206.
