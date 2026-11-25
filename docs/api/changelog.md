@@ -8,6 +8,13 @@ last_updated: 2026-11-24
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
 
+## 2026-11-25 — v1 (inscrição municipal no cadastro)
+
+**Adicionado:**
+
+- `municipalRegistration` no estabelecimento (opcional no `POST /v1/establishments`, devolvido nas consultas).
+- `PATCH /v1/establishments/{id}` (`companies:manage`) para gravar ou apagar (`null`) a inscrição municipal. Só cadastro: não entra na DPS.
+
 ## 2026-11-25 — v1 (países na tabela ISO2 do ANEXO_A)
 
 **Alterado:**

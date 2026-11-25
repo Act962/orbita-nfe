@@ -41,6 +41,8 @@ A resposta traz o `id` da empresa, gerado pelo servidor. A partir daí, toda rot
 X-Company-Id: <id da empresa>
 ```
 
+O estabelecimento aceita a inscrição municipal (`municipalRegistration`, de 1 a 15 caracteres), no cadastro ou depois, em `PATCH /v1/establishments/{id}`. **É só cadastro: o motor não coloca essa IM na nota.** Na emissão, a IM do prestador é a que você envia em `provider.municipalRegistration`.
+
 A empresa é conferida no servidor: a credencial precisa ter concessão para ela. **CNPJ ou id enviados no corpo nunca definem a empresa.** Sem concessão, a resposta é `403 COMPANY_ACCESS_DENIED`. Recurso de outra empresa responde `404`, como se não existisse.
 
 ```http

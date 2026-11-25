@@ -253,6 +253,13 @@
       "when": 1795615231371,
       "tag": "0035_security_cancellation_rejection_errors",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1795616866705,
+      "tag": "0036_establishment_municipal_registration",
+      "breakpoints": true
     }
   ]
 }

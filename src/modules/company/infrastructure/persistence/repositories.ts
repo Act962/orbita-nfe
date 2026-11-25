@@ -54,6 +54,10 @@ export function establishmentRepository(tx: Transaction): EstablishmentRepositor
       const rows = await tx.select().from(establishments).orderBy(asc(establishments.cnpj));
       return rows.map(toEstablishment);
     },
+    async setMunicipalRegistration(id, value) {
+      const rows = await tx.update(establishments).set({ municipalRegistration: value }).where(eq(establishments.id, id)).returning();
+      return rows[0] === undefined ? undefined : toEstablishment(rows[0]);
+    },
   };
 }
 

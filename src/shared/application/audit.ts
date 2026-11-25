@@ -12,6 +12,7 @@ export type { AuditActor, AuditDetails, AuditValue } from '../domain/audit.js';
 export const COMPANY_AUDIT_ACTIONS = [
   'company.registered',
   'establishment.registered',
+  'establishment.municipal_registration_changed',
   'document_series.created',
   'company_grant.granted',
   'company_grant.revoked',

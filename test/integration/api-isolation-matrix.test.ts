@@ -83,6 +83,10 @@ const CASES: Record<string, MatrixCase> = {
     },
   },
   'GET /v1/establishments/:establishmentId': { expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND') },
+  'PATCH /v1/establishments/:establishmentId': {
+    payload: () => ({ municipalRegistration: 'OUTRA' }),
+    expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),
+  },
   'POST /v1/establishments/:establishmentId/document-series': {
     payload: () => ({ kind: 'NFE', environment: 'HOMOLOGATION', series: '7' }),
     expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),

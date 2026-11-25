@@ -27,6 +27,11 @@ export interface Establishment {
   readonly tradeName: string;
   /** Código IBGE do município (7 dígitos). */
   readonly municipalityCode: string;
+  /**
+   * Inscrição municipal (IM), só cadastro (ADR-0061): o motor guarda e devolve, mas NÃO a coloca na
+   * DPS. A IM da nota continua sendo a que o cliente envia em `provider.municipalRegistration`.
+   */
+  readonly municipalRegistration: string | null;
   readonly status: EstablishmentStatus;
   readonly createdAt: Date;
 }
@@ -37,6 +42,18 @@ export type NewEstablishment = Omit<Establishment, 'createdAt'>;
 const NAME_MAX = 150;
 const ROOT_CNPJ = /^[0-9A-Z]{8}$/;
 const IBGE_MUNICIPALITY = /^[0-9]{7}$/;
+/** TSInscMun (XSD da NFS-e nacional, os dois pacotes): de 1 a 15 caracteres. */
+const MUNICIPAL_REGISTRATION_MAX = 15;
+
+/** IM sem espaços nas pontas, de 1 a 15 caracteres (TSInscMun); nula apaga. */
+export function municipalRegistration(value: string | null | undefined, issues: ValidationIssue[]): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > MUNICIPAL_REGISTRATION_MAX) {
+    issues.push({ code: 'INVALID_LENGTH', field: 'municipalRegistration', message: `A inscrição municipal tem de 1 a ${MUNICIPAL_REGISTRATION_MAX} caracteres (TSInscMun).` });
+  }
+  return trimmed;
+}
 
 function name(field: string, value: string, issues: ValidationIssue[]): string {
   const trimmed = value.trim().replace(/\s+/g, ' ');
@@ -61,7 +78,7 @@ export type EstablishmentError = { kind: 'INVALID'; issues: ValidationIssue[] } 
 
 export function newEstablishment(
   company: Pick<Company, 'id' | 'rootCnpj'>,
-  input: { id: string; cnpj: string; tradeName: string; municipalityCode: string },
+  input: { id: string; cnpj: string; tradeName: string; municipalityCode: string; municipalRegistration?: string | null | undefined },
 ): Result<NewEstablishment, EstablishmentError> {
   const issues: ValidationIssue[] = [];
   const cnpj = Cnpj.parse(input.cnpj);
@@ -70,6 +87,7 @@ export function newEstablishment(
   if (!IBGE_MUNICIPALITY.test(input.municipalityCode)) {
     issues.push({ code: 'INVALID_MUNICIPALITY_CODE', field: 'municipalityCode', message: 'Código IBGE do município tem 7 dígitos.' });
   }
+  const registration = municipalRegistration(input.municipalRegistration, issues);
   if (!cnpj.ok || issues.length > 0) return err({ kind: 'INVALID', issues });
 
   if (cnpj.value.root !== company.rootCnpj) {
@@ -89,6 +107,7 @@ export function newEstablishment(
     cnpj: cnpj.value.value,
     tradeName,
     municipalityCode: input.municipalityCode,
+    municipalRegistration: registration,
     status: 'ACTIVE',
   });
 }

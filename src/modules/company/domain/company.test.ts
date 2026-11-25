@@ -31,7 +31,20 @@ describe('newEstablishment', () => {
   it('cria com a mesma raiz da empresa', () => {
     const cnpj = cnpjWithRoot('12345678', '0002');
     const r = newEstablishment(company, { id: 'e1', cnpj, tradeName: 'Filial', municipalityCode: '2211001' });
-    expect(r).toEqual({ ok: true, value: { id: 'e1', companyId: 't1', cnpj, tradeName: 'Filial', municipalityCode: '2211001', status: 'ACTIVE' } });
+    expect(r).toEqual({ ok: true, value: { id: 'e1', companyId: 't1', cnpj, tradeName: 'Filial', municipalityCode: '2211001', municipalRegistration: null, status: 'ACTIVE' } });
+  });
+
+  it('inscrição municipal (ADR-0061, TSInscMun): sem espaços nas pontas, de 1 a 15 caracteres', () => {
+    const cnpj = cnpjWithRoot('12345678', '0002');
+    const base = { id: 'e1', cnpj, tradeName: 'Filial', municipalityCode: '2211001' };
+    expect(newEstablishment(company, { ...base, municipalRegistration: ' 12345 ' })).toMatchObject({ ok: true, value: { municipalRegistration: '12345' } });
+    expect(newEstablishment(company, { ...base, municipalRegistration: '1'.repeat(15) })).toMatchObject({ ok: true });
+    for (const invalid of ['   ', '1'.repeat(16)]) {
+      expect(newEstablishment(company, { ...base, municipalRegistration: invalid })).toMatchObject({
+        ok: false,
+        error: { kind: 'INVALID', issues: [{ code: 'INVALID_LENGTH', field: 'municipalRegistration' }] },
+      });
+    }
   });
 
   it('COMPANY-001: raiz diferente é recusada', () => {

@@ -1,0 +1,2 @@
+ALTER TABLE "establishments" ADD COLUMN "municipal_registration" varchar(15);--> statement-breakpoint
+ALTER TABLE "establishments" ADD CONSTRAINT "ck_establishments_municipal_registration" CHECK ("establishments"."municipal_registration" is null or length("establishments"."municipal_registration") between 1 and 15);

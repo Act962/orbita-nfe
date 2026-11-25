@@ -32,6 +32,8 @@ export const establishments = pgTable(
     cnpj: varchar('cnpj', { length: 14 }).notNull(),
     tradeName: text('trade_name').notNull(),
     municipalityCode: char('municipality_code', { length: 7 }).notNull(),
+    /** Inscrição municipal, só cadastro (ADR-0061; TSInscMun, 1 a 15 caracteres). */
+    municipalRegistration: varchar('municipal_registration', { length: 15 }),
     status: text('status').notNull().default('ACTIVE'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -44,6 +46,7 @@ export const establishments = pgTable(
     check('ck_establishments_status', sql`${t.status} in ('ACTIVE', 'INACTIVE')`),
     check('ck_establishments_cnpj', sql`${t.cnpj} ~ '^[0-9A-Z]{12}[0-9]{2}$'`),
     check('ck_establishments_municipality', sql`${t.municipalityCode} ~ '^[0-9]{7}$'`),
+    check('ck_establishments_municipal_registration', sql`${t.municipalRegistration} is null or length(${t.municipalRegistration}) between 1 and 15`),
     index('ix_establishments_company').on(t.companyId),
   ],
 );

@@ -1,9 +1,10 @@
+import type { ValidationIssue } from '../../../shared/domain/validation-issue.js';
 import { clientApplicationOf, type AuditContext, type AuditTrail } from '../../../shared/application/audit.js';
 import { BusinessRuleError, InternalError, NotFoundError, ValidationFailedError } from '../../../shared/application/errors.js';
 import type { JobScheduler } from '../../../shared/application/job-queue.js';
 import { runDay } from '../../../shared/domain/daily-schedule.js';
 import type { IdGenerator, TransactionOptions, UnitOfWork } from '../../../shared/application/unit-of-work.js';
-import { newEstablishment, newCompany, type Establishment, type NewEstablishment, type NewCompany, type Company } from '../domain/company.js';
+import { newEstablishment, newCompany, type Establishment, type NewEstablishment, type NewCompany, type Company, municipalRegistration } from '../domain/company.js';
 
 export interface CompanyRepository {
   /** Insere na empresa do contexto da transação. Conflito de raiz → COMPANY_ALREADY_REGISTERED. */
@@ -17,6 +18,8 @@ export interface EstablishmentRepository {
   insert(establishment: NewEstablishment): Promise<Establishment>;
   findById(id: string): Promise<Establishment | undefined>;
   list(): Promise<Establishment[]>;
+  /** Grava (ou apaga, com null) a IM; `undefined` se o estabelecimento não existe na empresa. */
+  setMunicipalRegistration(id: string, value: string | null): Promise<Establishment | undefined>;
 }
 
 /** Porta para o IAM: concede ao criador acesso à empresa nova, na mesma transação. */
@@ -82,7 +85,7 @@ export class CompanyService {
 
   async registerEstablishment(
     companyId: string,
-    input: { cnpj: string; tradeName: string; municipalityCode: string },
+    input: { cnpj: string; tradeName: string; municipalityCode: string; municipalRegistration?: string | null | undefined },
     context: AuditContext,
     options: TransactionOptions = {},
   ): Promise<Establishment> {
@@ -108,6 +111,28 @@ export class CompanyService {
     const found = await this.uow.inCompany(companyId, (r) => r.establishments.findById(id));
     if (found === undefined) throw establishmentNotFound();
     return found;
+  }
+
+  /**
+   * Inscrição municipal do estabelecimento, só cadastro (ADR-0061): não entra na DPS. `null` apaga.
+   */
+  async changeMunicipalRegistration(companyId: string, id: string, value: string | null, context: AuditContext): Promise<Establishment> {
+    const issues: ValidationIssue[] = [];
+    const registration = municipalRegistration(value, issues);
+    if (issues.length > 0) throw new ValidationFailedError(issues);
+    return this.uow.inCompany(companyId, async (r) => {
+      const before = await r.establishments.findById(id);
+      if (before === undefined) throw establishmentNotFound();
+      if (before.municipalRegistration === registration) return before;
+      const updated = await r.establishments.setMunicipalRegistration(id, registration);
+      if (updated === undefined) throw establishmentNotFound();
+      await r.audit.record(context, {
+        action: 'establishment.municipal_registration_changed',
+        subject: { type: 'establishment', id },
+        details: { from: before.municipalRegistration, to: registration },
+      });
+      return updated;
+    });
   }
 
   async establishments(companyId: string): Promise<Establishment[]> {

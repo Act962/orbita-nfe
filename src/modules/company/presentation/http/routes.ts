@@ -25,6 +25,10 @@ const EstablishmentResponse = z
     cnpj: z.string().meta({ description: 'CNPJ sem máscara (14 posições, numérico ou alfanumérico).', example: '12345678000195' }),
     tradeName: z.string().meta({ example: 'Matriz Teresina' }),
     municipalityCode: z.string().meta({ description: 'Código IBGE do município.', example: '2211001' }),
+    municipalRegistration: z
+      .string()
+      .nullable()
+      .meta({ description: 'Inscrição municipal (IM), só cadastro: NÃO é colocada na DPS. Na nota, a IM é a que você envia em provider.municipalRegistration.' }),
     status: z.enum(['ACTIVE', 'INACTIVE']),
     createdAt: z.iso.datetime(),
   })
@@ -42,8 +46,15 @@ const CreateEstablishmentBody = z
     cnpj: z.string().min(14).max(18).meta({ description: 'CNPJ completo, com ou sem máscara. A raiz precisa ser a da empresa.' }),
     tradeName: z.string().min(1).max(150),
     municipalityCode: z.string().regex(/^[0-9]{7}$/).meta({ description: 'Código IBGE do município (7 dígitos).' }),
+    municipalRegistration: z.string().max(15).optional().meta({ description: 'Inscrição municipal (TSInscMun, 1 a 15 caracteres). Só cadastro: não entra na DPS.' }),
   })
   .meta({ id: 'CreateEstablishment' });
+
+const MunicipalRegistrationBody = z
+  .strictObject({
+    municipalRegistration: z.string().max(15).nullable().meta({ description: 'Inscrição municipal (1 a 15 caracteres); null apaga. Só cadastro: não entra na DPS.' }),
+  })
+  .meta({ id: 'EstablishmentMunicipalRegistration' });
 
 const EstablishmentParams = z.object({ establishmentId: z.uuid() });
 
@@ -60,6 +71,7 @@ const establishmentJson = (e: Establishment): z.infer<typeof EstablishmentRespon
   cnpj: e.cnpj,
   tradeName: e.tradeName,
   municipalityCode: e.municipalityCode,
+  municipalRegistration: e.municipalRegistration,
   status: e.status,
   createdAt: e.createdAt.toISOString(),
 });
@@ -176,5 +188,35 @@ export function registerCompanyRoutes(app: HttpApp, service: CompanyService): vo
       },
     },
     async (request) => establishmentJson(await service.establishment(companyIdOf(request), request.params.establishmentId)),
+  );
+
+  app.patch(
+    '/v1/establishments/:establishmentId',
+    {
+      config: { auth: { scope: 'companies:manage', company: true } },
+      schema: {
+        tags: [TAG],
+        summary: 'Alterar a inscrição municipal do estabelecimento',
+        description:
+          'Grava ou apaga (null) a inscrição municipal do estabelecimento (ADR-0061). É só cadastro: o motor NÃO coloca esta IM na DPS; ' +
+          'na emissão, a IM do prestador continua sendo a que você envia em `provider.municipalRegistration`. A mudança é auditada.',
+        security: [{ apiKey: [] }],
+        headers: CompanyHeaders,
+        params: EstablishmentParams,
+        body: MunicipalRegistrationBody,
+        response: {
+          200: EstablishmentResponse,
+          ...commonErrorResponses,
+          ...authErrorResponses,
+          404: ProblemSchema.describe('ESTABLISHMENT_NOT_FOUND (inexistente ou de outra empresa).'),
+        },
+      },
+    },
+    async (request) =>
+      establishmentJson(
+        await withIssueFields('body', () =>
+          service.changeMunicipalRegistration(companyIdOf(request), request.params.establishmentId, request.body.municipalRegistration, auditContextOf(request)),
+        ),
+      ),
   );
 }

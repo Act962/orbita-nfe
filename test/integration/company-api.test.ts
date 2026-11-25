@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CompanyTransactions } from '../../src/shared/infrastructure/database/database.js';
+import { connect } from './support/db.js';
 import { bearer, cnpjOf, createClientApp, createCompany, fakeRoot, problemCode, startTestApi, type TestApi } from './support/api.js';
 
 /** Cadastro de companies e estabelecimentos pela API (docs/architecture/02 §2). */
@@ -74,6 +75,39 @@ describe('Estabelecimentos', () => {
     expect(one.json()).toMatchObject({ id, cnpj });
     const list = await t.app.inject({ method: 'GET', url: '/v1/establishments', headers: bearer(key, company.id) });
     expect(list.json<{ items: { id: string }[] }>().items.map((e) => e.id)).toEqual([id]);
+  });
+
+  it('inscrição municipal (ADR-0061): opcional no cadastro, alterada e apagada pelo PATCH, auditada', async () => {
+    const company = await createCompany(t.app, key);
+    const headers = bearer(key, company.id);
+    const created = await t.app.inject({
+      method: 'POST',
+      url: '/v1/establishments',
+      headers,
+      payload: { cnpj: cnpjOf(company.root, '0001'), tradeName: 'Matriz', municipalityCode: '2211001', municipalRegistration: ' 123456 ' },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const id = created.json<{ id: string }>().id;
+    expect(created.json()).toMatchObject({ municipalRegistration: '123456' });
+
+    const patch = (municipalRegistration: unknown) =>
+      t.app.inject({ method: 'PATCH', url: `/v1/establishments/${id}`, headers, payload: { municipalRegistration } });
+    expect((await patch('IM-2026')).json()).toMatchObject({ id, municipalRegistration: 'IM-2026' });
+    expect((await patch(null)).json()).toMatchObject({ id, municipalRegistration: null });
+    const tooLong = await patch('1234567890123456');
+    expect(tooLong.statusCode).toBe(400);
+    expect(problemCode(tooLong)).toBe('VALIDATION_FAILED');
+    expect((await patch('   ')).statusCode).toBe(400);
+    // Só a IM pode ser alterada por esta rota.
+    expect((await t.app.inject({ method: 'PATCH', url: `/v1/establishments/${id}`, headers, payload: { municipalRegistration: '1', tradeName: 'X' } })).statusCode).toBe(400);
+
+    // A API não lê a auditoria (só grava); a conferência usa o papel de superusuário dos testes.
+    const superuser = connect('superuser');
+    const audit = await superuser.db.transaction(async (tx) =>
+      tx.execute<{ action: string }>(sql`select action from audit_log where subject_id = ${id} order by sequence`),
+    );
+    await superuser.close();
+    expect(audit.rows.map((r) => r.action)).toEqual(['establishment.registered', 'establishment.municipal_registration_changed', 'establishment.municipal_registration_changed']);
   });
 
   it('COMPANY-001: CNPJ de outra raiz → 422 com campo body.cnpj', async () => {

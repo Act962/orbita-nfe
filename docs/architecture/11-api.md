@@ -15,6 +15,7 @@ Recursos separados por modalidade (contratos diferentes), com consulta unificada
 | POST | `/v1/service-invoices/{id}/substitution` | `nfse:issue` — **implementado** (ADR-0036) |
 | GET | `/v1/service-invoices/{id}/xml` | `nfse:read` — **implementado** (bytes do banco com o hash conferido, sem redirecionar, ADR-0050) |
 | GET | `/v1/service-invoices/{id}/cancellation/xml` | `nfse:read` — **implementado** (XML do evento registrado, ADR-0050) |
+| PATCH | `/v1/establishments/{id}` | `companies:manage` — **implementado** (inscrição municipal, só cadastro, ADR-0061) |
 | GET | `/v1/service-invoices/{id}/danfse` | `nfse:read` — **implementado** (DANFSe v2.0 em PDF, NT 008 v1.02, gerado do XML autorizado, ADR-0057) |
 | GET | `/v1/service-invoices/{id}/diagnostics` | `nfse:debug` — **implementado** (tentativas, protocolo e pedidos de cancelamento, sem XML, ADR-0055) |
 | GET | `/v1/service-invoices/{id}/pdf` | `nfse:read` |
