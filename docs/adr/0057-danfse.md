@@ -39,6 +39,7 @@ A NT diz que a API de DANFSe do ADN foi suspensa em **03/08/2026**: "a API de ge
    - Cinza 5% no cabeçalho, nos títulos de bloco, em "Emitente da NFS-e" e em "Valor Líquido da NFS-e + IBS/CBS".
    - Títulos de bloco em 7 pt negrito e caixa alta; títulos de campo em 6 pt negrito; conteúdo em 7 pt.
    - O canhoto, opcional (nota 11), não é impresso. A área dele vai para as informações complementares (item 2.3.3).
+   - **Correção de 25/11/2026:** "Ambiente Gerador" e "Tipo de Ambiente" passam a sair com o código (`Ambiente Gerador: 2`, `Tipo de Ambiente: 1`). A tabela da NT dá tamanho 1 aos dois campos, e o DANFSe de produção do emissor nacional, recebido do responsável, imprime assim. Antes, o motor imprimia a descrição do XSD.
 5. **Desvios conscientes, decididos pelo responsável em 25/11/2026:**
    - **Fonte:** a NT pede Arial nos títulos e Microsoft Sans Serif no conteúdo. As duas são proprietárias e não podem ir no repositório nem na imagem. Usamos a **Helvetica**, fonte-base do PDF (não embutida), com as mesmas medidas da Arial. Caractere fora do WinAnsi sai como "?".
    - **Tamanhos:** a NT trata posições e tamanhos como mínimos e diz que não são obrigatórios (item 2.1). "Descrição do Serviço" cresce para caber, e os blocos seguintes descem.

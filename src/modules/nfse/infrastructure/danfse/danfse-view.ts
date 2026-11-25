@@ -1,11 +1,9 @@
 import {
-  AMB_GER,
   describe,
   FIN_NFSE,
   OP_SIMP_NAC,
   REG_AP_TRIB_SN,
   REG_ESP_TRIB,
-  TP_AMB,
   TP_BM,
   TP_EMIT,
   TP_IMUNIDADE,
@@ -161,8 +159,9 @@ export function buildDanfseView(input: DanfseInput): DanfseView {
     watermark: input.situation === 'CANCELLED' ? 'CANCELADA' : input.situation === 'SUBSTITUTED' ? 'SUBSTITUÍDA' : null,
     header: {
       municipality: headerMunicipality === null ? null : fit(headerMunicipality, 37),
-      generator: coded(AMB_GER, info.text('ambGer')),
-      environment: coded(TP_AMB, dps.text('tpAmb')),
+      // NT 008, Anexo I: os dois campos têm tamanho 1, ou seja, o código, como no DANFSe do emissor nacional.
+      generator: `Ambiente Gerador: ${info.text('ambGer') ?? DASH}`,
+      environment: `Tipo de Ambiente: ${dps.text('tpAmb') ?? DASH}`,
     },
     identification: {
       accessKey: input.accessKey,

@@ -48,7 +48,7 @@ describe('DANFSe: conteúdo (NT 008 v1.02, item 2.4.5)', () => {
     const v = view(nfse());
     expect(v.homologation).toBe(true);
     expect(v.qrCodeUrl).toBe(`${QR_CODE_BASE_URL}${KEY}`);
-    expect(v.header).toEqual({ municipality: 'Município: Teresina / PI', generator: 'Sistema Nacional da NFS-e', environment: 'Homologação' });
+    expect(v.header).toEqual({ municipality: 'Município: Teresina / PI', generator: 'Ambiente Gerador: 2', environment: 'Tipo de Ambiente: 2' });
     expect(v.identification.issuedAt).toBe('11/11/2026 10:15:30');
     expect(v.identification.competence).toBe('11/11/2026');
     expect(v.identification.emitter).toBe('Prestador');

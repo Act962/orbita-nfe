@@ -9,12 +9,6 @@
  */
 type Catalog = Readonly<Record<string, string>>;
 
-/** TSTipoAmbiente: tipos de ambiente do Sistema Nacional NFS-e. */
-export const TP_AMB: Catalog = { '1': 'Produção', '2': 'Homologação' };
-
-/** TSAmbGeradorNFSe: ambiente gerador da NFS-e. */
-export const AMB_GER: Catalog = { '1': 'Prefeitura', '2': 'Sistema Nacional da NFS-e' };
-
 /** TSEmitenteDPS: emitente da DPS. */
 export const TP_EMIT: Catalog = { '1': 'Prestador', '2': 'Tomador', '3': 'Intermediário' };
 

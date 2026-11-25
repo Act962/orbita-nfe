@@ -108,7 +108,9 @@ Diagnóstico: [nfce-piaui-diagnostico.md](fiscal/nfce-piaui-diagnostico.md). 16 
   - composição com o leiaute do PL_010h conferida na libxml2 do motor, sem emissão;
   - o schema ainda aceita 50 notas e modo assíncrono, então o motor garante uma NFC-e e `indSinc=1` (NT 2023.002, cStat 126 e 129).
 - [x] **Inventário do Anexo I** ([NFCE-ANEXO-I.md](fiscal/regras/NFCE-ANEXO-I.md)): 464 regras (122 só da NFC-e, 154 comuns, 188 só da NF-e). O Anexo consolida só as NTs até out./2020, então nenhuma regra vira código sem conferência contra as NTs posteriores.
-- [ ] Próxima etapa técnica: levantar as NTs de NF-e/NFC-e de nov./2020 em diante que faltam no repositório. Depois, o cliente SOAP do status do serviço (`NfeStatusServico4`), a primeira chamada real possível, que não emite nada (precisa de um A1 válido; o de teste vence em 26/11).
+- [x] **NTs posteriores a out./2020:** 31 baixadas com autorização do responsável e cruzadas com o inventário. 66 das 122 regras exclusivas foram reescritas por alguma NT, e há 306 regras novas para o modelo 65, a maioria da Reforma Tributária.
+- [x] **DANFSe conferido com uma NFS-e de produção de Teresina** enviada pelo responsável: "Ambiente Gerador" e "Tipo de Ambiente" passam a sair com o código (NT 008, tamanho 1; [ADR-0057](adr/0057-danfse.md)). Também é indício de que a produção aceita Teresina (R-43).
+- [ ] Próxima etapa técnica: o cliente SOAP do status do serviço (`NfeStatusServico4`), a primeira chamada real possível, que não emite nada (precisa de um A1 válido; o de teste vence em 26/11).
 
 ### Inscrição municipal no cadastro (2026-11-25)
 Decisão: [ADR-0061](adr/0061-inscricao-municipal-no-cadastro.md) (responsável: "só cadastrar, sem preencher").

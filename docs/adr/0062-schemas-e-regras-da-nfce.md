@@ -49,5 +49,9 @@ Mas o seu controle de versões (p. 5) diz que ele consolida as NTs **até outubr
 
 ## Consequências
 - O envio e o status do serviço da NFC-e têm schema oficial localizado e compilado, sem emissão.
-- Falta levantar e baixar as NTs de NF-e/NFC-e publicadas entre novembro de 2020 e hoje que ainda não estão no repositório. A lista do Portal tem NTs de 2021 a 2026, por exemplo a 2024.001, a 2024.002 e a 2024.003. Sem isso, nenhuma regra do inventário vira código.
+- **Acréscimo (25/11/2026):** as 31 NTs de NF-e/NFC-e posteriores a out./2020 que faltavam foram baixadas (versão mais nova de cada uma, hashes em [fontes oficiais](../fiscal/fontes-oficiais.md)) e cruzadas com o inventário:
+  - 66 das 122 regras exclusivas aparecem de novo em alguma NT, e vale o texto da mais nova;
+  - 306 regras novas valem para o modelo 65, a maioria da Reforma Tributária (NT 2024.002 e NT 2025.002).
+
+  O cruzamento está no fim do [inventário](../fiscal/regras/NFCE-ANEXO-I.md).
 - A primeira chamada real possível é o status do serviço do SVRS em homologação. Ela precisa de um A1 válido, e o de teste vence em 26/11/2026. Não precisa de CSC.
