@@ -121,6 +121,9 @@ Diagnóstico: [nfce-piaui-diagnostico.md](fiscal/nfce-piaui-diagnostico.md). 16 
 - [x] **Consulta da NFC-e pela chave** ([ADR-0064](adr/0064-consulta-nfce-pela-chave.md)): `NfeConsultaProtocolo4` com o mesmo cliente SOAP do status (agora comum, `sefaz-soap.ts`). A situação é lida do cStat do MOC (100/150 autorizada só com `protNFe`; 101/151 cancelada; 217 não consta; outro = recusada, que não prova nada). O XSD do PL_010d está versionado com hash. CLI `npm run nfce:test -- consult <cert.p12> --key <chave>`.
 - [x] **Chave de acesso e assinatura da NFC-e** ([ADR-0065](adr/0065-chave-e-assinatura-nfe.md)): a chave segue a Tabela 2-1 do MOC, com DV por módulo 11 (o exemplo do MOC dá 5), CNPJ alfanumérico por ASCII − 48 (NT Conjunta 2025.001) e o `cNF` pela B03-10 (NT 2019.001). Perfil de assinatura `nfe-4.00` definitivo, com EndCertOnly. A assinatura foi verificada pelo xmlsec1.
 - [x] **URL do QR Code da NFC-e, versões 2.00 e 3.00** ([ADR-0066](adr/0066-qr-code-nfce.md)), pelo manual do DANFE NFC-e v6.0. O hash da 2.00 confere com os dois exemplos resolvidos do manual, e a 3.00 off-line assina os parâmetros em RSA-SHA1. O CSC nunca sai na URL nem em log. Achado: as chaves dos exemplos do manual têm DV inválido e o CSC do exemplo tem 41 caracteres, fora da própria regra.
+- [x] **Contingência off-line lida e proposta** ([ADR-0067](adr/0067-contingencia-offline-nfce.md), *Proposto*): Anexo IV e manual v2.0 lidos e cruzados com as NTs. O contribuinte decide entrar e a UF decide se aceita. A NFC-e deve ser transmitida até o fim do primeiro dia útil seguinte, com número novo ao entrar e a mesma chave depois. A nota anterior sem resposta é cancelada (se autorizada) ou tem o número inutilizado.
+- [ ] **Do responsável (ADR-0067):** contingência no motor central já na Fase 3, ou só no NERP (3b)? Guarda eletrônica do XML no lugar da segunda via (precisa de termo ou declaração na SEFAZ-PI)?
+- [ ] **A confirmar com a SEFAZ-PI:** o PI aceita a contingência off-line (`tpEmis=9`, regra B22-20) e o EPEC na NFC-e?
 - [ ] **Do responsável:** rodar `npm run nfce:test -- status <cert.p12>` com o A1 (vence em 26/11). Um cStat 107 com `cUF=22` confirma o mTLS e que o SVRS atende o PI; um 289 indica que não atende.
 
 ### Inscrição municipal no cadastro (2026-11-25)
@@ -728,6 +731,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-25 | Consulta da NFC-e pela chave (base da recuperação sem reenvio às cegas); cliente SOAP comum | 0064 |
 | 2026-11-25 | Chave de acesso (DV, CNPJ alfanumérico, B03-10) e perfil de assinatura nfe-4.00 (EndCertOnly) | 0065 |
 | 2026-11-25 | URL do QR Code da NFC-e 2.00 (CSC) e 3.00 (assinatura); escolha continua do responsável | 0066 |
+| 2026-11-25 | Contingência off-line da NFC-e: leitura das fontes e proposta (Proposto, depende de decisões) | 0067 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |

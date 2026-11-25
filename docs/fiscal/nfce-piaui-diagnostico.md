@@ -67,8 +67,12 @@ O manual do DANFE NFC-e v6.0 traz duas versões de QR Code [CONFIRMADO]:
 - **Consequência de segurança:** com a v2.00, o **CSC é um segredo**. Ele entra no cofre como o certificado (KEK assimétrica, só o worker-fiscal decifra) e nunca vai para log, como já previa o ADR-0027 para a Fase 3.
 
 ### Contingência
-- **Contingência off-line da NFC-e** (manual v2.0 e Anexo IV) [CONFIRMADO, documentos baixados].
-  - Os detalhes de prazo de transmissão posterior e de regras ficam para a leitura completa, no ADR da contingência, que o roadmap já exige ("só após a leitura do MOC").
+- **Contingência off-line da NFC-e** (manual v2.0 e Anexo IV), lida inteira no [ADR-0067](../adr/0067-contingencia-offline-nfce.md) [CONFIRMADO]:
+  - quem decide entrar é o contribuinte; se aceita a off-line, decide a UF (regra B22-20, cStat 712);
+  - o prazo de transmissão vai até o fim do primeiro dia útil seguinte;
+  - ao entrar, número novo; depois, a mesma chave e o mesmo `cNF`;
+  - a nota anterior sem resposta é cancelada (se autorizada) ou tem o número inutilizado.
+- **Se o PI aceita a off-line e o EPEC na NFC-e** [A CONFIRMAR com a SEFAZ-PI].
 
 ### Reforma Tributária e cadastro
 - NT 2025.002 v1.53, NT 2026.005 e NT 2026.008 alteram o leiaute: IBS, CBS e IS, Simples Nacional e valor líquido.
@@ -81,6 +85,8 @@ O manual do DANFE NFC-e v6.0 traz duas versões de QR Code [CONFIRMADO]:
 | Item | Depende de |
 |---|---|
 | Confirmar o SVRS como autorizador do PI e a `urlChave` | SEFAZ-PI (credenciamento ou "Fale com a SEFAZ") |
+| Se o PI aceita a contingência off-line (`tpEmis=9`) e o EPEC na NFC-e, e a forma da declaração de guarda eletrônica | SEFAZ-PI |
+| Contingência no motor central já na Fase 3 ou só no NERP (3b); guarda eletrônica no lugar da segunda via | Responsável, com o contador ([ADR-0067](../adr/0067-contingencia-offline-nfce.md)) |
 | Credenciamento da empresa-piloto como emissora de NFC-e em homologação, inscrição estadual e CSC (se for v2.00) | Responsável e SEFAZ-PI |
 | Escolha do QR Code v2.00 (com CSC) ou v3.00 (sem CSC) | Responsável, com o contador |
 | ~~Schemas do envio e do status do serviço~~ **Resolvido** no [ADR-0062](../adr/0062-schemas-e-regras-da-nfce.md): vêm do PL_009q e compilam com o leiaute do PL_010h | — |
