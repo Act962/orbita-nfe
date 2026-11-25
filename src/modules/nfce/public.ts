@@ -13,6 +13,7 @@ export {
   type AccessKeyParts,
 } from './domain/access-key.js';
 export { buildSoapEnvelope, readWsdlContract, type SefazFailure, type WsdlContract } from './infrastructure/sefaz/sefaz-soap.js';
+export { ICP_BRASIL_V10_FILE, loadServerTrust, ServerTrustError } from './infrastructure/sefaz/server-trust.js';
 export {
   digestValueHex,
   hashWithCsc,

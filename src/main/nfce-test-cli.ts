@@ -6,7 +6,7 @@ import type { Agent } from 'undici';
 import { ForgePkcs12Reader } from '../modules/certificates/public.js';
 import { queryProtocol, queryServiceStatus, SVRS_NFCE_PROTOCOL_QUERY, SVRS_NFCE_STATUS } from '../modules/nfce/public.js';
 import { createMtlsAgent } from '../shared/infrastructure/transport/mtls-transport.js';
-import { loadFiscalSchemas } from './fiscal-resources.js';
+import { loadFiscalSchemas, loadNfceServerTrust } from './fiscal-resources.js';
 
 /**
  * Consultas da NFC-e no SVRS, em HOMOLOGAÇÃO. Nenhuma emite nota.
@@ -125,7 +125,12 @@ function openCertificate(path: string, password: string) {
   if (!/^[0-9A-Z]{12}[0-9]{2}$/.test(metadata.subjectCnpj)) fail('O certificado não traz CNPJ ICP-Brasil.');
   if (metadata.notAfter.getTime() < Date.now()) fail('O certificado está vencido.');
   process.stdout.write(`Certificado: ${metadata.subjectName} (vence em ${metadata.notAfter.toISOString().slice(0, 10)})\n`);
-  return { privateKey: opened.value.privateKey, certificatePem: [opened.value.certificatePem, ...opened.value.chainPem].join('') };
+  return {
+    privateKey: opened.value.privateKey,
+    certificatePem: [opened.value.certificatePem, ...opened.value.chainPem].join(''),
+    // ADR-0068: o servidor do SVRS só é aceito se a cadeia terminar na AC Raiz Brasileira v10 versionada.
+    serverTrustPem: loadNfceServerTrust(),
+  };
 }
 
 function report(name: string, data: Record<string, unknown>): void {

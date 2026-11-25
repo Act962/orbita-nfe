@@ -82,7 +82,7 @@
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">861 ✓</div>
+    <div class="value">866 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -218,7 +218,8 @@
     <li><span class="tag done">Pronto</span><div>Regras da emissão em contingência (quando o autorizador cai) lidas e com proposta<small>Quem decide entrar em contingência é a empresa, e quem decide se aceita é o Piauí. A nota precisa ser enviada até o fim do dia útil seguinte. Nada disso foi implementado ainda: depende das duas decisões abaixo.</small></div></li>
     <li><span class="tag block">Você</span><div>Contingência: no motor central já agora, ou só no NERP do caixa depois? E guardar o XML no lugar da segunda via impressa (exige declaração à SEFAZ-PI)?</div></li>
     <li><span class="tag block">Você</span><div>Perguntar à SEFAZ-PI se o Piauí aceita a emissão em contingência off-line da NFC-e</div></li>
-    <li><span class="tag block">Você</span><div>Rodar o teste do autorizador com o certificado: <code>npm run nfce:test -- status &lt;certificado.p12&gt;</code><small>O certificado de teste vence em 26/11.</small></div></li>
+    <li><span class="tag done">Pronto</span><div>Primeira conversa real com o autorizador da NFC-e (homologação), com o certificado de teste<small>O autorizador respondeu "serviço em operação" para o Piauí, o que confirma que é ele quem atende o estado. A consulta de uma nota inexistente respondeu "não consta", como esperado. Para conectar, foi preciso incluir no projeto o certificado raiz oficial do governo (ICP-Brasil), sem desligar nenhuma verificação.</small></div></li>
+    <li><span class="tag block">Você</span><div>Autorizar o download do certificado raiz no site do ITI, para conferir a cópia que veio do Windows</div></li>
     <li><span class="tag block">Você</span><div>Credenciar a empresa-piloto como emissora de NFC-e em homologação na SEFAZ-PI (inscrição estadual e, se for o caso, o CSC)</div></li>
     <li><span class="tag block">Você</span><div>Escolher com o contador o tipo de QR Code (versão 2, com código de segurança, ou versão 3, sem)</div></li>
   </ul>

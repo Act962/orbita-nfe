@@ -37,7 +37,7 @@ Nenhuma regra fiscal sai daqui para o código sem o seu próprio ADR e sem revis
 ## 2. O que já se sabe
 
 ### Autorizador e endereços
-- **Autorizador da NFC-e do Piauí: SVRS (Sefaz Virtual do RS)** [PROVÁVEL].
+- **Autorizador da NFC-e do Piauí: SVRS (Sefaz Virtual do RS)** [CONFIRMADO em homologação, 25/11/2026: cStat 107 com `cUF=22`, [ADR-0068](../adr/0068-raiz-icp-brasil-tls-svrs.md)].
   - A relação oficial de webservices da NFC-e (portal do SVRS e ENCAT) lista os estados com autorizador próprio: AM, GO, MS, MT, PR, RS e SP. Os demais usam o SVRS. O PI não está entre os próprios.
   - Para a NF-e, o Portal Nacional diz explicitamente que o PI usa o SVRS e, em contingência, o SVC-AN [CONFIRMADO].
   - **A confirmar com a SEFAZ-PI** no credenciamento, ou pela consulta de status ([ADR-0063](../adr/0063-status-do-servico-nfce.md)): a regra K02 recusa com 289 a UF que o webservice não atende, então um 107 com `cUF=22` no SVRS confirma.
@@ -84,7 +84,7 @@ O manual do DANFE NFC-e v6.0 traz duas versões de QR Code [CONFIRMADO]:
 
 | Item | Depende de |
 |---|---|
-| Confirmar o SVRS como autorizador do PI e a `urlChave` | SEFAZ-PI (credenciamento ou "Fale com a SEFAZ") |
+| Confirmar a `urlChave` e o autorizador de produção (homologação já confirmada pelo cStat 107) | SEFAZ-PI (credenciamento ou "Fale com a SEFAZ") |
 | Se o PI aceita a contingência off-line (`tpEmis=9`) e o EPEC na NFC-e, e a forma da declaração de guarda eletrônica | SEFAZ-PI |
 | Contingência no motor central já na Fase 3 ou só no NERP (3b); guarda eletrônica no lugar da segunda via | Responsável, com o contador ([ADR-0067](../adr/0067-contingencia-offline-nfce.md)) |
 | Credenciamento da empresa-piloto como emissora de NFC-e em homologação, inscrição estadual e CSC (se for v2.00) | Responsável e SEFAZ-PI |

@@ -10,6 +10,7 @@ import {
   type MunicipalityTable,
   type RoutingTable,
 } from '../modules/nfse/public.js';
+import { loadServerTrust } from '../modules/nfce/public.js';
 import { FiscalSchemaCatalog } from '../shared/infrastructure/xml/fiscal-schema-catalog.js';
 
 /**
@@ -45,6 +46,13 @@ export const DANFSE_DIR = resolve(import.meta.dirname, '../../resources/fiscal/d
 
 export function loadDanfse(municipalities: MunicipalityTable, dir: string = DANFSE_DIR): DanfseRenderer {
   return loadDanfseRenderer(dir, municipalities);
+}
+
+/** AC Raiz Brasileira v10 (ICP-Brasil), âncora do TLS do SVRS na NFC-e (ADR-0068), com o hash conferido na carga. */
+export const NFCE_SERVER_TRUST_DIR = resolve(import.meta.dirname, '../../resources/fiscal/trust/icp-brasil');
+
+export function loadNfceServerTrust(dir: string = NFCE_SERVER_TRUST_DIR): string {
+  return loadServerTrust(dir);
 }
 
 /** ANEXO_A do Sistema Nacional NFS-e (ADR-0060), com o hash conferido na carga. */

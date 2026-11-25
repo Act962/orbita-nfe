@@ -108,7 +108,8 @@ Diagnóstico: [nfce-piaui-diagnostico.md](fiscal/nfce-piaui-diagnostico.md). 16 
   - QR Code v2.00 (com CSC) ou v3.00 (sem CSC);
   - URL do QR Code do PI: `http://www.sefaz.pi.gov.br/nfce/qrcode`;
   - endereços do SVRS.
-- [ ] **A confirmar com a SEFAZ-PI:** o SVRS como autorizador da NFC-e do PI (provável) e a `urlChave`.
+- [x] **SVRS como autorizador da NFC-e do PI:** confirmado em homologação pelo cStat 107 com `cUF=22` ([ADR-0068](adr/0068-raiz-icp-brasil-tls-svrs.md)).
+- [ ] **A confirmar com a SEFAZ-PI:** a `urlChave` e o autorizador de produção.
 - [ ] **Do responsável:** credenciamento em homologação, IE, CSC (se v2.00) e a escolha entre o QR Code v2.00 e o v3.00, com o contador.
 - [x] **Schemas e regras ([ADR-0062](adr/0062-schemas-e-regras-da-nfce.md)):**
   - envio e status do serviço localizados no PL_009q (o único pacote recente completo);
@@ -124,7 +125,11 @@ Diagnóstico: [nfce-piaui-diagnostico.md](fiscal/nfce-piaui-diagnostico.md). 16 
 - [x] **Contingência off-line lida e proposta** ([ADR-0067](adr/0067-contingencia-offline-nfce.md), *Proposto*): Anexo IV e manual v2.0 lidos e cruzados com as NTs. O contribuinte decide entrar e a UF decide se aceita. A NFC-e deve ser transmitida até o fim do primeiro dia útil seguinte, com número novo ao entrar e a mesma chave depois. A nota anterior sem resposta é cancelada (se autorizada) ou tem o número inutilizado.
 - [ ] **Do responsável (ADR-0067):** contingência no motor central já na Fase 3, ou só no NERP (3b)? Guarda eletrônica do XML no lugar da segunda via (precisa de termo ou declaração na SEFAZ-PI)?
 - [ ] **A confirmar com a SEFAZ-PI:** o PI aceita a contingência off-line (`tpEmis=9`, regra B22-20) e o EPEC na NFC-e?
-- [ ] **Do responsável:** rodar `npm run nfce:test -- status <cert.p12>` com o A1 (vence em 26/11). Um cStat 107 com `cUF=22` confirma o mTLS e que o SVRS atende o PI; um 289 indica que não atende.
+- [x] **Primeiros testes reais com o SVRS, em homologação** (25/11, A1 da empresa de teste), registrados no [ADR-0068](adr/0068-raiz-icp-brasil-tls-svrs.md):
+  - status com `cUF=22` → **cStat 107**: o SVRS atende o PI, e o mTLS, o WSDL e o XSD funcionam;
+  - consulta de uma chave válida e inexistente → **cStat 217** (`NOT_FOUND`).
+  - O primeiro status falhou antes de enviar (`UNABLE_TO_GET_ISSUER_CERT_LOCALLY`): a raiz ICP-Brasil v10 do SVRS não está no repositório padrão do Node. Ela agora é versionada com hash e serve de âncora única do SVRS, sem desligar a verificação.
+- [ ] **Do responsável:** autorizar o download do `ICP-Brasilv10.crt` do ITI, para conferir a raiz copiada do repositório do Windows.
 
 ### Inscrição municipal no cadastro (2026-11-25)
 Decisão: [ADR-0061](adr/0061-inscricao-municipal-no-cadastro.md) (responsável: "só cadastrar, sem preencher").
@@ -732,6 +737,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-25 | Chave de acesso (DV, CNPJ alfanumérico, B03-10) e perfil de assinatura nfe-4.00 (EndCertOnly) | 0065 |
 | 2026-11-25 | URL do QR Code da NFC-e 2.00 (CSC) e 3.00 (assinatura); escolha continua do responsável | 0066 |
 | 2026-11-25 | Contingência off-line da NFC-e: leitura das fontes e proposta (Proposto, depende de decisões) | 0067 |
+| 2026-11-25 | Raiz ICP-Brasil v10 versionada como âncora do TLS do SVRS; primeiros testes reais (107 e 217) | 0068 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |

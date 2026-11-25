@@ -21,7 +21,9 @@ O status do serviço (`NfeStatusServico4`) é a primeira chamada real possível 
 - **MOC 7.0, Anexo I, item 4.4.1:** 107 Serviço em Operação; 108 Paralisado Momentaneamente; 109 Paralisado sem Previsão.
 - **Schemas:** `consStatServ_v4.00.xsd`, `retConsStatServ_v4.00.xsd`, `leiauteConsStatServ_v4.00.xsd` e `tiposBasico_v4.00.xsd` do PL_009q. Versionados em `resources/fiscal/schemas/nfe/4.00-status-pl009q/`, com o zip e o SHA-256 de cada arquivo, conferidos na subida.
 - **Endereço:** `https://nfce-homologacao.svrs.rs.gov.br/ws/NfeStatusServico/NfeStatusServico4.asmx`, da relação oficial de webservices de homologação da NFC-e (ENCAT/SVRS).
-- **TLS do SVRS:** cadeia ICP-Brasil (AC SERPRO SSLv1 → Raiz Brasileira v10), aceita pelo repositório padrão do Node em 25/11/2026. A verificação nunca é desligada.
+- **TLS do SVRS:** cadeia ICP-Brasil (AC SERPRO SSLv1 → Raiz Brasileira v10). A verificação nunca é desligada.
+  - **Correção (ADR-0068):** esta linha dizia que o repositório padrão do Node aceitava a cadeia. Não aceita: a raiz v10 não está na lista da Mozilla. O ambiente onde isso foi conferido usava as raízes do Windows (`NODE_USE_SYSTEM_CA`).
+  - A raiz agora é versionada e passada ao TLS como âncora única do SVRS.
 
 ## Decisão
 1. **Namespace e ação SOAP lidos do WSDL do próprio serviço**, nunca escritos à mão. O WSDL exige o mesmo certificado de cliente: sem ele, o SVRS responde 403.

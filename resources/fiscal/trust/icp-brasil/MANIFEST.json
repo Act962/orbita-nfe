@@ -1,0 +1,17 @@
+{
+  "id": "trust/icp-brasil",
+  "decision": "ADR-0068",
+  "retrievedOn": "2026-11-25",
+  "files": {
+    "ac-raiz-icp-brasil-v10.pem": {
+      "sha256": "28fa40ad31c876c3b140c2b99b49e3f8992a4c3c8dfbfebf5ce7196aa2ac08af",
+      "certificateSha256": "6E:0B:FF:06:9A:26:99:4C:15:DE:2C:48:88:CC:54:AF:84:88:2E:54:95:B7:FB:F6:6B:E9:CC:FF:EC:74:89:F6",
+      "subject": "CN=Autoridade Certificadora Raiz Brasileira v10, OU=Instituto Nacional de Tecnologia da Informacao - ITI, O=ICP-Brasil, C=BR",
+      "validity": "2019-07-01 a 2032-07-01",
+      "origin": "Exportado do repositório de raízes confiáveis do Windows (Microsoft Trusted Root Program), sem alteração; DER convertido em PEM.",
+      "officialUrl": "https://acraiz.icpbrasil.gov.br/credenciadas/RAIZ/ICP-Brasilv10.crt",
+      "officialIndex": "https://www.gov.br/iti/pt-br/assuntos/repositorio/repositorio-ac-raiz",
+      "note": "Raiz da cadeia TLS do SVRS (*.svrs.rs.gov.br, AC SERPRO SSLv1 → esta raiz), conferida em 2026-11-25. Pendente: conferir o certificado com o arquivo oficial do ITI (officialUrl)."
+    }
+  }
+}
