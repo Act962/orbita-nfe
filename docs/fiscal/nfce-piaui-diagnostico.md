@@ -82,7 +82,7 @@ O manual do DANFE NFC-e v6.0 traz duas versões de QR Code [CONFIRMADO]:
 | Confirmar o SVRS como autorizador do PI e a `urlChave` | SEFAZ-PI (credenciamento ou "Fale com a SEFAZ") |
 | Credenciamento da empresa-piloto como emissora de NFC-e em homologação, inscrição estadual e CSC (se for v2.00) | Responsável e SEFAZ-PI |
 | Escolha do QR Code v2.00 (com CSC) ou v3.00 (sem CSC) | Responsável, com o contador |
-| Pacote completo de schemas dos serviços (envio, retorno, consulta, eventos). O PL_010h só traz o leiaute e três eventos | Download do pacote base no Portal NF-e (próxima etapa técnica) |
+| Schemas do **envio** (`enviNFe`/`retEnviNFe`) e do **status do serviço**. Os pacotes 010x são incrementais: o PL_010h e o PL_010e trazem o leiaute, e o PL_010d v1.03 traz a consulta de situação, a inutilização, os eventos e a consulta de cadastro. O envio e o status vêm do pacote-base anterior, a localizar na implementação | Desenvolvimento, no Portal NF-e |
 | Enquadramento tributário dos produtos (CST/CSOSN, CFOP, NCM, cClassTrib) | Contador |
 | Leitura completa do Anexo I (regras do modelo 65) e da contingência off-line, com ADRs | Desenvolvimento, na Fase 3 |
 
