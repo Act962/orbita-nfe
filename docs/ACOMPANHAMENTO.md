@@ -13,7 +13,7 @@ Painel resumido: [status.html](status.html) (abrir no navegador; atualizado a ca
   - roteamento SEFIN × DSF.
 - **Operações:** cancelamento, substituição, `Prefer: wait`, XML e DANFSe (NT 008), diagnóstico, webhooks assinados com reenvio, auditoria encadeada e isolamento por empresa.
 - **Verificação de 25/11/2026:**
-  - `npm run check` com 825 testes, typecheck, lint e regras de camadas, mais o build;
+  - `npm run check` com 827 testes, typecheck, lint e regras de camadas, mais o build;
   - `npm run sandbox -- smoke` com 13 passos de ponta a ponta contra API, worker-fiscal e worker-general reais, com webhook recebido e assinatura conferida.
 
 **Falta para homologação real e produção (depende de terceiros ou do responsável):**
@@ -23,7 +23,7 @@ Painel resumido: [status.html](status.html) (abrir no navegador; atualizado a ca
 - Enquadramento da empresa-piloto pelo contador; prazo legal de guarda do XML e provedor S3; revisão do especialista fiscal (gates 1 e 2).
 - Deploy: VPS, domínio e buckets. Adiado por decisão do responsável.
 
-**Prioridade atual:** inscrição municipal no cadastro (depende de decisão do responsável sobre preencher a IM na DPS). Depois, preparação da Fase 3 (NFC-e) sem emissão. Depois, preparação da Fase 3 (NFC-e) sem emissão.
+**Prioridade atual:** Fase 3 técnica sem emissão (schemas dos serviços e leitura do Anexo I do modelo 65), enquanto o responsável resolve o credenciamento na SEFAZ-PI. Ver o [diagnóstico da NFC-e](fiscal/nfce-piaui-diagnostico.md). Depois, preparação da Fase 3 (NFC-e) sem emissão.
 
 ## Status geral
 **Fase 1 — Fundação concluída no código** (deploy real adiado por decisão do responsável). **Fase 2a — NFS-e Nacional:** código concluído no que não depende de terceiros; a saída depende dos itens acima.
@@ -90,6 +90,25 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - [x] Documentação pública lida e comparada ([doc 17](architecture/17-referencia-nfe-io.md)): 10 aprimoramentos (B1–B10) distribuídos no roadmap; [ADR-0027](adr/0027-convencoes-cadastro-fiscal-referencia-nfe-io.md) **aceito** em 2026-11-10.
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
+
+### Preparação da Fase 3 — NFC-e no Piauí (2026-11-25)
+Diagnóstico: [nfce-piaui-diagnostico.md](fiscal/nfce-piaui-diagnostico.md). 16 documentos oficiais baixados com autorização do responsável; hashes em [fontes oficiais](fiscal/fontes-oficiais.md). Nada foi emitido.
+- [x] **Confirmado:**
+  - uma NFC-e por envio;
+  - só autorização síncrona (a assíncrona acaba em 05/04/2027);
+  - sem denegação;
+  - a inutilização continua no PI;
+  - QR Code v2.00 (com CSC) ou v3.00 (sem CSC);
+  - URL do QR Code do PI: `http://www.sefaz.pi.gov.br/nfce/qrcode`;
+  - endereços do SVRS.
+- [ ] **A confirmar com a SEFAZ-PI:** o SVRS como autorizador da NFC-e do PI (provável) e a `urlChave`.
+- [ ] **Do responsável:** credenciamento em homologação, IE, CSC (se v2.00) e a escolha entre o QR Code v2.00 e o v3.00, com o contador.
+- [ ] Próxima etapa técnica: pacote completo de schemas dos serviços (o PL_010h traz só o leiaute e eventos) e a leitura do Anexo I do modelo 65, com ADR.
+
+### Inscrição municipal no cadastro (2026-11-25)
+Decisão: [ADR-0061](adr/0061-inscricao-municipal-no-cadastro.md) (responsável: "só cadastrar, sem preencher").
+- [x] `municipalRegistration` no estabelecimento (TSInscMun, 1 a 15) e `PATCH /v1/establishments/{id}`, auditado e na matriz de isolamento (migration 0036).
+- [x] **Não entra na DPS:** a IM da nota continua sendo a enviada pelo cliente.
 
 ### Todos os erros da rejeição (2026-11-25)
 Decisão: [ADR-0059](adr/0059-todos-os-erros-da-rejeicao.md).
@@ -685,6 +704,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-25 | Códigos de município conferidos na tabela do IBGE no aceite (E0238, E0294, E0302) | 0058 |
 | 2026-11-25 | Todos os erros da rejeição na API; sem "XML de rejeição" na NFS-e (a resposta é JSON) | 0059 |
 | 2026-11-25 | ANEXO_A no aceite: países completos; município pelo ANEXO_A ou IBGE | 0060 |
+| 2026-11-25 | Inscrição municipal no cadastro do estabelecimento, sem ir para a DPS | 0061 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |

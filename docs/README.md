@@ -36,7 +36,8 @@ Fase atual: **Fase 1 — Fundação** (arquitetura aprovada em 2026-11-09; spike
 | — | [Runbook: sandbox local, emissão de ponta a ponta com o simulador](runbooks/sandbox-local.md) |
 | — | Guias da API (servidos em `/guides/`): [guia rápido](api/guia-rapido.md), [webhooks](api/webhooks.md), [versionamento](api/versionamento.md), [changelog](api/changelog.md) |
 | — | Regras implementadas: [CNPJ-001](fiscal/regras/CNPJ-001.md), [COMPANY-001](fiscal/regras/COMPANY-001.md), [SERIES-001](fiscal/regras/SERIES-001.md), [SERIES-002](fiscal/regras/SERIES-002.md) (conferida no XSD oficial), [CERT-001](fiscal/regras/CERT-001.md), [PROD-001](fiscal/regras/PROD-001.md) (regra de cadastro) |
+| — | [NFC-e no Piauí: diagnóstico de preparação da Fase 3](fiscal/nfce-piaui-diagnostico.md) |
 | — | [Riscos e dúvidas abertas](riscos.md) |
 | — | [Roadmap](roadmap.md) |
-| — | [ADRs](adr/) (0001–0060) |
+| — | [ADRs](adr/) (0001–0061) |
 | — | [Acompanhamento do projeto](ACOMPANHAMENTO.md) |
