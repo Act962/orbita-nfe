@@ -133,7 +133,7 @@ export class SimulatedNfseGateway implements NfseGateway {
         return Promise.resolve({ kind: 'REJECTED', code: 'E0046', message: 'NFS-e cancelada não pode ser substituída (simulado).' });
       }
     }
-    const authorization = this.authorize(dpsId);
+    const authorization = this.authorize(dpsId, signedDps);
     if (substituted !== undefined) {
       this.events.set(`${substituted}:105102`, `<EventoSimulado chave="${substituted}" tipo="105102" substituta="${authorization.accessKey}"/>`);
     }
@@ -150,10 +150,10 @@ export class SimulatedNfseGateway implements NfseGateway {
     return Promise.resolve({ kind: 'FOUND', ...found });
   }
 
-  private authorize(dpsId: string): { accessKey: string; nfseXml: string } {
+  private authorize(dpsId: string, signedDps: string): { accessKey: string; nfseXml: string } {
     const digits = BigInt(`0x${createHash('sha256').update(dpsId).digest('hex')}`).toString().padStart(41, '0').slice(0, 41);
     const accessKey = `000000022${digits}`;
-    const authorization = { accessKey, nfseXml: `<NFSeSimulada dps="${dpsId}" chave="${accessKey}"><infNFSe xmlns="http://www.sped.fazenda.gov.br/nfse"><cStat>100</cStat></infNFSe></NFSeSimulada>` };
+    const authorization = { accessKey, nfseXml: simulatedNfse(dpsId, accessKey, this.authorized.size + 1, signedDps) };
     this.authorized.set(dpsId, authorization);
     return authorization;
   }
@@ -163,4 +163,24 @@ function dpsIdOf(signedDps: string): string {
   const match = /<infDPS[^>]*\sId="(DPS[0-9A-Z]{42})"/.exec(signedDps);
   if (match?.[1] === undefined) throw new Error('DPS sem Id no simulador');
   return match[1];
+}
+
+/**
+ * XML "autorizado" do simulador: o grupo `infNFSe` com os campos que o autorizador acrescenta e a
+ * DPS assinada embutida, como no leiaute (TCInfNFSe), para o DANFSe e o `authorizerStatus`
+ * funcionarem no sandbox. A raiz `NFSeSimulada` e os textos "simulado" deixam claro que não é uma
+ * NFS-e real; nomes de município e descrições NÃO são os oficiais.
+ */
+function simulatedNfse(dpsId: string, accessKey: string, number: number, signedDps: string): string {
+  const dps = signedDps.replace(/^<\?xml[^>]*\?>\s*/, '');
+  const cLocEmi = /<cLocEmi>(\d{7})<\/cLocEmi>/.exec(dps)?.[1] ?? '';
+  const cLocPrestacao = /<cLocPrestacao>(\d{7})<\/cLocPrestacao>/.exec(dps)?.[1] ?? cLocEmi;
+  return (
+    `<NFSeSimulada dps="${dpsId}" chave="${accessKey}"><infNFSe xmlns="http://www.sped.fazenda.gov.br/nfse">` +
+    `<xLocEmi>Município simulado ${cLocEmi}</xLocEmi><xLocPrestacao>Município simulado ${cLocPrestacao}</xLocPrestacao>` +
+    `<nNFSe>${number}</nNFSe><xTribNac>Descrição simulada do código de tributação nacional</xTribNac>` +
+    `<verAplic>simulador</verAplic><ambGer>2</ambGer><tpEmis>1</tpEmis><cStat>100</cStat>` +
+    `<dhProc>${new Date().toISOString().slice(0, 19)}-00:00</dhProc><nDFSe>${number}</nDFSe>` +
+    `${dps}</infNFSe></NFSeSimulada>`
+  );
 }

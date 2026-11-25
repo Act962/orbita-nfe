@@ -1,5 +1,5 @@
 import { generateKeyPairSync, type KeyObject } from 'node:crypto';
-import { loadFiscalSchemas, loadNfseRouting } from '../../../src/main/fiscal-resources.js';
+import { loadDanfse, loadFiscalSchemas, loadNfseRouting } from '../../../src/main/fiscal-resources.js';
 import type { LightMyRequestResponse } from 'fastify';
 import { buildApp } from '../../../src/main/app.js';
 import { composeApi, composeIamAdmin, type ApiModules } from '../../../src/main/compose.js';
@@ -86,6 +86,7 @@ export async function startTestApi(options: TestApiOptions = {}): Promise<TestAp
     allowPrivateWebhookTargets: true,
     schemaCatalog: loadFiscalSchemas(),
     nfseRouting: loadNfseRouting(),
+    danfse: loadDanfse(),
   });
   const app = await buildApp({
     logger: createLogger({ level: 'trace', service: 'test', destination: logs.stream }),

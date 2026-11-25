@@ -2,6 +2,7 @@
  * Fachada pública do módulo NFS-e (ADR-0032).
  */
 export { ServiceInvoiceService, type AcceptServiceInvoice, type AcceptResult } from './application/service-invoice-service.js';
+export { DanfseService, type DanfseDownload } from './application/danfse-service.js';
 export { SubmissionProcessor, DEFAULT_PROCESSOR_OPTIONS, type ProcessResult, type ProcessorOptions } from './application/submission-processor.js';
 export { Reconciler, type ReconcileResult } from './application/reconciler.js';
 export {
@@ -30,6 +31,7 @@ export {
   type VerifyOutcome,
 } from './application/archive-verifier.js';
 export { XmlNfseVerifier } from './infrastructure/dps/xml-nfse-verifier.js';
+export { loadDanfseRenderer, PdfDanfseRenderer, DanfseResourceError } from './infrastructure/danfse/danfse-renderer.js';
 export { nfseDeskReader, nfseDeskUnitOfWork } from './infrastructure/persistence/resolution-repositories.js';
 export type { EscalationLevel } from './domain/unknown-escalation.js';
 export { route, SUPPORTED_CHANNELS, type RoutingChannel, type RoutingDecision, type RoutingTable } from './domain/routing.js';
@@ -38,6 +40,7 @@ export type {
   ActiveSeries,
   CancellationPreparer,
   CredentialAccess,
+  DanfseRenderer,
   DpsPreparer,
   EstablishmentReader,
   IssuerCredential,

@@ -415,6 +415,18 @@ export interface NfseDocumentVerifier {
   ): Promise<NfseVerification>;
 }
 
+/**
+ * Gerador do DANFSe (ADR-0057; NT 008 SE/CGNFS-e v1.02): PDF a partir do XML autorizado. A marca
+ * d'água vem da situação ATUAL da nota (CANCELADA, SUBSTITUÍDA), que o XML autorizado não traz.
+ */
+export interface DanfseRenderer {
+  render(input: {
+    readonly nfseXml: string;
+    readonly accessKey: string;
+    readonly situation: 'AUTHORIZED' | 'CANCELLED' | 'SUBSTITUTED';
+  }): Promise<{ readonly ok: true; readonly pdf: Uint8Array } | { readonly ok: false; readonly code: string }>;
+}
+
 /** Destino dos alertas de UNKNOWN por idade (log estruturado no worker; só identificadores). */
 export interface UnknownAlertSink {
   raise(alert: {

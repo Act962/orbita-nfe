@@ -5,6 +5,7 @@ import { withIssueFields } from '../../../../shared/presentation/http/issue-fiel
 import { ProblemSchema, commonErrorResponses } from '../../../../shared/presentation/http/problem.js';
 import { auditContextOf, authErrorResponses, callerOf, companyIdOf, CompanyHeaders } from '../../../../shared/presentation/http/request-context.js';
 import type { CancellationService } from '../../application/cancellation.js';
+import type { DanfseService } from '../../application/danfse-service.js';
 import type { ServiceInvoiceDiagnostics, ServiceInvoiceService } from '../../application/service-invoice-service.js';
 import type { ServiceInvoice, ServiceInvoiceCancellation } from '../../application/ports.js';
 import type { XmlDownload } from '../../application/stored-xml.js';
@@ -314,6 +315,7 @@ const ServiceInvoiceLinks = z
   .object({
     self: z.string(),
     xml: z.string().nullable().meta({ description: 'XML autorizado (AUTHORIZED, CANCELLED, SUBSTITUTED).' }),
+    danfse: z.string().nullable().meta({ description: 'DANFSe em PDF (NT 008), gerado do XML autorizado; com marca d\'água na nota cancelada ou substituída.' }),
     cancellation: z.string().nullable().meta({ description: 'Pedido de cancelamento registrado (CANCELLED).' }),
     cancellationXml: z.string().nullable().meta({ description: 'XML do evento de cancelamento (CANCELLED).' }),
     substitutes: z.string().nullable().meta({ description: 'Nesta substituta: a NFS-e que ela substitui.' }),
@@ -393,6 +395,7 @@ const invoiceJson = (i: ServiceInvoice): z.infer<typeof ServiceInvoiceResponse> 
     self: invoicePath(i.id),
     // A chave de acesso e o XML são gravados juntos na autorização (ADR-0048).
     xml: i.nfseAccessKey === null ? null : `${invoicePath(i.id)}/xml`,
+    danfse: i.nfseAccessKey === null ? null : `${invoicePath(i.id)}/danfse`,
     // CANCELLED só com o evento registrado, que sempre traz o XML (ADR-0035, ADR-0049).
     cancellation: i.status === 'CANCELLED' ? `${invoicePath(i.id)}/cancellation` : null,
     cancellationXml: i.status === 'CANCELLED' ? `${invoicePath(i.id)}/cancellation/xml` : null,
@@ -421,6 +424,7 @@ const XmlResponse = (description: string) => ({
 const xmlDownloadHeaders = 'Cabeçalhos: `ETag` com o SHA-256 dos bytes e `Repr-Digest: sha-256=:…:` (RFC 9530), para conferir o que chegou; `Cache-Control: private, no-store` (dados pessoais).';
 
 type Reply = { header(name: string, value: string): Reply; type(contentType: string): Reply; send(payload: string): unknown };
+type BinaryReply = { header(name: string, value: string): BinaryReply; type(contentType: string): BinaryReply; send(payload: Buffer): unknown };
 
 function sendXml(reply: Reply, download: XmlDownload): void {
   reply
@@ -599,7 +603,7 @@ const cancellationJson = (c: ServiceInvoiceCancellation): z.infer<typeof Cancell
   updatedAt: c.updatedAt.toISOString(),
 });
 
-export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService, cancellations: CancellationService): void {
+export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService, cancellations: CancellationService, danfse: DanfseService): void {
   app.post(
     '/v1/service-invoices/:id/cancellation',
     {
@@ -732,6 +736,42 @@ export function registerNfseRoutes(app: HttpApp, service: ServiceInvoiceService,
       const caller = callerOf(request);
       const environment = caller.environment === 'live' ? 'PRODUCTION' : 'HOMOLOGATION';
       sendXml(reply, await service.authorizedXml(companyIdOf(request), caller.clientApplicationId, environment, request.params.id));
+    },
+  );
+
+  app.get(
+    '/v1/service-invoices/:id/danfse',
+    {
+      config: { auth: { scope: 'nfse:read', company: true } },
+      schema: {
+        tags: [TAG],
+        summary: 'Baixar o DANFSe (PDF)',
+        description:
+          'DANFSe v2.0, a representação impressa da NFS-e, conforme a NT 008 SE/CGNFS-e v1.02, gerado na hora a partir do XML autorizado (o documento fiscal é o XML). ' +
+          'Vale para a nota AUTHORIZED, CANCELLED (marca d\'água "CANCELADA") ou SUBSTITUTED ("SUBSTITUÍDA"). Na nota de teste (homologação), o cabeçalho traz "NFS-e SEM VALIDADE JURÍDICA". ' +
+          '`Cache-Control: private, no-store` (dados pessoais).',
+        security: [{ apiKey: [] }],
+        headers: CompanyHeaders,
+        params: z.object({ id: z.uuid() }),
+        response: {
+          200: { description: 'DANFSe em PDF, uma página A4.', content: { 'application/pdf': { schema: z.string().meta({ format: 'binary' }) } } },
+          ...commonErrorResponses,
+          ...authErrorResponses,
+          404: ProblemSchema.describe('SERVICE_INVOICE_NOT_FOUND ou NFSE_XML_NOT_AVAILABLE (nota que não chegou a ser autorizada).'),
+          422: ProblemSchema.describe('DANFSE_NOT_AVAILABLE: o XML autorizado não tem o grupo infNFSe. O XML continua disponível em /xml.'),
+        },
+      },
+    },
+    async (request, reply) => {
+      const caller = callerOf(request);
+      const environment = caller.environment === 'live' ? 'PRODUCTION' : 'HOMOLOGATION';
+      const download = await danfse.danfse(companyIdOf(request), caller.clientApplicationId, environment, request.params.id);
+      // Buffer vai cru (o Fastify não serializa Buffer); o schema de 200 só documenta o PDF.
+      (reply as unknown as BinaryReply)
+        .type('application/pdf')
+        .header('content-disposition', `inline; filename="${download.fileName}"`)
+        .header('cache-control', 'private, no-store')
+        .send(Buffer.from(download.pdf));
     },
   );
 

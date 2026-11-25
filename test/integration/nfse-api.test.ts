@@ -617,6 +617,7 @@ describe('substituição pela API (ADR-0036)', () => {
     expect((await get(originalId)).json<{ links: unknown }>().links).toEqual({
       self: `/v1/service-invoices/${originalId}`,
       xml: `/v1/service-invoices/${originalId}/xml`,
+      danfse: `/v1/service-invoices/${originalId}/danfse`,
       cancellation: null,
       cancellationXml: null,
       substitutes: null,

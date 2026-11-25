@@ -75,7 +75,7 @@ Faça os passos uma vez, na ordem:
    npm run sandbox -- cancel
    ```
 
-   - `emit` usa `Prefer: wait=10` e uma `Idempotency-Key` nova. Ele mostra o status, a chave de acesso, o `authorizerStatus` e os `links`. O XML vai para `.local/sandbox/`.
+   - `emit` usa `Prefer: wait=10` e uma `Idempotency-Key` nova. Ele mostra o status, a chave de acesso, o `authorizerStatus` e os `links`. O XML e o DANFSe (PDF) vão para `.local/sandbox/`.
    - `get` e `cancel` usam a última nota emitida; para outra, passe o id.
 
 ## Testar os seus dados

@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { loadRoutingTable, type RoutingTable } from '../modules/nfse/public.js';
+import { loadDanfseRenderer, loadRoutingTable, type DanfseRenderer, type RoutingTable } from '../modules/nfse/public.js';
 import { FiscalSchemaCatalog } from '../shared/infrastructure/xml/fiscal-schema-catalog.js';
 
 /**
@@ -18,4 +18,15 @@ export const NFSE_ROUTING_TABLE_FILE = resolve(import.meta.dirname, '../../resou
 
 export function loadNfseRouting(path: string = NFSE_ROUTING_TABLE_FILE): RoutingTable {
   return loadRoutingTable(path);
+}
+
+/** Logomarca da NFS-e e tabela de municípios do IBGE para o DANFSe (ADR-0057), com os hashes conferidos. */
+export const DANFSE_RESOURCES = {
+  danfseDir: resolve(import.meta.dirname, '../../resources/fiscal/danfse'),
+  ibgeDir: resolve(import.meta.dirname, '../../resources/fiscal/ibge'),
+  municipalityFile: 'municipios-2026-11-25.json',
+} as const;
+
+export function loadDanfse(paths: typeof DANFSE_RESOURCES = DANFSE_RESOURCES): DanfseRenderer {
+  return loadDanfseRenderer(paths);
 }

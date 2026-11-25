@@ -1,0 +1,18 @@
+{
+  "id": "danfse/nt-008-v1.02",
+  "decision": "ADR-0057",
+  "specification": {
+    "title": "Nota Técnica SE/CGNFS-e nº 008 — Especificações Técnicas do DANFSe, versão 1.02",
+    "publishedOn": "2026-07-14",
+    "sourceUrl": "https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/rtc/nt-008-se-cgnfse-danfse-20260714-v1-02.pdf",
+    "sha256": "1265f403aedcdc5f08b3049dcc18a15c2bc155f51afccf3d12690fef2f4fb0ff"
+  },
+  "retrievedOn": "2026-11-25",
+  "files": {
+    "logo-nfse-horizontal.png": {
+      "sha256": "ab57fa34887929a10ee3b9b4d666084ec9b9465e62bbcc3523b99b23ccac1063",
+      "sourceUrl": "https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/logos-da-nfs-e/Logo%20-%20NFS-e%20-%20Horizontal.png",
+      "note": "Logomarca da NFS-e citada no item 2.4.3 da NT 008 (canto esquerdo do cabeçalho). PNG 1920x389, sem alteração."
+    }
+  }
+}

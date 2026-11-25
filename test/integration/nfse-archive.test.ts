@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { sql } from 'drizzle-orm';
+import { PDFDocument } from 'pdf-lib';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { composeFiscalWorker } from '../../src/main/compose.js';
 import { X509TrustStore } from '../../src/modules/certificates/public.js';
@@ -304,6 +305,7 @@ describe('download do XML pela API (ADR-0050)', () => {
     expect(res.json<{ links: unknown }>().links).toEqual({
       self: `/v1/service-invoices/${id}`,
       xml: null,
+      danfse: null,
       cancellation: null,
       cancellationXml: null,
       substitutes: null,
@@ -312,6 +314,9 @@ describe('download do XML pela API (ADR-0050)', () => {
     const pending = await get(`/v1/service-invoices/${id}/xml`);
     expect(pending.statusCode).toBe(404);
     expect(pending.json<{ code: string }>().code).toBe('NFSE_XML_NOT_AVAILABLE');
+    const pendingDanfse = await get(`/v1/service-invoices/${id}/danfse`);
+    expect(pendingDanfse.statusCode).toBe(404);
+    expect(pendingDanfse.json<{ code: string }>().code).toBe('NFSE_XML_NOT_AVAILABLE');
 
     const other = await createClientApp(t.admin, 'nfse-download-outra');
     const otherKey = await other.key(['nfse:read']);
@@ -320,6 +325,38 @@ describe('download do XML pela API (ADR-0050)', () => {
     const denied = await t.app.inject({ method: 'GET', url: `/v1/service-invoices/${authorized}/xml`, headers: bearer(otherKey, companyId) });
     expect(denied.statusCode).toBe(404);
     expect(denied.json<{ code: string }>().code).toBe('SERVICE_INVOICE_NOT_FOUND');
+    const deniedDanfse = await t.app.inject({ method: 'GET', url: `/v1/service-invoices/${authorized}/danfse`, headers: bearer(otherKey, companyId) });
+    expect(deniedDanfse.statusCode).toBe(404);
+    expect(deniedDanfse.json<{ code: string }>().code).toBe('SERVICE_INVOICE_NOT_FOUND');
+  });
+
+  it('DANFSe (ADR-0057): PDF de uma página A4 gerado do XML autorizado, sem cache; também na nota cancelada', async () => {
+    const id = await authorizedInvoice('danfse-1');
+    const invoice = await get(`/v1/service-invoices/${id}`);
+    const { accessKey, links } = invoice.json<{ accessKey: string; links: { danfse: string } }>();
+    expect(links.danfse).toBe(`/v1/service-invoices/${id}/danfse`);
+    const res = await get(links.danfse);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.headers['content-type']).toBe('application/pdf');
+    expect(res.headers['cache-control']).toBe('private, no-store');
+    expect(res.headers['content-disposition']).toBe(`inline; filename="danfse-${accessKey}.pdf"`);
+    expect(res.rawPayload.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    const pdf = await PDFDocument.load(res.rawPayload);
+    expect(pdf.getPageCount()).toBe(1);
+    expect(pdf.getTitle()).toBe(`DANFSe ${accessKey}`);
+
+    const requested = await t.app.inject({
+      method: 'POST',
+      url: `/v1/service-invoices/${id}/cancellation`,
+      headers: bearer(key, companyId),
+      payload: { reasonCode: '1', reasonText: 'Erro na emissão do documento' },
+    });
+    expect(requested.statusCode, requested.body).toBe(202);
+    expect(await fiscalWorker().cancellations?.process(companyId, requested.json<{ id: string }>().id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'REGISTERED' });
+    const cancelled = await get(links.danfse);
+    expect(cancelled.statusCode).toBe(200);
+    // A marca d'água muda o conteúdo: o PDF da nota cancelada não é o mesmo da autorizada.
+    expect(cancelled.rawPayload.equals(res.rawPayload)).toBe(false);
   });
 
   it('cancelamento: só o evento REGISTERED tem XML; a nota cancelada continua com o XML autorizado', async () => {

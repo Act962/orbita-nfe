@@ -211,6 +211,20 @@ async function saveXml(state: SandboxState, invoice: Record<string, unknown>): P
     writeFileSync(file, res.text);
     out(`  XML (${name}) salvo em ${file}`);
   }
+  const danfse = links?.['danfse'];
+  if (danfse == null) return;
+  // O DANFSe é binário: lido como bytes, não como texto.
+  const headers: Record<string, string> = { authorization: `Bearer ${state.apiKey}` };
+  if (state.companyId !== undefined) headers['x-company-id'] = state.companyId;
+  const res = await fetch(`${apiBase()}${danfse}`, { headers });
+  if (res.status !== 200) {
+    out(`  DANFSe: HTTP ${res.status}`);
+    return;
+  }
+  mkdirSync(OUT_DIR, { recursive: true });
+  const file = `${OUT_DIR}/${id}-danfse.pdf`;
+  writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+  out(`  DANFSe salvo em ${file}`);
 }
 
 async function emit(dpsFile: string | undefined, wait: number): Promise<void> {

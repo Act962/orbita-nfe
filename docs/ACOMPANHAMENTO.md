@@ -70,6 +70,16 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### DANFSe (2026-11-25)
+Decisão: [ADR-0057](adr/0057-danfse.md). Fonte: NT 008 SE/CGNFS-e v1.02, lida inteira (a API de DANFSe do ADN foi suspensa em 03/08/2026).
+- [x] **`GET /v1/service-invoices/{id}/danfse`**: PDF A4 de uma página, gerado na hora do XML autorizado (hash conferido); `links.danfse`.
+- [x] **Leiaute do Anexo I:** campos, máscaras e reticências do item 2.4.5; frases das notas 2 e 3; nota 6 (PIS/COFINS até 2026); nota 10 (totais aproximados); QR Code da consulta pública; "NFS-e SEM VALIDADE JURÍDICA" em homologação; marca d'água CANCELADA/SUBSTITUÍDA.
+- [x] **Descrições das opções** copiadas das anotações do XSD; código desconhecido sai como veio.
+- [x] **Recursos oficiais com hash conferido na subida:** logomarca da NFS-e e tabela de municípios do IBGE (5.571), em `resources/fiscal/`.
+- [x] **Decisões do responsável:** Helvetica no lugar de Arial/MS Sans Serif (proprietárias); dependências `pdf-lib` e `qrcode` (MIT).
+- [x] Simulador devolve `infNFSe` com a DPS embutida; o sandbox salva o PDF.
+- [ ] Depois: conferir o DANFSe de uma NFS-e real (R-43/R-44); linha de totais aproximados com `indTotTrib`/`pTotTribSN` (revisão do especialista); NT específica para os novos fatos geradores do IBS/CBS.
+
 ### Sandbox local (2026-11-25)
 Roteiro: [sandbox-local](runbooks/sandbox-local.md).
 - [x] **`npm run sandbox`** (`init`, `setup`, `emit`, `get`, `cancel`, `status`): credencial de teste, e-CNPJ fictício, empresa, estabelecimento, série e certificado pela API; emissão com `Prefer: wait`, XML salvo e cancelamento.
@@ -638,6 +648,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-24 | Diagnóstico da nota em rota própria, com o escopo `nfse:debug` | 0055 |
 | 2026-11-24 | `Prefer: wait` também no pedido de cancelamento | 0053 |
 | 2026-11-24 | Reenvio de webhook pelo documento, sem saber o id do evento | 0056 |
+| 2026-11-25 | DANFSe gerado pelo motor (NT 008 v1.02), Helvetica no lugar das fontes proprietárias | 0057 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |

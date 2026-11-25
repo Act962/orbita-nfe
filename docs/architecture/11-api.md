@@ -15,6 +15,7 @@ Recursos separados por modalidade (contratos diferentes), com consulta unificada
 | POST | `/v1/service-invoices/{id}/substitution` | `nfse:issue` — **implementado** (ADR-0036) |
 | GET | `/v1/service-invoices/{id}/xml` | `nfse:read` — **implementado** (bytes do banco com o hash conferido, sem redirecionar, ADR-0050) |
 | GET | `/v1/service-invoices/{id}/cancellation/xml` | `nfse:read` — **implementado** (XML do evento registrado, ADR-0050) |
+| GET | `/v1/service-invoices/{id}/danfse` | `nfse:read` — **implementado** (DANFSe v2.0 em PDF, NT 008 v1.02, gerado do XML autorizado, ADR-0057) |
 | GET | `/v1/service-invoices/{id}/diagnostics` | `nfse:debug` — **implementado** (tentativas, protocolo e pedidos de cancelamento, sem XML, ADR-0055) |
 | GET | `/v1/service-invoices/{id}/pdf` | `nfse:read` |
 | POST | `/v1/product-invoices` / `/v1/consumer-invoices` | Fases 4 e 3 |
@@ -93,6 +94,7 @@ Todas as respostas de erro: `application/problem+json` com `type`, `title`, `sta
 | 422 | `<REGRA>` (ex.: `CERTIFICATE_EXPIRED`) | Regra de negócio/fiscal violada; `ruleId` aponta a origem documentada |
 | 404 | `WEBHOOK_SUBSCRIPTION_NOT_FOUND`, `WEBHOOK_DELIVERY_NOT_FOUND` | Inexistente, de outra empresa **ou de outra aplicação** |
 | 400 | `VALIDATION_FAILED` com issues `URL_NOT_HTTPS`, `URL_PRIVATE_ADDRESS`, `URL_HAS_CREDENTIALS`, `URL_HAS_FRAGMENT`, `URL_INVALID`, `URL_TOO_LONG`, `UNKNOWN_EVENT_TYPE`, `DUPLICATED` | Assinatura de webhook inválida (proteção contra SSRF) |
+| 422 | `DANFSE_NOT_AVAILABLE` | XML autorizado sem o grupo `infNFSe`: o DANFSe não pode ser gerado; o XML continua disponível (ADR-0057) |
 | 422 | `WEBHOOK_SUBSCRIPTION_LIMIT`, `WEBHOOK_SUBSCRIPTION_DISABLED` | Limite de 10 assinaturas por aplicação e empresa; assinatura desativada |
 | 429 | `RATE_LIMITED` | Limite por credencial (padrão 600/min, rajada 120) ou por endereço antes da autenticação (1200/min, rajada 300); headers `Retry-After`, `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset` (estes também nas respostas de sucesso) |
 | 503 | `DATABASE_UNAVAILABLE`, `DATABASE_TIMEOUT`, `SERVICE_UNAVAILABLE` | Dependência indisponível; header `Retry-After` |

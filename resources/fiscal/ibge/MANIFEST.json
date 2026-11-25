@@ -1,0 +1,14 @@
+{
+  "id": "ibge-municipios",
+  "decision": "ADR-0057",
+  "source": "IBGE — API de localidades, serviço de dados (lista oficial de municípios com o código de 7 dígitos)",
+  "sourceUrl": "https://servicodados.ibge.gov.br/api/v1/localidades/municipios",
+  "retrievedOn": "2026-11-25",
+  "sourceSha256": "cf005d0277172793bc3c3409a926aeae307dff6a3468d75c7edf8ffb7b49cf7a",
+  "generator": "scripts/ibge-municipios.mjs (só reorganiza: código → [nome, UF], sem alterar nomes nem códigos)",
+  "files": {
+    "municipios-2026-11-25.json": {
+      "sha256": "6dfec29b829d7711d1474a1d0734a37b1514f0a4050c033df64dc1e2b6d7acc1"
+    }
+  }
+}

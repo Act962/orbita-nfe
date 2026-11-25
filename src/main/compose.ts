@@ -39,6 +39,8 @@ import {
 import {
   Reconciler,
   ServiceInvoiceService,
+  DanfseService,
+  type DanfseRenderer,
   SubmissionProcessor,
   XmlDpsValidator,
   ManualResolutionDesk,
@@ -166,6 +168,8 @@ export interface ApiModulesDependencies {
   readonly schemaCatalog: FiscalSchemaCatalog;
   /** Tabela de roteamento da NFS-e (ADR-0028), validada na carga. */
   readonly nfseRouting: RoutingTable;
+  /** Gerador do DANFSe (ADR-0057), com a logomarca e a tabela do IBGE conferidas na carga. */
+  readonly danfse: DanfseRenderer;
 }
 
 export interface ApiModules {
@@ -213,6 +217,7 @@ export function composeApi(deps: ApiModulesDependencies): ApiModules {
     jobsFor: apiJobs,
   });
   const nfseCancellations = new CancellationService(nfseApiUow, uuidv7);
+  const nfseDanfse = new DanfseService(nfseApiUow, deps.danfse);
   const nfse = new ServiceInvoiceService(
     nfseApiUow,
     uuidv7,
@@ -236,7 +241,7 @@ export function composeApi(deps: ApiModulesDependencies): ApiModules {
       registerFiscalSettingsRoutes(app, fiscalSettings);
       registerCertificateRoutes(app, certificates);
       registerWebhookRoutes(app, webhooks);
-      registerNfseRoutes(app, nfse, nfseCancellations);
+      registerNfseRoutes(app, nfse, nfseCancellations, nfseDanfse);
     },
   };
 }

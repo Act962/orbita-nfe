@@ -8,6 +8,14 @@ last_updated: 2026-11-24
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
 
+## 2026-11-25 — v1 (DANFSe)
+
+**Adicionado:**
+
+- `GET /v1/service-invoices/{id}/danfse` (`nfse:read`): DANFSe v2.0 em PDF, conforme a NT 008 SE/CGNFS-e v1.02, gerado do XML autorizado. Marca d'água na nota cancelada ou substituída.
+- `links.danfse` no corpo da nota.
+- Código de erro `DANFSE_NOT_AVAILABLE` (422).
+
 ## 2026-11-24 — v1 (reenvio de webhook por documento)
 
 **Adicionado:**
