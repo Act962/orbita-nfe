@@ -245,7 +245,7 @@ function providerParty(info: NfseNode, dps: NfseNode, lookup: MunicipalityLookup
   return {
     document: base.document,
     municipalRegistration: prest.text('IM') === undefined ? fit(emit.text('IM'), 15) : base.municipalRegistration,
-    phone: prest.text('fone') === undefined ? fit(emit.text('fone'), 20) : base.phone,
+    phone: prest.text('fone') === undefined ? fit(phoneOf(emit.text('fone')), 20) : base.phone,
     name: prest.text('xNome') === undefined ? fit(emit.text('xNome'), 80) : base.name,
     municipality: prest.at('end').exists ? base.municipality : fit(municipalityOf(emitAddress.text('cMun'), lookup), 37),
     ibgeAndPostalCode: prest.at('end').exists ? base.ibgeAndPostalCode : fit(joinSlash(emitAddress.text('cMun'), cep(emitAddress.text('CEP'))), 21),
@@ -273,7 +273,7 @@ function party(node: NfseNode, lookup: MunicipalityLookup): DanfseParty {
   return {
     document: documentOf(node),
     municipalRegistration: fit(node.text('IM'), 15),
-    phone: fit(node.text('fone'), 20),
+    phone: fit(phoneOf(node.text('fone')), 20),
     name: fit(node.text('xNome'), 80),
     municipality: fit(national.exists ? municipalityOf(national.text('cMun'), lookup) : foreign.text('xCidade'), 37),
     ibgeAndPostalCode: fit(national.exists ? joinSlash(national.text('cMun'), cep(national.text('CEP'))) : foreign.text('cEndPost'), 21),
@@ -339,9 +339,10 @@ function ibsCbsBlock(dps: NfseNode, dpsIbs: NfseNode, ibs: NfseNode, nfseValues:
   const pisCofins = dps.at('valores', 'trib', 'tribFed', 'piscofins');
   const incidenceCode = ibs.text('cLocalidadeIncid');
   const operation = [dpsIbs.text('cIndOp'), incidenceCode, ibs.text('xLocalidadeIncid'), incidenceCode === undefined ? undefined : lookup(incidenceCode)?.uf].filter(Boolean).join(' / ');
-  const exclusions = ibs.exists
-    ? sum(dps.text('valores', 'vDescCondIncond', 'vDescIncond'), values.text('vCalcReeRepRes'), nfseValues.text('vISSQN'), pisCofins.text('vPis'), pisCofins.text('vCofins'))
-    : undefined;
+  // NT 008, Anexo I: "somatório de todos estes campos" (vDescIncond + vCalcReeRepRes + vISSQN + vPIS +
+  // vCOFINS). A soma não depende do grupo IBSCBS, como no gerador da Receita e no DANFSe do emissor
+  // nacional; sem nenhum dos campos no XML, traço (nota 12).
+  const exclusions = sum(dps.text('valores', 'vDescCondIncond', 'vDescIncond'), values.text('vCalcReeRepRes'), nfseValues.text('vISSQN'), pisCofins.text('vPis'), pisCofins.text('vCofins'));
   return {
     cstClassification: fit(joinSlash(trib.text('CST'), trib.text('cClassTrib')), 12),
     operation: fit(operation === '' ? undefined : operation, 56),
@@ -410,6 +411,17 @@ function coded(catalog: Readonly<Record<string, string>>, code: string | undefin
 function joinSlash(a: string | undefined, b: string | undefined): string | undefined {
   if (a === undefined && b === undefined) return undefined;
   return `${a ?? DASH} / ${b ?? DASH}`;
+}
+
+/**
+ * Telefone com DDD em 10 ou 11 dígitos sai como "(86) 3222-0000" ou "(86) 99999-0000", como no
+ * DANFSe do emissor nacional e no gerador da Receita (a NT só dá o tamanho, 20). Outro formato sai
+ * como veio.
+ */
+function phoneOf(value: string | undefined): string | undefined {
+  if (value === undefined || !/^\d{10,11}$/.test(value)) return value;
+  const cut = value.length - 4;
+  return `(${value.slice(0, 2)}) ${value.slice(2, cut)}-${value.slice(cut)}`;
 }
 
 function cep(value: string | undefined): string | undefined {

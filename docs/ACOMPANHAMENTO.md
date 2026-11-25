@@ -91,6 +91,13 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Repositórios da Receita Federal como referência (2026-11-25)
+Análise: [doc 18](architecture/18-referencia-receita-federal-rtc.md), sem executar nada.
+- [x] **Gerador de DANFSe:** confirma a Helvetica, os formatos e os traços do nosso DANFSe. Três comportamentos ainda precisam ser localizados na NT 008: PIS/COFINS retidos, PIS/COFINS depois de 2026 e o aviso de operação sem ISSQN.
+- [x] **Calculadoras RTC (regime regular e Simples):** são a fonte das tabelas oficiais de CST, `cClassTrib`, NBS e alíquotas e das regras de arredondamento do IBS/CBS. Entram quando o IBS/CBS entrar na DPS ou na NFC-e.
+- [x] **Gerador da Receita compilado e comparado** (autorizado pelo responsável): seis XMLs fictícios nos dois geradores. Três correções no nosso DANFSe (exclusões da base, telefone e texto do QR Code). Nos demais pontos de divergência, o nosso segue a NT ou o XSD.
+- [ ] **Do responsável:** decidir se as tabelas da calculadora entram como recurso versionado ou por serviço auxiliar, quando o IBS/CBS entrar.
+
 ### Preparação da Fase 3 — NFC-e no Piauí (2026-11-25)
 Diagnóstico: [nfce-piaui-diagnostico.md](fiscal/nfce-piaui-diagnostico.md). 16 documentos oficiais baixados com autorização do responsável; hashes em [fontes oficiais](fiscal/fontes-oficiais.md). Nada foi emitido.
 - [x] **Confirmado:**

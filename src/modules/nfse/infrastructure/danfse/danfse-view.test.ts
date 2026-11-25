@@ -62,6 +62,10 @@ describe('DANFSe: conteúdo (NT 008 v1.02, item 2.4.5)', () => {
     expect(v.provider.name).toBe('EMPRESA FICTICIA LTDA');
     expect(v.provider.municipality).toBe('Teresina / PI');
     expect(v.provider.ibgeAndPostalCode).toBe('2211001 / 64.000-000');
+    // Telefone com DDD formatado como no emissor nacional; fora de 10/11 dígitos, como veio.
+    expect(v.provider.phone).toBe('(86) 99999-0000');
+    expect(view(nfse().replace('86999990000', '8632220000')).provider.phone).toBe('(86) 3222-0000');
+    expect(view(nfse().replace('86999990000', '5511999990000')).provider.phone).toBe('5511999990000');
     // Item 2.4.5: até 40 posições; acima de 37, corta com reticências.
     expect(v.provider.simplesNacional).toBe('Optante - Microempresa ou Empresa de ...');
     expect(v.taker).toEqual({
@@ -117,9 +121,13 @@ describe('DANFSe: conteúdo (NT 008 v1.02, item 2.4.5)', () => {
     expect(view(nfse({ dCompet: '2027-01-01' })).federalTax.showPisCofinsRow).toBe(false);
   });
 
-  it('nota 12: sem IBS/CBS no XML, os campos saem com traço', () => {
+  it('nota 12: sem IBS/CBS no XML, os campos saem com traço; as exclusões somam os campos que existem', () => {
     const v = view(nfse());
-    expect(Object.values(v.ibsCbs).every((value) => value === '-')).toBe(true);
+    const { exclusions, ...others } = v.ibsCbs;
+    expect(Object.values(others).every((value) => value === '-')).toBe(true);
+    // Anexo I: vDescIncond 10,00 + vISSQN 20,00 + vPIS 6,50 + vCOFINS 30,00 (como no gerador da Receita).
+    expect(exclusions).toBe('R$ 66,50');
+    expect(view(nfse().replace(/<vDescCondIncond>.*?<\/vDescCondIncond>/, '').replace(/<vISSQN>.*?<\/vISSQN>/, '').replace(/<piscofins>.*?<\/piscofins>/, '')).ibsCbs.exclusions).toBe('-');
     expect(v.totals.netPlusIbsCbs).toBe('-');
     expect(v.totals.serviceAmount).toBe('R$ 1.000,00');
     expect(v.totals.netAmount).toBe('R$ 954,50');

@@ -136,7 +136,8 @@ function drawIdentification(canvas: Canvas, view: DanfseView): void {
 function drawQrCode(canvas: Canvas, url: string): void {
   const qr = QRCode.create(url, { errorCorrectionLevel: 'M' });
   canvas.qr(qr.modules, 17.48, 1.67, 1.52);
-  canvas.paragraph(QR_TEXT, 15.8, 3.36, 4.72, 0.68, 6, 'regular', 3, true);
+  // Três linhas de 6 pt (entrelinha 7,2 pt) pedem 0,77 cm; com 0,68 cm a última linha era cortada.
+  canvas.paragraph(QR_TEXT, 15.8, 3.36, 4.72, 0.8, 6, 'regular', 3, true);
 }
 
 function partyRows(title: string, block: DanfsePartyBlock, withRegistration: boolean): Row[] {
