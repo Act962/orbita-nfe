@@ -78,6 +78,29 @@ Faça os passos uma vez, na ordem:
    - `emit` usa `Prefer: wait=10` e uma `Idempotency-Key` nova. Ele mostra o status, a chave de acesso, o `authorizerStatus` e os `links`. O XML e o DANFSe (PDF) vão para `.local/sandbox/`.
    - `get` e `cancel` usam a última nota emitida; para outra, passe o id.
 
+6. **Conferência automática de ponta a ponta**:
+
+   ```bash
+   npm run sandbox -- smoke
+   ```
+
+   Sobe um receptor de webhook em `127.0.0.1:3199` (mude com `SANDBOX_WEBHOOK_PORT`) e confere 13 passos. Para no primeiro que falhar, com código de saída 1:
+   - validação sem efeitos;
+   - recusa local da E0302 (município inexistente), antes de numerar;
+   - emissão `201 AUTHORIZED` com `cStat` 100;
+   - repetição com a mesma `Idempotency-Key`, que devolve a mesma nota;
+   - mesma chave com outro corpo, que dá `IDEMPOTENCY_KEY_REUSED`;
+   - consulta pela referência;
+   - XML com `ETag` igual ao SHA-256;
+   - DANFSe;
+   - diagnóstico;
+   - webhook da autorização com a assinatura conferida;
+   - cancelamento `REGISTERED`, com a nota `CANCELLED` e o XML do evento;
+   - webhook do cancelamento;
+   - reenvio do aviso pela nota, com o mesmo `webhook-id`.
+
+   A assinatura de webhook do smoke é criada uma vez. O segredo de teste fica em `secrets/sandbox.json`, nunca no terminal.
+
 ## Testar os seus dados
 
 A DPS padrão tem valores **fictícios** (`test/support/dps-fixtures.ts`). Eles servem para exercitar o fluxo e o leiaute; não são enquadramento de ninguém.

@@ -1,11 +1,32 @@
 # Acompanhamento do projeto
 
-Última atualização: 2026-11-12
+Última atualização: 2026-11-25
+
+## Estado da entrega (prazo: 2026-11-27)
+Painel resumido: [status.html](status.html) (abrir no navegador; atualizado a cada etapa).
+
+**Pronto e verificado (homologação, com o autorizador simulado):**
+- **Emissão:** DPS da NFS-e nacional pela API, com:
+  - idempotência e reconciliação de `UNKNOWN`;
+  - regras do Anexo I antes de numerar, inclusive municípios pela tabela do IBGE;
+  - XML assinado e validado no XSD oficial;
+  - roteamento SEFIN × DSF.
+- **Operações:** cancelamento, substituição, `Prefer: wait`, XML e DANFSe (NT 008), diagnóstico, webhooks assinados com reenvio, auditoria encadeada e isolamento por empresa.
+- **Verificação de 25/11/2026:**
+  - `npm run check` com 819 testes, typecheck, lint e regras de camadas, mais o build;
+  - `npm run sandbox -- smoke` com 13 passos de ponta a ponta contra API, worker-fiscal e worker-general reais, com webhook recebido e assinatura conferida.
+
+**Falta para homologação real e produção (depende de terceiros ou do responsável):**
+- R-43: a SEFIN de testes não tem Teresina no convênio (E0037). A assinatura ainda não foi provada no autorizador real.
+- R-44: a homologação da DSF recusa os códigos de serviço da Prefeitura (E0314). Precisa da resposta da SEMF/DSF.
+- O A1 da empresa de teste vence em 26/11/2026. Para novos testes reais é preciso outro A1.
+- Enquadramento da empresa-piloto pelo contador; prazo legal de guarda do XML e provedor S3; revisão do especialista fiscal (gates 1 e 2).
+- Deploy: VPS, domínio e buckets. Adiado por decisão do responsável.
+
+**Prioridade atual:** P2 de API: lista de erros no cancelamento rejeitado, tabela ANEXO_A do Sistema Nacional e inscrição municipal no cadastro. Depois, preparação da Fase 3 (NFC-e) sem emissão.
 
 ## Status geral
-Painel resumido para acompanhamento: [status.html](status.html) (abrir no navegador; atualizado a cada etapa).
-
-**Fase 1 — Fundação concluída no código** (deploy real adiado por decisão do responsável). **Fase 2a — NFS-e Nacional em andamento** desde 2026-11-12, começando pela parte técnica que não depende de decisão fiscal.
+**Fase 1 — Fundação concluída no código** (deploy real adiado por decisão do responsável). **Fase 2a — NFS-e Nacional:** código concluído no que não depende de terceiros; a saída depende dos itens acima.
 
 ## Fase 1 — progresso
 ### Concluído (semana 1–2 do plano)

@@ -7,12 +7,14 @@
 //   npm run sandbox -- get <id>
 //   npm run sandbox -- cancel <id> [--reason-code 1] [--reason-text "..."]
 //   npm run sandbox -- status
+//   npm run sandbox -- smoke              roteiro automático de ponta a ponta, com webhook recebido e assinatura conferida
 //
 // O estado (ids, a API key de TESTE e a senha do PFX fictício) fica em secrets/sandbox.json, com
 // permissão 0600 e fora do git. Nada disso é impresso: a chave nunca vai para o terminal nem para log.
 // Os valores da DPS padrão são FICTÍCIOS (test/support/dps-fixtures.ts): servem para exercitar o
 // fluxo e o leiaute, não são enquadramento de ninguém. Para testar os seus, use --dps.
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createServer, type Server } from 'node:http';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 import { parseArgs } from 'node:util';
@@ -45,7 +47,14 @@ interface SandboxState {
   establishmentId?: string;
   certificateId?: string;
   lastInvoiceId?: string;
+  /** Assinatura de webhook do smoke (segredo de TESTE, só neste arquivo 0600). */
+  webhookSubscriptionId?: string;
+  webhookSecret?: string;
 }
+
+/** Receptor local dos webhooks do smoke (WEBHOOK_ALLOW_PRIVATE_TARGETS=true, só desenvolvimento). */
+const WEBHOOK_PORT = Number(process.env['SANDBOX_WEBHOOK_PORT'] ?? '3199');
+const WEBHOOK_URL = `http://127.0.0.1:${WEBHOOK_PORT}/webhooks/orbita-nfe`;
 
 class SandboxError extends Error {}
 
@@ -267,6 +276,209 @@ function status(): void {
   out(`API: ${apiBase()} (documentação em ${apiBase()}/docs/)`);
 }
 
+interface ReceivedWebhook {
+  readonly id: string;
+  readonly type: string;
+  readonly subjectId: string;
+  readonly status: string | undefined;
+  readonly signatureValid: boolean;
+}
+
+/** Confere a assinatura Standard Webhooks como o guia manda (docs/api/webhooks.md). */
+function webhookSignatureValid(secret: string, headers: Record<string, string | string[] | undefined>, rawBody: string): boolean {
+  const id = String(headers['webhook-id'] ?? '');
+  const timestamp = String(headers['webhook-timestamp'] ?? '');
+  if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false;
+  const key = Buffer.from(secret.slice('whsec_'.length), 'base64');
+  const expected = `v1,${createHmac('sha256', key).update(`${id}.${timestamp}.${rawBody}`).digest('base64')}`;
+  return String(headers['webhook-signature'] ?? '')
+    .split(' ')
+    .some((candidate) => candidate.length === expected.length && timingSafeEqual(Buffer.from(candidate), Buffer.from(expected)));
+}
+
+function startWebhookReceiver(secret: string, received: ReceivedWebhook[]): Promise<Server> {
+  const server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => chunks.push(c));
+    req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8');
+      try {
+        const body = JSON.parse(raw) as { type?: string; subject?: { id?: string }; data?: { status?: string } };
+        received.push({
+          id: String(req.headers['webhook-id'] ?? ''),
+          type: body.type ?? '',
+          subjectId: body.subject?.id ?? '',
+          status: body.data?.status,
+          signatureValid: webhookSignatureValid(secret, req.headers, raw),
+        });
+      } catch {
+        // corpo ilegível: não conta como recebido
+      }
+      res.writeHead(204).end();
+    });
+  });
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(WEBHOOK_PORT, '127.0.0.1', () => { resolve(server); });
+  });
+}
+
+async function waitFor<T>(what: string, seconds: number, probe: () => T | undefined | Promise<T | undefined>): Promise<T> {
+  const deadline = Date.now() + seconds * 1000;
+  for (;;) {
+    const found = await probe();
+    if (found !== undefined) return found;
+    if (Date.now() > deadline) throw new SandboxError(`${what}: nada em ${seconds} s`);
+    await sleep(500);
+  }
+}
+
+/**
+ * Roteiro automático de ponta a ponta contra a API, o worker-fiscal e o worker-general locais.
+ * Cada passo confere o resultado; o primeiro que falhar encerra com código 1.
+ */
+async function smoke(): Promise<void> {
+  const state = loadState();
+  if (state.establishmentId === undefined) throw new SandboxError('rode "npm run sandbox -- setup" primeiro');
+  const passed: string[] = [];
+  const step = async (name: string, run: () => Promise<void>): Promise<void> => {
+    try {
+      await run();
+    } catch (error) {
+      out(`✗ ${name}`);
+      throw error instanceof SandboxError ? error : new SandboxError(`${name}: falha inesperada`);
+    }
+    passed.push(name);
+    out(`✓ ${name}`);
+  };
+  const check = (ok: boolean, message: string): void => {
+    if (!ok) throw new SandboxError(message);
+  };
+
+  // Webhook: assinatura criada uma vez e reaproveitada (o segredo só aparece na criação).
+  if (state.webhookSubscriptionId === undefined || state.webhookSecret === undefined) {
+    const created = expectStatus(
+      await call(state, 'POST', '/v1/webhook-subscriptions', { body: { url: WEBHOOK_URL, eventTypes: ['service_invoice.status_changed', 'service_invoice.cancellation_changed'] } }),
+      [201],
+      'assinatura de webhook',
+    );
+    state.webhookSubscriptionId = String(created['id']);
+    state.webhookSecret = String(created['secret']);
+    saveState(state);
+  }
+  const received: ReceivedWebhook[] = [];
+  const server = await startWebhookReceiver(state.webhookSecret, received).catch(() => {
+    throw new SandboxError(`porta ${String(WEBHOOK_PORT)} ocupada: defina SANDBOX_WEBHOOK_PORT`);
+  });
+
+  try {
+    const dps = sampleDpsData({ competenceDate: new Date().toISOString().slice(0, 10) });
+    const reference = `smoke-${Date.now()}`;
+    const body = { externalReference: reference, ...dps, establishmentId: state.establishmentId };
+    const key = randomUUID();
+    let invoiceId = '';
+    let invoice: Record<string, unknown> = {};
+
+    await step('validação sem efeitos (POST /validation) → 200', async () => {
+      const res = await call(state, 'POST', '/v1/service-invoices/validation', { body: { ...dps, establishmentId: state.establishmentId } });
+      expectStatus(res, [200], 'validação');
+    });
+
+    await step('regra do Anexo I antes de numerar: município inexistente → 422 E0302', async () => {
+      const res = await call(state, 'POST', '/v1/service-invoices', {
+        body: { ...body, externalReference: `${reference}-invalida`, service: { ...dps.service, municipalityCode: '9999999' } },
+        headers: { 'idempotency-key': randomUUID() },
+      });
+      const problem = res.body as { code?: string; issues?: { code?: string }[] };
+      check(res.status === 422 && problem.code === 'NFSE_RULES_VIOLATED' && (problem.issues ?? []).some((i) => i.code === 'E0302'), `esperado 422 E0302, veio HTTP ${String(res.status)}`);
+    });
+
+    await step('emissão com Prefer: wait → 201 AUTHORIZED com chave de acesso e cStat 100', async () => {
+      const res = await call(state, 'POST', '/v1/service-invoices', { body, headers: { 'idempotency-key': key, prefer: 'wait=15' } });
+      invoice = expectStatus(res, [201], 'emissão');
+      invoiceId = String(invoice['id']);
+      state.lastInvoiceId = invoiceId;
+      saveState(state);
+      const status = invoice['authorizerStatus'] as { code?: string } | null;
+      check(invoice['status'] === 'AUTHORIZED' && typeof invoice['accessKey'] === 'string' && status?.code === '100', `nota ${String(invoice['status'])}`);
+    });
+
+    await step('repetição com a mesma Idempotency-Key → 200, a mesma nota (nenhuma emissão nova)', async () => {
+      const again = expectStatus(await call(state, 'POST', '/v1/service-invoices', { body, headers: { 'idempotency-key': key } }), [200], 'repetição');
+      check(again['id'] === invoiceId, 'a repetição devolveu outra nota');
+    });
+
+    await step('mesma Idempotency-Key com outro corpo → 422 IDEMPOTENCY_KEY_REUSED', async () => {
+      const res = await call(state, 'POST', '/v1/service-invoices', { body: { ...body, externalReference: `${reference}-outra` }, headers: { 'idempotency-key': key } });
+      check(res.status === 422 && (res.body as { code?: string }).code === 'IDEMPOTENCY_KEY_REUSED', `esperado 422 IDEMPOTENCY_KEY_REUSED, veio HTTP ${String(res.status)}`);
+    });
+
+    await step('consulta pela referência externa → a nota emitida', async () => {
+      const list = expectStatus(await call(state, 'GET', `/v1/service-invoices?externalReference=${encodeURIComponent(reference)}`), [200], 'consulta por referência');
+      check((list['items'] as { id: string }[]).some((i) => i.id === invoiceId), 'a nota não apareceu na consulta');
+    });
+
+    await step('XML autorizado com ETag igual ao SHA-256 dos bytes', async () => {
+      const res = await call(state, 'GET', `/v1/service-invoices/${invoiceId}/xml`);
+      check(res.status === 200, `HTTP ${String(res.status)}`);
+      const headers = await fetch(`${apiBase()}/v1/service-invoices/${invoiceId}/xml`, { headers: authHeaders(state) });
+      check(headers.headers.get('etag') === `"${createHash('sha256').update(res.text, 'utf8').digest('hex')}"`, 'ETag não confere');
+    });
+
+    await step('DANFSe em PDF (NT 008)', async () => {
+      const res = await fetch(`${apiBase()}/v1/service-invoices/${invoiceId}/danfse`, { headers: authHeaders(state) });
+      const pdf = Buffer.from(await res.arrayBuffer());
+      check(res.status === 200 && pdf.subarray(0, 5).toString('latin1') === '%PDF-', `HTTP ${String(res.status)}`);
+      mkdirSync(OUT_DIR, { recursive: true });
+      writeFileSync(`${OUT_DIR}/${invoiceId}-danfse.pdf`, pdf);
+    });
+
+    await step('diagnóstico com a tentativa de envio (nfse:debug)', async () => {
+      const diag = expectStatus(await call(state, 'GET', `/v1/service-invoices/${invoiceId}/diagnostics`), [200], 'diagnóstico');
+      check(Array.isArray(diag['attempts']) && (diag['attempts'] as unknown[]).length >= 1, 'sem tentativas');
+    });
+
+    await step('webhook service_invoice.status_changed AUTHORIZED recebido, com assinatura válida', async () => {
+      const hook = await waitFor('webhook da autorização', 30, () => received.find((w) => w.subjectId === invoiceId && w.status === 'AUTHORIZED'));
+      check(hook.signatureValid, 'assinatura do webhook inválida');
+    });
+
+    await step('cancelamento com Prefer: wait → REGISTERED; a nota vira CANCELLED', async () => {
+      const res = await call(state, 'POST', `/v1/service-invoices/${invoiceId}/cancellation`, {
+        body: { reasonCode: '1', reasonText: 'Cancelamento do teste de fumaça do sandbox' },
+        headers: { prefer: 'wait=15' },
+      });
+      const cancellation = expectStatus(res, [201], 'cancelamento');
+      check(cancellation['status'] === 'REGISTERED', `pedido ${String(cancellation['status'])}`);
+      const after = expectStatus(await call(state, 'GET', `/v1/service-invoices/${invoiceId}`), [200], 'consulta');
+      check(after['status'] === 'CANCELLED', `nota ${String(after['status'])}`);
+      check((await call(state, 'GET', `/v1/service-invoices/${invoiceId}/cancellation/xml`)).status === 200, 'XML do cancelamento indisponível');
+    });
+
+    await step('webhook do cancelamento recebido, com assinatura válida', async () => {
+      const hook = await waitFor('webhook do cancelamento', 30, () => received.find((w) => w.subjectId === invoiceId && w.type === 'service_invoice.cancellation_changed'));
+      check(hook.signatureValid, 'assinatura do webhook inválida');
+    });
+
+    await step('reenvio do aviso pela nota (ADR-0056) chega de novo com o mesmo webhook-id', async () => {
+      const before = received.filter((w) => w.subjectId === invoiceId).length;
+      expectStatus(await call(state, 'POST', '/v1/webhook-deliveries/redeliveries', { body: { subjectId: invoiceId } }), [202], 'reenvio');
+      await waitFor('webhook reenviado', 30, () => (received.filter((w) => w.subjectId === invoiceId).length > before ? true : undefined));
+      const ids = received.filter((w) => w.subjectId === invoiceId).map((w) => w.id);
+      check(new Set(ids).size < ids.length, 'o reenvio não repetiu o webhook-id');
+    });
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => { resolve(); }));
+  }
+  out(`\n${String(passed.length)} passos conferidos. Nada foi enviado a órgão nenhum (autorizador simulado).`);
+}
+
+function authHeaders(state: SandboxState): Record<string, string> {
+  const headers: Record<string, string> = { authorization: `Bearer ${state.apiKey}` };
+  if (state.companyId !== undefined) headers['x-company-id'] = state.companyId;
+  return headers;
+}
+
 async function main(argv: string[]): Promise<void> {
   refuseProduction();
   const { values, positionals } = parseArgs({
@@ -295,7 +507,8 @@ async function main(argv: string[]): Promise<void> {
     case 'status':
       status();
       return;
-    default: throw new SandboxError('uso: sandbox <init|setup|emit|get|cancel|status> (veja o cabeçalho de scripts/sandbox.ts)');
+    case 'smoke': return smoke();
+    default: throw new SandboxError('uso: sandbox <init|setup|emit|get|cancel|status|smoke> (veja o cabeçalho de scripts/sandbox.ts)');
   }
 }
 
