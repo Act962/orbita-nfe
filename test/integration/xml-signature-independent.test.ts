@@ -1,3 +1,4 @@
+import { createPrivateKey } from 'node:crypto';
 import { createSecureContext } from 'node:tls';
 import { resolve } from 'node:path';
 import forge from 'node-forge';
@@ -57,6 +58,48 @@ describe('assinatura da DPS verificada por implementação independente', () => 
     expect(good.ok).toBe(true);
     const bad = xmlsec1Verify(signed.replace('<tpAmb>2', '<tpAmb>1'), caChainPem, { element: 'infDPS', namespace: NFSE_NS });
     expect(bad.ok).toBe(false);
+  }, 180_000);
+});
+
+/**
+ * NF-e/NFC-e 4.00 (ADR-0065, MOC 7.0 item 4.2.4): mesmo assinador com o perfil `nfe-4.00`.
+ * XML FICTÍCIO e mínimo (não é uma NFC-e válida no leiaute): prova só a assinatura.
+ */
+const NFE_NS = 'http://www.portalfiscal.inf.br/nfe';
+const NFE_ID = 'NFe22261111222333000181650010000000011100000011';
+const MINIMAL_NFE = `<NFe xmlns="${NFE_NS}"><infNFe Id="${NFE_ID}" versao="4.00"><ide><cUF>22</cUF><mod>65</mod><tpAmb>2</tpAmb></ide></infNFe></NFe>`;
+
+describe('assinatura da NF-e/NFC-e (perfil nfe-4.00)', () => {
+  let nfe: string;
+  beforeAll(() => {
+    const leaf = pki.leaf({ cnpj: '11222333000181' });
+    // O PEM vem com a cadeia, como o cofre entrega; o MOC pede só o certificado final.
+    const chainPem = forge.pki.certificateToPem(leaf.cert) + forge.pki.certificateToPem(leaf.issuer.cert);
+    nfe = signEnveloped({
+      xml: MINIMAL_NFE,
+      elementLocalName: 'infNFe',
+      privateKey: createPrivateKey(forge.pki.privateKeyToPem(leaf.key)),
+      certificatePem: chainPem,
+      profile: SIGNATURE_PROFILES.nfe400,
+    });
+  });
+
+  it('leiaute do MOC: Reference #NFe…, dois transforms, RSA-SHA1/SHA-1/C14N e só o certificado final', () => {
+    expect(nfe).toContain(`<Reference URI="#${NFE_ID}">`);
+    expect(nfe).toMatch(/<\/infNFe><Signature xmlns="http:\/\/www\.w3\.org\/2000\/09\/xmldsig#">/);
+    expect(nfe.match(/<Transform /g)).toHaveLength(2);
+    expect(nfe).toContain('Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"');
+    expect(nfe).toContain('Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"');
+    expect(nfe).toContain('<CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>');
+    expect(nfe.match(/<X509Certificate>/g)).toHaveLength(1);
+    expect(nfe).not.toMatch(/X509IssuerSerial|X509SubjectName|KeyValue/);
+  });
+
+  it.runIf(hasDocker())('xmlsec1 aceita a assinatura da NF-e e recusa a adulterada', () => {
+    const good = xmlsec1Verify(nfe, caChainPem, { element: 'infNFe', namespace: NFE_NS });
+    expect(good.output).toMatch(/OK/);
+    expect(good.ok).toBe(true);
+    expect(xmlsec1Verify(nfe.replace('<tpAmb>2', '<tpAmb>1'), caChainPem, { element: 'infNFe', namespace: NFE_NS }).ok).toBe(false);
   }, 180_000);
 });
 

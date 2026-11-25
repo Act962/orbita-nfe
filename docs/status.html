@@ -82,7 +82,7 @@
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">846 ✓</div>
+    <div class="value">854 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -213,6 +213,7 @@
     <li><span class="tag done">Pronto</span><div>Regras próprias da nota do consumidor listadas e cruzadas com as atualizações<small>São 122 regras no manual de 2020. Das 122, 66 foram reescritas depois, e há 306 regras novas, a maioria da Reforma Tributária. Nenhuma entra no sistema sem ser conferida na versão mais nova.</small></div></li>
     <li><span class="tag done">Pronto</span><div>Pergunta ao autorizador se o serviço está no ar<small>Sem emitir nada. O formato vem do próprio autorizador, e a resposta é conferida no formato oficial. A mesma resposta confirma se o Piauí é atendido pelo SVRS.</small></div></li>
     <li><span class="tag done">Pronto</span><div>Consulta da nota pela chave de acesso<small>É o que permite descobrir se uma nota saiu quando a resposta se perde no caminho, sem emitir de novo às cegas. Sem emitir nada: só consulta.</small></div></li>
+    <li><span class="tag done">Pronto</span><div>Número de identificação da nota (chave de acesso) e assinatura digital<small>A chave de 44 posições é montada e conferida pela regra oficial, inclusive para o CNPJ com letras que começa a valer. A assinatura segue o padrão do manual e foi conferida por uma ferramenta independente, que também recusou um XML adulterado.</small></div></li>
     <li><span class="tag block">Você</span><div>Rodar o teste do autorizador com o certificado: <code>npm run nfce:test -- status &lt;certificado.p12&gt;</code><small>O certificado de teste vence em 26/11.</small></div></li>
     <li><span class="tag block">Você</span><div>Credenciar a empresa-piloto como emissora de NFC-e em homologação na SEFAZ-PI (inscrição estadual e, se for o caso, o CSC)</div></li>
     <li><span class="tag block">Você</span><div>Escolher com o contador o tipo de QR Code (versão 2, com código de segurança, ou versão 3, sem)</div></li>
@@ -238,7 +239,7 @@
     <h2>Próximos passos (desenvolvimento)</h2>
     <div class="card">
       <ol>
-        <li>NFC-e: assinatura e montagem do XML, depois do credenciamento</li>
+        <li>NFC-e: montagem do XML da nota e QR Code, depois do credenciamento e da escolha do QR Code</li>
         <li>NFS-e: primeira nota de teste autorizada (SEMF/DSF ou MEI de Teresina)</li>
         <li>Dedução por documentos e IBS/CBS (2027)</li>
         <li>Piloto controlado em produção</li>

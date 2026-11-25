@@ -26,6 +26,8 @@ export interface SignatureProfile {
   readonly digestAlgorithm: string;
   readonly canonicalizationAlgorithm: string;
   readonly transforms: readonly string[];
+  /** Só o certificado do usuário final no KeyInfo, mesmo que o PEM traga a cadeia ("EndCertOnly"). */
+  readonly endCertificateOnly?: boolean;
 }
 
 /**
@@ -44,6 +46,19 @@ export const SIGNATURE_PROFILES = {
     canonicalizationAlgorithm: ALGORITHMS.c14n10,
     transforms: [ALGORITHMS.envelopedSignature, ALGORITHMS.c14n10],
   },
+  /**
+   * `nfe-4.00`: NF-e e NFC-e (ADR-0065). MOC 7.0, Visão Geral, item 4.2.4 e Tabela 4-2: XMLDSig
+   * enveloped; C14N 1.0; RSA-SHA1; SHA-1; transforms enveloped + C14N; certificado EndCertOnly;
+   * Reference URI "#NFe" + chave. Definitivo (fonte oficial com os algoritmos).
+   */
+  nfe400: {
+    id: 'nfe-4.00',
+    signatureAlgorithm: ALGORITHMS.rsaSha1,
+    digestAlgorithm: ALGORITHMS.sha1,
+    canonicalizationAlgorithm: ALGORITHMS.c14n10,
+    transforms: [ALGORITHMS.envelopedSignature, ALGORITHMS.c14n10],
+    endCertificateOnly: true,
+  },
 } as const satisfies Record<string, SignatureProfile>;
 
 export interface SignInput {
@@ -56,7 +71,9 @@ export interface SignInput {
 }
 
 export class XmlSignatureError extends Error {
-  constructor(readonly code: 'XML_SIGN_TARGET_NOT_FOUND' | 'XML_SIGN_TARGET_AMBIGUOUS' | 'XML_SIGN_TARGET_WITHOUT_ID' | 'XML_ALREADY_SIGNED') {
+  constructor(
+    readonly code: 'XML_SIGN_TARGET_NOT_FOUND' | 'XML_SIGN_TARGET_AMBIGUOUS' | 'XML_SIGN_TARGET_WITHOUT_ID' | 'XML_ALREADY_SIGNED' | 'XML_SIGN_CERTIFICATE_MISSING',
+  ) {
     super(code);
     this.name = 'XmlSignatureError';
   }
@@ -78,13 +95,20 @@ export function signEnveloped(input: SignInput): string {
   const xpath = `//*[local-name()='${input.elementLocalName}']`;
   const sig = new SignedXml({
     privateKey: input.privateKey,
-    publicCert: input.certificatePem,
+    publicCert: input.profile.endCertificateOnly === true ? firstCertificate(input.certificatePem) : input.certificatePem,
     signatureAlgorithm: input.profile.signatureAlgorithm,
     canonicalizationAlgorithm: input.profile.canonicalizationAlgorithm,
   });
   sig.addReference({ xpath, digestAlgorithm: input.profile.digestAlgorithm, transforms: [...input.profile.transforms] });
   sig.computeSignature(input.xml, { location: { reference: xpath, action: 'after' } });
   return sig.getSignedXml();
+}
+
+/** O primeiro bloco CERTIFICATE do PEM: o do usuário final, que o cofre sempre põe antes da cadeia. */
+function firstCertificate(pem: string): string {
+  const match = /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/.exec(pem);
+  if (match === null) throw new XmlSignatureError('XML_SIGN_CERTIFICATE_MISSING');
+  return `${match[0]}\n`;
 }
 
 export type VerificationResult =
