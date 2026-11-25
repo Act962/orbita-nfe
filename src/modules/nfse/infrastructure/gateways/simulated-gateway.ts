@@ -49,7 +49,7 @@ export class SimulatedNfseGateway implements NfseGateway {
   private readonly authorized = new Map<string, { accessKey: string; nfseXml: string }>();
   private submitModes: SubmitMode[] = [];
   private lookupModes: LookupMode[] = [];
-  private rejection = { code: 'E9999', message: 'Rejeição simulada.' };
+  private rejection: { code: string; message: string; errors?: { code: string; message: string }[] } = { code: 'E9999', message: 'Rejeição simulada.' };
   /** Quantas vezes cada DPS chegou ao "autorizador" (prova de não duplicidade). */
   readonly received = new Map<string, number>();
   /** Bytes de cada recepção, para provar que a retransmissão é byte a byte a mesma. */
@@ -109,6 +109,14 @@ export class SimulatedNfseGateway implements NfseGateway {
 
   rejectWith(code: string, message: string): this {
     this.rejection = { code, message };
+    return this;
+  }
+
+  /** Rejeição com vários erros, como a SEFIN devolve em `erros[]` (ADR-0059). */
+  rejectWithErrors(errors: readonly { code: string; message: string }[]): this {
+    const [first] = errors;
+    if (first === undefined) throw new Error('informe ao menos um erro');
+    this.rejection = { code: first.code, message: errors.map((e) => `${e.code}: ${e.message}`).join('; '), errors: [...errors] };
     return this;
   }
 

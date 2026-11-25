@@ -8,6 +8,12 @@ last_updated: 2026-11-24
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
 
+## 2026-11-25 — v1 (todos os erros da rejeição)
+
+**Adicionado:**
+
+- `rejection.errors[]` na NFS-e rejeitada: todos os erros do autorizador (`code`, `message`), na ordem em que vieram. `rejection.code` e `rejection.message` não mudam.
+
 ## 2026-11-25 — v1 (municípios conferidos na tabela do IBGE)
 
 **Alterado:**

@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import type { RejectionError } from '../../application/ports.js';
 import { bigint, char, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 
 /**
@@ -46,6 +47,8 @@ export const serviceInvoices = pgTable(
     authorizedAt: timestamp('authorized_at', { withTimezone: true }),
     rejectionCode: text('rejection_code'),
     rejectionMessage: text('rejection_message'),
+    /** Todos os erros da rejeição, como o autorizador os devolveu (ADR-0059): `[{ code, message }]`. */
+    rejectionErrors: jsonb('rejection_errors').$type<RejectionError[]>(),
     failureCode: text('failure_code'),
     /**
      * Substituição (ADR-0036), gravada na aceitação da SUBSTITUTA e imutável: a nota original, a

@@ -134,7 +134,7 @@ export class NationalNfseGateway implements NfseGateway {
       const messages = authorizerMessages(json, this.profile.rejectionCode);
       if (messages.some((m) => DPS_ALREADY_EXISTS.has(m.code))) return { kind: 'ALREADY_EXISTS' };
       const first = messages[0];
-      if (first !== undefined) return { kind: 'REJECTED', code: first.code, message: describe(messages) };
+      if (first !== undefined) return { kind: 'REJECTED', code: first.code, message: describe(messages), errors: rejectionErrors(messages) };
     }
     return { kind: 'UNKNOWN', errorCode: `HTTP_${outcome.status}` };
   }
@@ -276,6 +276,13 @@ function lowerKeys(value: unknown): Record<string, unknown> | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
   return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, v]) => [key.toLowerCase(), v]));
 }
+
+/** Todos os erros, na ordem do autorizador, com teto de quantidade e de tamanho (ADR-0059). */
+function rejectionErrors(messages: readonly { code: string; text: string }[]): { code: string; message: string }[] {
+  return messages.slice(0, REJECTION_ERRORS_MAX).map((m) => ({ code: m.code, message: m.text.slice(0, MESSAGE_MAX) }));
+}
+
+const REJECTION_ERRORS_MAX = 50;
 
 function describe(messages: readonly { code: string; text: string }[]): string {
   return messages

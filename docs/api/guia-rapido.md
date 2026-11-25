@@ -149,7 +149,7 @@ Content-Type: application/json
 - **Validar antes de emitir:** `POST /v1/service-invoices/validation`, com o mesmo corpo e sem `Idempotency-Key`, faz as mesmas conferências da emissão e devolve os mesmos erros, mas não numera nem grava nada. A resposta `200` diz o canal e a série que seriam usados. Passar na validação não garante a autorização: o autorizador ainda confere o cadastro e a parametrização do município.
 - **Status:**
   - `AUTHORIZED`: autorizada, com `accessKey`;
-  - `REJECTED`: rejeitada pelo autorizador, com `rejection.code`;
+  - `REJECTED`: rejeitada pelo autorizador, com `rejection.code` (o primeiro erro) e `rejection.errors` (todos, na ordem do autorizador). Corrija todos antes de emitir de novo;
   - `FAILED`: falha local antes de qualquer envio, com `failureCode`;
   - `UNKNOWN`: **em verificação. Não reemita.** O motor consulta o autorizador e resolve sozinho.
 - **Erros:** um corpo fora do contrato ou uma DPS que não passa no XSD oficial dá `400 VALIDATION_FAILED`, sem consumir número.

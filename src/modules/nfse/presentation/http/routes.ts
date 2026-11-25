@@ -352,7 +352,16 @@ const ServiceInvoiceResponse = z
     number: z.number().int(),
     accessKey: z.string().nullable().meta({ description: 'Chave de acesso da NFS-e (quando AUTHORIZED).' }),
     authorizedAt: z.iso.datetime().nullable(),
-    rejection: z.object({ code: z.string(), message: z.string() }).nullable().meta({ description: 'Código e mensagem do autorizador (REJECTED).' }),
+    rejection: z
+      .object({
+        code: z.string().meta({ description: 'Primeiro erro devolvido pelo autorizador.' }),
+        message: z.string(),
+        errors: z
+          .array(z.object({ code: z.string(), message: z.string() }))
+          .meta({ description: 'Todos os erros, na ordem em que o autorizador os devolveu (ADR-0059). Corrija todos antes de emitir de novo.' }),
+      })
+      .nullable()
+      .meta({ description: 'Código e mensagem do autorizador (REJECTED).' }),
     failureCode: z.string().nullable().meta({ description: 'Motivo da falha local (FAILED), ex.: CERTIFICATE_EXPIRED, DPS_SCHEMA_INVALID.' }),
     substitution: z
       .object({ serviceInvoiceId: z.uuid(), reasonCode: z.enum(SUBSTITUTION_REASON_CODES), reasonText: z.string().nullable() })
@@ -384,7 +393,15 @@ const invoiceJson = (i: ServiceInvoice): z.infer<typeof ServiceInvoiceResponse> 
   number: i.number,
   accessKey: i.nfseAccessKey,
   authorizedAt: i.authorizedAt?.toISOString() ?? null,
-  rejection: i.rejectionCode === null ? null : { code: i.rejectionCode, message: i.rejectionMessage ?? '' },
+  rejection:
+    i.rejectionCode === null
+      ? null
+      : {
+          code: i.rejectionCode,
+          message: i.rejectionMessage ?? '',
+          // Rejeição gravada antes do ADR-0059: só o primeiro código e a mensagem montada.
+          errors: i.rejectionErrors === null ? [{ code: i.rejectionCode, message: i.rejectionMessage ?? '' }] : [...i.rejectionErrors],
+        },
   failureCode: i.failureCode,
   substitution: i.substitution === null ? null : { serviceInvoiceId: i.substitution.invoiceId, reasonCode: i.substitution.reasonCode, reasonText: i.substitution.reasonText },
   substitutedById: i.substitutedById,

@@ -225,6 +225,20 @@
       "when": 1795549378059,
       "tag": "0031_security_service_invoice_status_code",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1795614256609,
+      "tag": "0032_service_invoice_rejection_errors",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1795614264741,
+      "tag": "0033_security_service_invoice_rejection_errors",
+      "breakpoints": true
     }
   ]
 }

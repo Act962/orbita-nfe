@@ -47,7 +47,7 @@ Decisão aceita em [ADR-0027](../adr/0027-convencoes-cadastro-fiscal-referencia-
 | B4 | **CSC da NFC-e como segredo do cofre** (mesmo envelope do certificado, ADR-0009), nunca em coluna comum nem em log | `securityCredential` | Fase 3 |
 | B5 | **Estratégia de contingência configurável** por inscrição estadual: `MANUAL` (padrão) ou `AUTOMATIC`, com troca registrada em auditoria e motivo obrigatório; documento já enviado nunca muda de autorizador | `SwitchAuthorizerStrategy` | Fase 3 (modalidades e regras só após o MOC, ver §6) |
 | B6 | **Catálogo de eventos de webhook** (`GET /v1/webhooks/event-types`) e **filtros por assinatura** | `eventTypes`, `filters` | Fase 1 sem. 6 |
-| B7 | **Downloads de XML de rejeição e de eventos** (cancelamento, carta de correção, inutilização) pelos mesmos links 302 do A11 | XML de rejeição/EPEC/CC-e | Fases 2a e 3 |
+| B7 | **Downloads de XML de rejeição e de eventos** (cancelamento, carta de correção, inutilização) pelos mesmos links 302 do A11 | XML de rejeição/EPEC/CC-e | Fases 2a e 3. NFS-e: XML do cancelamento feito (ADR-0050); a rejeição da NFS-e é JSON, sem XML, e a lista completa dos erros sai em `rejection.errors` ([ADR-0059](../adr/0059-todos-os-erros-da-rejeicao.md)) |
 | B8 | **Inutilização por faixa com comprovante** como operação própria, ligada à série e ao controle de numeração | inutilização | Fase 3 (fonte: MOC; risco R-26) |
 | B9 | **Documentação legível por agentes**: OpenAPI publicado em URL estável (`/openapi.json`), `llms.txt` com o índice da documentação e páginas em Markdown | docs para agentes | Fase 1 sem. 7 |
 | B10 | **Guia de migração junto de cada versão nova** (mapa de campos antigo→novo), complementando o changelog do A14 | release note 2026.1 | Fase 1 sem. 7 (modelo do changelog) |

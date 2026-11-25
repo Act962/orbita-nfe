@@ -138,7 +138,7 @@ export class SubmissionProcessor {
           return;
         case 'REJECTED':
           await r.attempts.close(attempt.id, 'REJECTED', outcome.code, at);
-          await this.settle(r, invoice, 'PROCESSING', 'REJECTED', context, { leaseUntil: null, rejection: { code: outcome.code, message: outcome.message } });
+          await this.settle(r, invoice, 'PROCESSING', 'REJECTED', context, { leaseUntil: null, rejection: { code: outcome.code, message: outcome.message, errors: outcome.errors ?? [{ code: outcome.code, message: outcome.message }] } });
           return;
         case 'NOT_SENT': {
           await r.attempts.close(attempt.id, 'NOT_SENT', outcome.errorCode, at);

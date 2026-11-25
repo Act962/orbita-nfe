@@ -47,6 +47,8 @@ export interface ServiceInvoice {
   readonly authorizedAt: Date | null;
   readonly rejectionCode: string | null;
   readonly rejectionMessage: string | null;
+  /** Todos os erros da rejeição (ADR-0059); nulo antes dele ou sem rejeição. */
+  readonly rejectionErrors: readonly RejectionError[] | null;
   readonly failureCode: string | null;
   /** Esta nota substitui outra (null numa emissão comum). */
   readonly substitution: SubstitutionOf | null;
@@ -163,7 +165,7 @@ export interface ServiceInvoiceStatusChange {
   readonly leaseUntil?: Date | null;
   readonly signedDps?: { readonly xml: string; readonly sha256: string; readonly layoutPackage: string };
   readonly authorization?: { readonly accessKey: string; readonly nfseXml: string; readonly authorizedAt: Date };
-  readonly rejection?: { readonly code: string; readonly message: string };
+  readonly rejection?: { readonly code: string; readonly message: string; readonly errors: readonly RejectionError[] };
   readonly failureCode?: string;
   /** Original → SUBSTITUTED: a substituta autorizada. */
   readonly substitutedBy?: string;
@@ -487,10 +489,17 @@ export interface GatewayContext {
   readonly credential: IssuerCredential;
 }
 
+/** Um erro de rejeição como o autorizador devolveu (código do Anexo I e descrição), ADR-0059. */
+export interface RejectionError {
+  readonly code: string;
+  readonly message: string;
+}
+
 /** Resultado do envio (ADR-0029). Timeout, reset, 5xx e resposta ilegível são sempre UNKNOWN. */
 export type SubmissionOutcome =
   | { readonly kind: 'AUTHORIZED'; readonly accessKey: string; readonly nfseXml: string }
-  | { readonly kind: 'REJECTED'; readonly code: string; readonly message: string }
+  /** `code` é o primeiro erro; `errors`, todos, na ordem do autorizador (ADR-0059). */
+  | { readonly kind: 'REJECTED'; readonly code: string; readonly message: string; readonly errors?: readonly RejectionError[] }
   /** O autorizador já tem esta DPS (ex.: E0014): não é rejeição, leva à reconciliação imediata. */
   | { readonly kind: 'ALREADY_EXISTS' }
   /** Provado que nada saiu (fase connect). */

@@ -78,6 +78,7 @@ const toInvoice = (row: InvoiceRow): ServiceInvoice => ({
   authorizedAt: row.authorizedAt,
   rejectionCode: row.rejectionCode,
   rejectionMessage: row.rejectionMessage,
+  rejectionErrors: row.rejectionErrors ?? null,
   failureCode: row.failureCode,
   substitution:
     row.substitutesInvoiceId === null || row.substitutionAccessKey === null || row.substitutionReasonCode === null
@@ -135,6 +136,7 @@ const invoiceColumns = {
   authorizedAt: serviceInvoices.authorizedAt,
   rejectionCode: serviceInvoices.rejectionCode,
   rejectionMessage: serviceInvoices.rejectionMessage,
+  rejectionErrors: serviceInvoices.rejectionErrors,
   failureCode: serviceInvoices.failureCode,
   substitutesInvoiceId: serviceInvoices.substitutesInvoiceId,
   substitutionAccessKey: serviceInvoices.substitutionAccessKey,
@@ -265,7 +267,7 @@ export function serviceInvoiceWorkerRepository(tx: Transaction): ServiceInvoiceW
                 nfseStatusCode: nfseStatusCode(change.authorization.nfseXml),
                 authorizedAt: change.authorization.authorizedAt,
               }),
-          ...(change.rejection === undefined ? {} : { rejectionCode: change.rejection.code, rejectionMessage: change.rejection.message }),
+          ...(change.rejection === undefined ? {} : { rejectionCode: change.rejection.code, rejectionMessage: change.rejection.message, rejectionErrors: [...change.rejection.errors] }),
           ...(change.failureCode === undefined ? {} : { failureCode: change.failureCode }),
           ...(change.substitutedBy === undefined ? {} : { substitutedByInvoiceId: change.substitutedBy }),
         })

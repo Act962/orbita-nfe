@@ -80,7 +80,16 @@ describe('NationalNfseGateway.submit (POST /nfse)', () => {
     next['POST /nfse'] = { status: 400, body: { ...meta, idDPS: DPS_ID, erros: [{ codigo: 'E0014', descricao: 'Conjunto já existe' }] } };
     expect(await gateway().submit(DPS, context())).toEqual({ kind: 'ALREADY_EXISTS' });
     next['POST /nfse'] = { status: 400, body: { ...meta, erros: [{ codigo: 'E0039', descricao: 'Município não parametrizado', complemento: 'detalhe' }, { codigo: 'E0712', descricao: 'Outra' }] } };
-    expect(await gateway().submit(DPS, context())).toEqual({ kind: 'REJECTED', code: 'E0039', message: 'E0039: Município não parametrizado — detalhe; E0712: Outra' });
+    expect(await gateway().submit(DPS, context())).toEqual({
+      kind: 'REJECTED',
+      code: 'E0039',
+      message: 'E0039: Município não parametrizado — detalhe; E0712: Outra',
+      // ADR-0059: todos os erros, na ordem do autorizador.
+      errors: [
+        { code: 'E0039', message: 'Município não parametrizado — detalhe' },
+        { code: 'E0712', message: 'Outra' },
+      ],
+    });
   });
 
   it('formato REAL observado na produção restrita (2026-11-13): erros[].Codigo/Descricao com inicial maiúscula → REJECTED', async () => {
@@ -95,6 +104,7 @@ describe('NationalNfseGateway.submit (POST /nfse)', () => {
       kind: 'REJECTED',
       code: 'E0037',
       message: 'E0037: O código do município emissor informado na DPS é inexistente no cadastro de convênio municipal do sistema nacional.',
+      errors: [{ code: 'E0037', message: 'O código do município emissor informado na DPS é inexistente no cadastro de convênio municipal do sistema nacional.' }],
     });
     // Consulta: 404 real com erro.codigo em minúsculas (E2404) continua NOT_FOUND.
     next[`GET /dps/${DPS_ID}`] = { status: 404, raw: '{"tipoAmbiente":0,"erro":{"codigo":"E2404","descricao":"Não foi gerada uma NFS-e com o identificador de DPS informado"}}' };
@@ -210,6 +220,12 @@ describe('perfis', () => {
       kind: 'REJECTED',
       code: 'L0022',
       message: 'L0022: A série informada na DPS deve estar dentro da faixa reservada para esse fim (de 10001 a 49999). As séries de 00001 a 10000 são de uso exclusivo do sistema municipal gerador de NFS-e.',
+      errors: [
+        {
+          code: 'L0022',
+          message: 'A série informada na DPS deve estar dentro da faixa reservada para esse fim (de 10001 a 49999). As séries de 00001 a 10000 são de uso exclusivo do sistema municipal gerador de NFS-e.',
+        },
+      ],
     });
     expect(await gateway().submit(DPS, context())).toEqual({ kind: 'UNKNOWN', errorCode: 'HTTP_400' });
   });

@@ -70,6 +70,12 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Todos os erros da rejeição (2026-11-25)
+Decisão: [ADR-0059](adr/0059-todos-os-erros-da-rejeicao.md).
+- [x] **Sem "XML de rejeição" na NFS-e:** a SEFIN e a DSF respondem JSON (`erros[]`). O item B7 fica para a NF-e e a NFC-e.
+- [x] **`rejection.errors[]`** com todos os erros, na ordem do autorizador; gravado pelo worker-fiscal em `rejection_errors` (migrations 0032 e 0033).
+- [ ] Depois: a mesma lista no pedido de cancelamento rejeitado.
+
 ### Municípios conferidos na tabela do IBGE (2026-11-25)
 Decisão: [ADR-0058](adr/0058-municipios-ibge-no-aceite.md).
 - [x] **E0238, E0294 e E0302 do Anexo I** no aceite e na validação, antes de numerar, com a tabela oficial do IBGE do ADR-0057. `0000000` ("Águas Marítimas") é aceito no local da prestação.
@@ -656,6 +662,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-24 | Reenvio de webhook pelo documento, sem saber o id do evento | 0056 |
 | 2026-11-25 | DANFSe gerado pelo motor (NT 008 v1.02), Helvetica no lugar das fontes proprietárias | 0057 |
 | 2026-11-25 | Códigos de município conferidos na tabela do IBGE no aceite (E0238, E0294, E0302) | 0058 |
+| 2026-11-25 | Todos os erros da rejeição na API; sem "XML de rejeição" na NFS-e (a resposta é JSON) | 0059 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |

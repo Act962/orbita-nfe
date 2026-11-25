@@ -258,6 +258,29 @@ describe('consulta pela referência externa (ADR-0047)', () => {
     expect((await byReference('pedido-ref-1', await mainApp.key(['nfse:read'], 'live'))).json<{ items: unknown[] }>().items).toEqual([]);
   });
 
+  it('rejeição com vários erros (ADR-0059): `rejection.errors` traz todos, na ordem do autorizador; o primeiro segue em `code`', async () => {
+    const res = await post({ establishmentId, externalReference: 'pedido-varios-erros', ...sampleDpsData() }, 'rej-varios');
+    expect(res.statusCode).toBe(202);
+    const id = res.json<{ id: string }>().id;
+    // Códigos e textos fictícios do simulador: só exercitam o transporte da lista.
+    gateway.onSubmit('REJECT').rejectWithErrors([
+      { code: 'E9001', message: 'Primeiro erro simulado.' },
+      { code: 'E9002', message: 'Segundo erro simulado.' },
+    ]);
+    expect(await fiscalWorker().processor.process(companyId, id, WORKER)).toEqual({ kind: 'TRANSMITTED', outcome: 'REJECTED' });
+    gateway.rejectWith('E9999', 'Rejeição simulada.');
+    const invoice = (await get(id)).json<{ status: string; rejection: unknown }>();
+    expect(invoice.status).toBe('REJECTED');
+    expect(invoice.rejection).toEqual({
+      code: 'E9001',
+      message: 'E9001: Primeiro erro simulado.; E9002: Segundo erro simulado.',
+      errors: [
+        { code: 'E9001', message: 'Primeiro erro simulado.' },
+        { code: 'E9002', message: 'Segundo erro simulado.' },
+      ],
+    });
+  });
+
   it('sem a referência, ou vazia → 400', async () => {
     expect((await t.app.inject({ method: 'GET', url: '/v1/service-invoices', headers: bearer(key, companyId) })).statusCode).toBe(400);
     expect((await byReference('')).statusCode).toBe(400);
