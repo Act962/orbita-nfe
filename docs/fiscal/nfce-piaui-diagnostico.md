@@ -82,9 +82,10 @@ O manual do DANFE NFC-e v6.0 traz duas versões de QR Code [CONFIRMADO]:
 | Confirmar o SVRS como autorizador do PI e a `urlChave` | SEFAZ-PI (credenciamento ou "Fale com a SEFAZ") |
 | Credenciamento da empresa-piloto como emissora de NFC-e em homologação, inscrição estadual e CSC (se for v2.00) | Responsável e SEFAZ-PI |
 | Escolha do QR Code v2.00 (com CSC) ou v3.00 (sem CSC) | Responsável, com o contador |
-| Schemas do **envio** (`enviNFe`/`retEnviNFe`) e do **status do serviço**. Os pacotes 010x são incrementais: o PL_010h e o PL_010e trazem o leiaute, e o PL_010d v1.03 traz a consulta de situação, a inutilização, os eventos e a consulta de cadastro. O envio e o status vêm do pacote-base anterior, a localizar na implementação | Desenvolvimento, no Portal NF-e |
+| ~~Schemas do envio e do status do serviço~~ **Resolvido** no [ADR-0062](../adr/0062-schemas-e-regras-da-nfce.md): vêm do PL_009q e compilam com o leiaute do PL_010h | — |
+| NTs de NF-e/NFC-e publicadas depois de out./2020 que faltam no repositório (o Anexo I 7.03 só consolida até ali) | Desenvolvimento, no Portal NF-e |
 | Enquadramento tributário dos produtos (CST/CSOSN, CFOP, NCM, cClassTrib) | Contador |
-| Leitura completa do Anexo I (regras do modelo 65) e da contingência off-line, com ADRs | Desenvolvimento, na Fase 3 |
+| Regras do Anexo I: **inventário pronto** ([NFCE-ANEXO-I.md](regras/NFCE-ANEXO-I.md)); falta conferir cada regra contra as NTs posteriores antes do código. Contingência off-line, com ADR | Desenvolvimento, na Fase 3 |
 
 ## 4. O que a arquitetura atual já resolve
 - **Write-ahead, idempotência por chave e reconciliação por consulta** (ADR-0032 e ADR-0029). Como a NFC-e passa a ser só síncrona e de uma nota por envio, o modelo é o mesmo da NFS-e, com consulta por chave de acesso.

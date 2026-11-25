@@ -23,7 +23,7 @@ Painel resumido: [status.html](status.html) (abrir no navegador; atualizado a ca
 - Enquadramento da empresa-piloto pelo contador; prazo legal de guarda do XML e provedor S3; revisão do especialista fiscal (gates 1 e 2).
 - Deploy: VPS, domínio e buckets. Adiado por decisão do responsável.
 
-**Prioridade atual:** Fase 3 técnica sem emissão (schemas dos serviços e leitura do Anexo I do modelo 65), enquanto o responsável resolve o credenciamento na SEFAZ-PI. Ver o [diagnóstico da NFC-e](fiscal/nfce-piaui-diagnostico.md). Depois, preparação da Fase 3 (NFC-e) sem emissão.
+**Prioridade atual:** Fase 3 técnica sem emissão, enquanto o responsável resolve o credenciamento na SEFAZ-PI. Schemas e inventário do Anexo I prontos ([ADR-0062](adr/0062-schemas-e-regras-da-nfce.md)). Próximo: as NTs posteriores a out./2020 e o status do serviço do SVRS. Ver o [diagnóstico da NFC-e](fiscal/nfce-piaui-diagnostico.md).
 
 ## Status geral
 **Fase 1 — Fundação concluída no código** (deploy real adiado por decisão do responsável). **Fase 2a — NFS-e Nacional:** código concluído no que não depende de terceiros; a saída depende dos itens acima.
@@ -103,7 +103,12 @@ Diagnóstico: [nfce-piaui-diagnostico.md](fiscal/nfce-piaui-diagnostico.md). 16 
   - endereços do SVRS.
 - [ ] **A confirmar com a SEFAZ-PI:** o SVRS como autorizador da NFC-e do PI (provável) e a `urlChave`.
 - [ ] **Do responsável:** credenciamento em homologação, IE, CSC (se v2.00) e a escolha entre o QR Code v2.00 e o v3.00, com o contador.
-- [ ] Próxima etapa técnica: pacote completo de schemas dos serviços (o PL_010h traz só o leiaute e eventos) e a leitura do Anexo I do modelo 65, com ADR.
+- [x] **Schemas e regras ([ADR-0062](adr/0062-schemas-e-regras-da-nfce.md)):**
+  - envio e status do serviço localizados no PL_009q (o único pacote recente completo);
+  - composição com o leiaute do PL_010h conferida na libxml2 do motor, sem emissão;
+  - o schema ainda aceita 50 notas e modo assíncrono, então o motor garante uma NFC-e e `indSinc=1` (NT 2023.002, cStat 126 e 129).
+- [x] **Inventário do Anexo I** ([NFCE-ANEXO-I.md](fiscal/regras/NFCE-ANEXO-I.md)): 464 regras (122 só da NFC-e, 154 comuns, 188 só da NF-e). O Anexo consolida só as NTs até out./2020, então nenhuma regra vira código sem conferência contra as NTs posteriores.
+- [ ] Próxima etapa técnica: levantar as NTs de NF-e/NFC-e de nov./2020 em diante que faltam no repositório. Depois, o cliente SOAP do status do serviço (`NfeStatusServico4`), a primeira chamada real possível, que não emite nada (precisa de um A1 válido; o de teste vence em 26/11).
 
 ### Inscrição municipal no cadastro (2026-11-25)
 Decisão: [ADR-0061](adr/0061-inscricao-municipal-no-cadastro.md) (responsável: "só cadastrar, sem preencher").
@@ -705,6 +710,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-25 | Todos os erros da rejeição na API; sem "XML de rejeição" na NFS-e (a resposta é JSON) | 0059 |
 | 2026-11-25 | ANEXO_A no aceite: países completos; município pelo ANEXO_A ou IBGE | 0060 |
 | 2026-11-25 | Inscrição municipal no cadastro do estabelecimento, sem ir para a DPS | 0061 |
+| 2026-11-25 | Schemas da NFC-e (PL_010h + PL_009q + PL_010d) e Anexo I como inventário, não como regra vigente | 0062 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |
