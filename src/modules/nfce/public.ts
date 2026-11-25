@@ -1,17 +1,24 @@
 /**
- * Fachada pública do módulo NFC-e (Fase 3). Por enquanto, só a consulta do status do serviço,
- * que não emite nada (ADR-0063).
+ * Fachada pública do módulo NFC-e (Fase 3). Por enquanto, só consultas que não emitem nada:
+ * status do serviço (ADR-0063) e situação da nota pela chave (ADR-0064).
  */
+export { buildSoapEnvelope, readWsdlContract, type SefazFailure, type WsdlContract } from './infrastructure/sefaz/sefaz-soap.js';
 export {
   buildConsStatServ,
-  buildSoapEnvelope,
   queryServiceStatus,
   readStatusResponse,
-  readWsdlContract,
   STATUS_SCHEMA_PACKAGE,
   SVRS_NFCE_STATUS,
   type ServiceStatus,
   type StatusQuery,
   type StatusResult,
-  type WsdlContract,
 } from './infrastructure/sefaz/status-service.js';
+export {
+  buildConsSitNFe,
+  PROTOCOL_SCHEMA_PACKAGE,
+  queryProtocol,
+  readProtocolResponse,
+  SVRS_NFCE_PROTOCOL_QUERY,
+  type ProtocolResult,
+  type ProtocolSituation,
+} from './infrastructure/sefaz/protocol-query.js';

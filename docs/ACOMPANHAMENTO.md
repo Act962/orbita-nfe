@@ -118,6 +118,7 @@ Diagnóstico: [nfce-piaui-diagnostico.md](fiscal/nfce-piaui-diagnostico.md). 16 
 - [x] **NTs posteriores a out./2020:** 31 baixadas com autorização do responsável e cruzadas com o inventário. 66 das 122 regras exclusivas foram reescritas por alguma NT, e há 306 regras novas para o modelo 65, a maioria da Reforma Tributária.
 - [x] **DANFSe conferido com uma NFS-e de produção de Teresina** enviada pelo responsável: "Ambiente Gerador" e "Tipo de Ambiente" passam a sair com o código (NT 008, tamanho 1; [ADR-0057](adr/0057-danfse.md)). Também é indício de que a produção aceita Teresina (R-43).
 - [x] **Status do serviço da NFC-e** ([ADR-0063](adr/0063-status-do-servico-nfce.md)): cliente SOAP 1.2 que lê namespace e ação do WSDL do próprio SVRS, valida a entrada e a resposta no XSD do PL_009q (agora versionado com hash) e faz uma tentativa só. CLI `npm run nfce:test -- status <cert.p12>`, só em homologação. Testado contra um servidor mTLS local.
+- [x] **Consulta da NFC-e pela chave** ([ADR-0064](adr/0064-consulta-nfce-pela-chave.md)): `NfeConsultaProtocolo4` com o mesmo cliente SOAP do status (agora comum, `sefaz-soap.ts`). A situação é lida do cStat do MOC (100/150 autorizada só com `protNFe`; 101/151 cancelada; 217 não consta; outro = recusada, que não prova nada). O XSD do PL_010d está versionado com hash. CLI `npm run nfce:test -- consult <cert.p12> --key <chave>`.
 - [ ] **Do responsável:** rodar `npm run nfce:test -- status <cert.p12>` com o A1 (vence em 26/11). Um cStat 107 com `cUF=22` confirma o mTLS e que o SVRS atende o PI; um 289 indica que não atende.
 
 ### Inscrição municipal no cadastro (2026-11-25)
@@ -722,6 +723,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-25 | Inscrição municipal no cadastro do estabelecimento, sem ir para a DPS | 0061 |
 | 2026-11-25 | Schemas da NFC-e (PL_010h + PL_009q + PL_010d) e Anexo I como inventário, não como regra vigente | 0062 |
 | 2026-11-25 | Status do serviço da NFC-e no SVRS: namespace e ação lidos do WSDL, XSD nos dois sentidos, CLI só em homologação | 0063 |
+| 2026-11-25 | Consulta da NFC-e pela chave (base da recuperação sem reenvio às cegas); cliente SOAP comum | 0064 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |

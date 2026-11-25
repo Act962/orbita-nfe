@@ -65,7 +65,7 @@
 
 <header>
   <h1>orbita-nfe · Status do projeto</h1>
-  <p>Motor fiscal próprio (NFS-e, NFC-e, NF-e) para o Orbita e o NERP · Atualizado em <strong>23/11/2026</strong></p>
+  <p>Motor fiscal próprio (NFS-e, NFC-e, NF-e) para o Orbita e o NERP · Atualizado em <strong>25/11/2026</strong></p>
 </header>
 
 <h2>Visão geral</h2>
@@ -77,12 +77,12 @@
   </div>
   <div class="card kpi">
     <div class="label">Próxima etapa</div>
-    <div class="value">Nota de teste autorizada</div>
-    <div class="note">Depende da resposta da SEMF/DSF ou de um certificado de MEI (antes de 26/11)</div>
+    <div class="value">Teste com o certificado</div>
+    <div class="note">NFC-e: perguntar ao autorizador se está no ar (antes de 26/11). NFS-e: nota de teste depende da SEMF/DSF</div>
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">827 ✓</div>
+    <div class="value">846 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -116,8 +116,8 @@
   </div>
   <div class="phase">
     <div class="id">3</div>
-    <div><h3>NFC-e Piauí · 10–14 semanas</h3><p>Motor central, homologação SEFAZ-PI, integração com o NERP.</p><div class="bar"><span style="width:0%"></span></div></div>
-    <span class="tag todo">Não iniciada</span>
+    <div><h3>NFC-e Piauí · 10–14 semanas</h3><p>Motor central, homologação SEFAZ-PI, integração com o NERP. Preparação sem emissão em andamento.</p><div class="bar"><span style="width:10%"></span></div></div>
+    <span class="tag doing">Preparação</span>
   </div>
   <div class="phase">
     <div class="id">3b</div>
@@ -192,9 +192,7 @@
 <li><span class="tag done">Pronto</span><div>Resultado da emissão na mesma chamada<small>Quem emite pode pedir para a API esperar alguns segundos (até 20) pelo resultado. Se a nota sair a tempo, a resposta já vem autorizada ou rejeitada; se não, segue como hoje, para consultar depois. Vale também para o cancelamento.</small></div></li>
 <li><span class="tag done">Pronto</span><div>O que o órgão respondeu, em cada nota<small>Cada nota mostra o código e a descrição da resposta do órgão: "NFS-e Gerada", "NFS-e MEI" ou o motivo da rejeição. As descrições vêm do arquivo oficial do governo; nada é inventado.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Raio-x de uma nota para o suporte<small>Com uma permissão separada, o suporte vê cada tentativa de envio da nota, o que voltou do órgão e os pedidos de cancelamento, sem ver o XML nem os dados do cliente.</small></div></li>
-<li><span class="tag doing">Próximo</span><div>Primeiro contato com o autorizador da nota do consumidor<small>O sistema já sabe perguntar ao autorizador da NFC-e (SVRS) se o serviço está no ar, sem emitir nada. Falta você rodar o teste com o certificado digital, que vence em 26/11. A resposta também confirma se o Piauí é atendido por esse autorizador.</small></div></li>
 <li><span class="tag done">Pronto</span><div>PDF da nota de serviço conferido com o gerador oficial da Receita Federal<small>O gerador publicado pela Receita foi rodado nesta máquina com as mesmas notas de teste do nosso. Três detalhes do nosso PDF foram corrigidos (valor das exclusões, formato do telefone e o texto do QR Code). No resto, o nosso já segue o manual oficial.</small></div></li>
-<li><span class="tag doing">Próximo</span><div>NFC-e no Piauí (Fase 3): preparação começou<small>Os manuais oficiais da nota do consumidor foram lidos e registrados. Já se sabe como a nota é enviada, como funciona o QR Code e o endereço do Piauí. Os formatos oficiais de envio e de consulta do serviço já foram localizados e conferidos, e as 122 regras próprias da nota do consumidor foram listadas. Essas regras são de 2020. As 31 atualizações publicadas depois também foram baixadas e cruzadas com elas: 66 regras foram reescritas e há 306 novas, a maioria da Reforma Tributária. Para testar de verdade, falta o credenciamento da empresa na SEFAZ-PI e a escolha do tipo de QR Code, com o contador.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Inscrição municipal no cadastro da filial<small>Agora dá para guardar a inscrição municipal de cada estabelecimento no motor. Por decisão sua, ela não vai sozinha para a nota: continua valendo a que o sistema envia em cada emissão.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Países e cidades conferidos na tabela oficial do sistema nacional<small>Cliente ou serviço no exterior com código de país que não existe é recusado na hora. A tabela oficial do governo é de dezembro de 2025, e uma cidade criada depois continua aceita.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Todos os motivos de uma nota recusada<small>Quando o órgão recusa a nota por vários motivos, o sistema do cliente recebe a lista completa, e não só o primeiro, para corrigir tudo de uma vez.</small></div></li>
@@ -203,6 +201,21 @@
 <li><span class="tag done">Pronto</span><div>Ambiente de testes completo nesta máquina, com um comando<small>Com <code>npm run sandbox</code>, você cria a empresa, o certificado de teste e a credencial, emite uma nota, baixa o XML e cancela, tudo pela API. Quem responde é o simulador do órgão, então nada é enviado de verdade.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Reenviar o aviso de uma nota<small>Se o sistema do cliente perdeu o aviso automático de uma nota, basta informar a nota: o motor reenvia o último aviso dela, sem duplicar nada e só para quem já tinha recebido.</small></div></li>
     <li><span class="tag block">Você</span><div>Envio real à produção restrita (precisa do CNPJ e do certificado A1)</div></li>
+  </ul>
+</div>
+
+<h2>Fase 3 · NFC-e no Piauí · preparação (sem emitir)</h2>
+<div class="card">
+  <ul class="check">
+    <li><span class="tag done">Pronto</span><div>Manuais e atualizações oficiais da nota do consumidor baixados e registrados<small>Manual do contribuinte, regras de validação, manual do QR Code e da contingência, e as 31 atualizações publicadas desde 2020, cada arquivo com a sua "impressão digital" (hash).</small></div></li>
+    <li><span class="tag done">Pronto</span><div>Como a nota é enviada no Piauí<small>Uma nota por envio e resposta na hora (o modo antigo acaba em abril de 2027). O autorizador provável é o SVRS, e o endereço do QR Code do Piauí é oficial.</small></div></li>
+    <li><span class="tag done">Pronto</span><div>Formatos oficiais de envio e de consulta localizados e conferidos<small>Os arquivos de formato estavam espalhados em pacotes diferentes do governo. Foram achados, juntados e testados na mesma ferramenta que o sistema usa.</small></div></li>
+    <li><span class="tag done">Pronto</span><div>Regras próprias da nota do consumidor listadas e cruzadas com as atualizações<small>São 122 regras no manual de 2020. Das 122, 66 foram reescritas depois, e há 306 regras novas, a maioria da Reforma Tributária. Nenhuma entra no sistema sem ser conferida na versão mais nova.</small></div></li>
+    <li><span class="tag done">Pronto</span><div>Pergunta ao autorizador se o serviço está no ar<small>Sem emitir nada. O formato vem do próprio autorizador, e a resposta é conferida no formato oficial. A mesma resposta confirma se o Piauí é atendido pelo SVRS.</small></div></li>
+    <li><span class="tag done">Pronto</span><div>Consulta da nota pela chave de acesso<small>É o que permite descobrir se uma nota saiu quando a resposta se perde no caminho, sem emitir de novo às cegas. Sem emitir nada: só consulta.</small></div></li>
+    <li><span class="tag block">Você</span><div>Rodar o teste do autorizador com o certificado: <code>npm run nfce:test -- status &lt;certificado.p12&gt;</code><small>O certificado de teste vence em 26/11.</small></div></li>
+    <li><span class="tag block">Você</span><div>Credenciar a empresa-piloto como emissora de NFC-e em homologação na SEFAZ-PI (inscrição estadual e, se for o caso, o CSC)</div></li>
+    <li><span class="tag block">Você</span><div>Escolher com o contador o tipo de QR Code (versão 2, com código de segurança, ou versão 3, sem)</div></li>
   </ul>
 </div>
 
@@ -225,7 +238,8 @@
     <h2>Próximos passos (desenvolvimento)</h2>
     <div class="card">
       <ol>
-        <li>Primeira nota de teste autorizada (SEMF/DSF ou MEI de Teresina)</li>
+        <li>NFC-e: assinatura e montagem do XML, depois do credenciamento</li>
+        <li>NFS-e: primeira nota de teste autorizada (SEMF/DSF ou MEI de Teresina)</li>
         <li>Dedução por documentos e IBS/CBS (2027)</li>
         <li>Piloto controlado em produção</li>
       </ol>
@@ -240,6 +254,8 @@
         <li><span class="tag block">Fase 2a</span><div>Enquadramento da empresa-piloto com o contador</div></li>
         <li><span class="tag doing">Fase 2a</span><div>Perguntas à SEMF de Teresina (+ canal do MEI com competência anterior a 11/2026)</div></li>
         <li><span class="tag doing">Fase 2b</span><div>Regime dos clientes de Teresina</div></li>
+        <li><span class="tag block">Fase 3</span><div>Teste do autorizador da NFC-e com o certificado (até 26/11)</div></li>
+        <li><span class="tag block">Fase 3</span><div>Credenciamento na SEFAZ-PI e tipo de QR Code com o contador</div></li>
         <li><span class="tag todo">Geral</span><div>Visibilidade do repositório e das imagens</div></li>
       </ul>
     </div>
@@ -294,7 +310,7 @@
 <li><span class="tag done">Enviado</span><div><code>970c43b</code> Formatos oficiais de envio da nota do consumidor e lista das regras próprias dela (CI verde)</div></li>
 <li><span class="tag done">Enviado</span><div><code>1369071</code> Atualizações oficiais da nota do consumidor conferidas e PDF da nota de serviço igual ao do emissor nacional (CI verde)</div></li>
 <li><span class="tag done">Enviado</span><div><code>83d2137</code> Repositórios da Receita Federal analisados e PDF da nota de serviço conferido com o gerador oficial (CI verde)</div></li>
-<li><span class="tag done">Enviado</span><div><code>2fcbcc8</code> Consulta ao autorizador da nota do consumidor (status do serviço, sem emitir)</div></li>
+<li><span class="tag done">Enviado</span><div><code>2fcbcc8</code> Consulta ao autorizador da nota do consumidor (status do serviço, sem emitir) (CI verde)</div></li>
   </ul>
 </div>
 

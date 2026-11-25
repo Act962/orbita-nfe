@@ -6,7 +6,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestPki, type TestPki } from '../../../../../test/support/tls-test-pki.js';
 import { createMtlsAgent } from '../../../../shared/infrastructure/transport/mtls-transport.js';
 import { FiscalSchemaCatalog } from '../../../../shared/infrastructure/xml/fiscal-schema-catalog.js';
-import { buildConsStatServ, buildSoapEnvelope, queryServiceStatus, readStatusResponse, readWsdlContract, STATUS_SCHEMA_PACKAGE } from './status-service.js';
+import { buildSoapEnvelope, readWsdlContract } from './sefaz-soap.js';
+import { buildConsStatServ, queryServiceStatus, readStatusResponse, STATUS_SCHEMA_PACKAGE } from './status-service.js';
 
 /**
  * Status do serviço da NFC-e (ADR-0063). O WSDL e as respostas abaixo são FICTÍCIOS, montados
@@ -114,7 +115,7 @@ describe('consulta de status da NFC-e: fluxo com mTLS contra um servidor local',
     answer = { status: 500, body: FAULT };
     expect(await queryServiceStatus({ agent: agent(), url: baseUrl, query: { tpAmb: '2', cUF: '22' }, catalog })).toMatchObject({ kind: 'SOAP_FAULT' });
     answer = { status: 403, body: '<html>proibido</html>' };
-    expect(await queryServiceStatus({ agent: agent(), url: baseUrl, query: { tpAmb: '2', cUF: '22' }, catalog })).toMatchObject({ kind: 'HTTP_ERROR', step: 'status', httpStatus: 403 });
+    expect(await queryServiceStatus({ agent: agent(), url: baseUrl, query: { tpAmb: '2', cUF: '22' }, catalog })).toMatchObject({ kind: 'HTTP_ERROR', step: 'request', httpStatus: 403 });
   });
 
   it('falha de conexão no WSDL não envia nada e informa a fase', async () => {
