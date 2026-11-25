@@ -28,7 +28,8 @@ const manifestSchema = z.object({
   environments: z.array(z.enum(['production', 'production-restricted'])).min(1),
   publishedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   retrievedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  sourceUrl: z.string().regex(/^https:\/\/www\.gov\.br\//),
+  // Portais oficiais: gov.br (NFS-e Nacional) e Portal Nacional da NF-e (ADR-0062).
+  sourceUrl: z.string().regex(/^https:\/\/www\.(gov\.br|nfe\.fazenda\.gov\.br)\//),
   files: z.record(z.string(), z.object({ sha256: z.string().regex(/^[0-9a-f]{64}$/) })),
 });
 

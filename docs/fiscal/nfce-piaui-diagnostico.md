@@ -40,7 +40,7 @@ Nenhuma regra fiscal sai daqui para o código sem o seu próprio ADR e sem revis
 - **Autorizador da NFC-e do Piauí: SVRS (Sefaz Virtual do RS)** [PROVÁVEL].
   - A relação oficial de webservices da NFC-e (portal do SVRS e ENCAT) lista os estados com autorizador próprio: AM, GO, MS, MT, PR, RS e SP. Os demais usam o SVRS. O PI não está entre os próprios.
   - Para a NF-e, o Portal Nacional diz explicitamente que o PI usa o SVRS e, em contingência, o SVC-AN [CONFIRMADO].
-  - **A confirmar com a SEFAZ-PI** no credenciamento.
+  - **A confirmar com a SEFAZ-PI** no credenciamento, ou pela consulta de status ([ADR-0063](../adr/0063-status-do-servico-nfce.md)): a regra K02 recusa com 289 a UF que o webservice não atende, então um 107 com `cUF=22` no SVRS confirma.
 - **Endereços SVRS da NFC-e (versão 4.00)** [CONFIRMADO]:
   - homologação em `https://nfce-homologacao.svrs.rs.gov.br/ws/...`;
   - produção em `https://nfce.svrs.rs.gov.br/ws/...`;

@@ -1,0 +1,31 @@
+{
+  "id": "nfe/4.00-status-pl009q",
+  "layoutVersion": "4.00",
+  "namespace": "http://www.portalfiscal.inf.br/nfe",
+  "environments": [
+    "production",
+    "production-restricted"
+  ],
+  "publishedOn": "2025-05-19",
+  "retrievedOn": "2026-11-25",
+  "sourceUrl": "https://www.nfe.fazenda.gov.br/portal/exibirArquivo.aspx?conteudo=0qRvxtvKcj4=",
+  "note": "Somente os arquivos do status do serviço (consStatServ/retConsStatServ) do PL_009q, o pacote completo mais recente que os traz (ADR-0062, ADR-0063). O leiaute da NFC-e vem do PL_010h e entra em pacote próprio.",
+  "package": {
+    "file": "PL_009q_NT2025_001_v1.00.zip",
+    "sha256": "82a26d04a778fc214bf8c6c6e5c65ea577721e32ed5efa9a11a80098b8f9802f"
+  },
+  "files": {
+    "consStatServ_v4.00.xsd": {
+      "sha256": "20c2cae522ac79ea52353ca66d7595c6616a46a491e561b076145fe8574b8773"
+    },
+    "retConsStatServ_v4.00.xsd": {
+      "sha256": "337ceed7f74c0764edbc8a18feacaf8c33f66aa951c46b4b29b561cda7c2f7fb"
+    },
+    "leiauteConsStatServ_v4.00.xsd": {
+      "sha256": "cdc0813b5bf0087c7c8510f6ea0c2a367c829d9ea4b44c23533d18d3bcf23375"
+    },
+    "tiposBasico_v4.00.xsd": {
+      "sha256": "ca9a0be58e15b3065a1645af21f60b2e18edd6b13b9f5747c5c85e4692ebd13b"
+    }
+  }
+}

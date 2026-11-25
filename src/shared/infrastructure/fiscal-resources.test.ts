@@ -35,7 +35,7 @@ describe('arquivos fiscais oficiais (ADR-0013)', () => {
     const manifest = JSON.parse(readFileSync(join(dir, 'MANIFEST.json'), 'utf8')) as Manifest;
 
     it('declara origem oficial, data de consulta e ambientes', () => {
-      expect(manifest.sourceUrl).toMatch(/^https:\/\/www\.gov\.br\//);
+      expect(manifest.sourceUrl).toMatch(/^https:\/\/www\.(gov\.br|nfe\.fazenda\.gov\.br)\//);
       expect(manifest.retrievedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(manifest.environments.length).toBeGreaterThan(0);
     });
