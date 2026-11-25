@@ -14,6 +14,18 @@ export {
 } from './domain/access-key.js';
 export { buildSoapEnvelope, readWsdlContract, type SefazFailure, type WsdlContract } from './infrastructure/sefaz/sefaz-soap.js';
 export {
+  digestValueHex,
+  hashWithCsc,
+  PI_QR_CODE_URL,
+  QrCodeError,
+  qrCodeV2Offline,
+  qrCodeV2Online,
+  qrCodeV3Offline,
+  qrCodeV3Online,
+  type Csc,
+  type QrRecipient,
+} from './infrastructure/qrcode/qr-code-url.js';
+export {
   buildConsStatServ,
   queryServiceStatus,
   readStatusResponse,

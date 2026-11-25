@@ -63,6 +63,7 @@ O manual do DANFE NFC-e v6.0 traz duas versões de QR Code [CONFIRMADO]:
 - **Versão 3.00:** não usa CSC. A autenticidade vem da assinatura dos parâmetros do próprio QR Code.
   - É a orientação para o produtor rural pessoa física.
   - Para pessoa jurídica, adotar a v3 é opção da empresa.
+- **As duas versões já estão implementadas** ([ADR-0066](../adr/0066-qr-code-nfce.md)), conferidas com os exemplos do manual. Falta só a escolha.
 - **Consequência de segurança:** com a v2.00, o **CSC é um segredo**. Ele entra no cofre como o certificado (KEK assimétrica, só o worker-fiscal decifra) e nunca vai para log, como já previa o ADR-0027 para a Fase 3.
 
 ### Contingência
