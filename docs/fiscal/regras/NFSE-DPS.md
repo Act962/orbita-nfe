@@ -16,7 +16,7 @@ Anexo I, aba "RN DPS_NFS-e", registrados em [fontes oficiais](../fontes-oficiais
 ## Critério de entrada
 Uma regra só entra quando cumpre as três condições:
 1. É de nível 1 ou 2 no Anexo (consistência do leiaute ou regra geral).
-2. Depende **só** de dados da DPS do contrato v1. Ficam de fora as que consultam cadastro (CNPJ, CPF, CNC, Simples Nacional), a parametrização do município ou tabelas que o motor não tem (lista de serviços, NBS, cenários de exportação).
+2. Depende **só** de dados da DPS do contrato v1. Ficam de fora as que consultam cadastro (CNPJ, CPF, CNC, Simples Nacional), a parametrização do município ou tabelas que o motor não tem (lista de serviços, NBS, cenários de exportação). A tabela de municípios do IBGE o motor tem desde o ADR-0057, e as regras que só dependem dela entraram no [ADR-0058](../../adr/0058-municipios-ibge-no-aceite.md).
 3. O texto é claro no Anexo do ambiente. Quando os dois textos diferem, cada ambiente segue o seu.
 
 O emitente é sempre o prestador (`tpEmit = 1`), então as regras dos casos `tpEmit = 2` ou `3` não se aplicam.
@@ -60,6 +60,9 @@ O código da regra é o código de rejeição do Anexo. Na API, cada violação 
 | E0354 | os dois | 2 | `movTempBens` 1 → sem `nDI` e sem `nRE` | `service.foreignTrade` |
 | E0356 | os dois | 2 | `movTempBens` 3 → `nRE` obrigatório | `service.foreignTrade.exportRegistration` |
 | E1402 | os dois | — | `cTribNac` 200101 → `cLocPrestacao` não pode ser 0000000 | `service.municipalityCode` |
+| E0238 | os dois | 1 | `toma/end/endNac/cMun` existe na tabela de municípios do IBGE (ADR-0058) | `taker.address.municipalityCode` |
+| E0294 | os dois | 1 | `interm/end/endNac/cMun` existe na tabela de municípios do IBGE (ADR-0058) | `intermediary.address.municipalityCode` |
+| E0302 | os dois | 1 | `cLocPrestacao` existe na tabela de municípios do IBGE ou é 0000000, "Águas Marítimas" (ADR-0058) | `service.municipalityCode` |
 | E0309 | produção restrita | 1 | `cTribNac` 99.03.xx ou 99.04.01 é rejeitado (só existe nesse Anexo) | `service.nationalTaxCode` |
 | E0313 | produção restrita | 3* | MEI não informa `cTribMun` (só existe nesse Anexo) | `service.municipalTaxCode` |
 | E0315 | os dois | 1 | `cTribMun` não pode ser 000 | `service.municipalTaxCode` |
@@ -140,5 +143,6 @@ Antes destas regras, o motor aceitava esses casos e o autorizador os rejeitaria.
 
 ## Pendências
 - Revisão pelo especialista fiscal (gate fiscal 1).
+- Trocar a tabela da API de localidades do IBGE pela do "ANEXO_A-MUNICIPIO_IBGE-PAISES_ISO2-SNNFSe", citada pelo Anexo, que também traz os países ISO2 e completaria a E0246, a E0299 e a E0304 (ADR-0058).
 - Ao trocar o pacote de produção, repetir o confronto entre os Anexos e ajustar os ambientes de cada regra.
 - CPF-001 (DV do CPF) com fonte, para ligar a E0206.

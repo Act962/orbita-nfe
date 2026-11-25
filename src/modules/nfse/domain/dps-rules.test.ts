@@ -262,6 +262,28 @@ describe('regras do Anexo I conferidas no aceite (ADR-0037)', () => {
     ]);
   });
 
+  it('E0238, E0294 e E0302: código de município fora da tabela do IBGE (ADR-0058); 0000000 ("Águas Marítimas") vale no local da prestação', () => {
+    const known = new Set(['2211001', '3550308']);
+    const withTable = (d: DpsData, environment: RuleEnvironment = 'HOMOLOGATION') =>
+      checkDpsRules(d, { ...ctx(environment), municipalityExists: (code) => known.has(code) }).map((v) => v.code);
+    const takerAt = (municipalityCode: string): DpsData => ({ ...base, taker: { ...cpfTaker, address: { ...ADDRESS, municipalityCode } } });
+    const intermAt = (municipalityCode: string): DpsData => ({ ...base, intermediary: { ...intermediary(OTHER_CNPJ), address: { ...ADDRESS, municipalityCode } } });
+
+    for (const environment of ['PRODUCTION', 'HOMOLOGATION'] as const) {
+      expect(withTable(base, environment)).toEqual([]);
+      expect(withTable(takerAt('9999999'), environment)).toEqual(['E0238']);
+      expect(withTable(intermAt('9999999'), environment)).toEqual(['E0294']);
+      expect(withTable(service(base, { municipalityCode: '9999999' }), environment)).toEqual(['E0302']);
+      expect(withTable(service(base, { municipalityCode: '0000000' }), environment)).toEqual([]);
+    }
+    expect(withTable(takerAt('3550308'))).toEqual([]);
+    // Endereço no exterior e prestação no exterior não consultam a tabela.
+    expect(withTable({ ...base, taker: foreignTaker })).not.toContain('E0238');
+    // Sem a tabela, as três ficam com o autorizador.
+    expect(codes(takerAt('9999999'))).not.toContain('E0238');
+    expect(codes(service(base, { municipalityCode: '9999999' }))).not.toContain('E0302');
+  });
+
   it('cada regra tem código do Anexo I, campo, mensagem e ao menos um ambiente', () => {
     for (const rule of DPS_RULES) {
       expect(rule.code).toMatch(/^E[0-9]{4}$/);

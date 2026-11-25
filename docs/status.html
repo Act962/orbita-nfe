@@ -82,7 +82,7 @@
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">816 ✓</div>
+    <div class="value">818 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -192,6 +192,7 @@
 <li><span class="tag done">Pronto</span><div>Resultado da emissão na mesma chamada<small>Quem emite pode pedir para a API esperar alguns segundos (até 20) pelo resultado. Se a nota sair a tempo, a resposta já vem autorizada ou rejeitada; se não, segue como hoje, para consultar depois. Vale também para o cancelamento.</small></div></li>
 <li><span class="tag done">Pronto</span><div>O que o órgão respondeu, em cada nota<small>Cada nota mostra o código e a descrição da resposta do órgão: "NFS-e Gerada", "NFS-e MEI" ou o motivo da rejeição. As descrições vêm do arquivo oficial do governo; nada é inventado.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Raio-x de uma nota para o suporte<small>Com uma permissão separada, o suporte vê cada tentativa de envio da nota, o que voltou do órgão e os pedidos de cancelamento, sem ver o XML nem os dados do cliente.</small></div></li>
+<li><span class="tag done">Pronto</span><div>Código de município conferido na tabela oficial do IBGE<small>Se o código da cidade do cliente ou do local do serviço não existir, a nota é recusada na hora, com o mesmo código de erro que o governo daria, e sem gastar número.</small></div></li>
 <li><span class="tag done">Pronto</span><div>PDF da nota (DANFSe) no padrão oficial<small>O motor gera o PDF que vai para o cliente final, com QR Code de consulta no portal nacional, no modelo oficial de julho de 2026. A geração pelo governo foi desligada em agosto, então agora cada sistema gera o seu. Nota cancelada sai com a marca "CANCELADA".</small></div></li>
 <li><span class="tag done">Pronto</span><div>Ambiente de testes completo nesta máquina, com um comando<small>Com <code>npm run sandbox</code>, você cria a empresa, o certificado de teste e a credencial, emite uma nota, baixa o XML e cancela, tudo pela API. Quem responde é o simulador do órgão, então nada é enviado de verdade.</small></div></li>
 <li><span class="tag done">Pronto</span><div>Reenviar o aviso de uma nota<small>Se o sistema do cliente perdeu o aviso automático de uma nota, basta informar a nota: o motor reenvia o último aviso dela, sem duplicar nada e só para quem já tinha recebido.</small></div></li>

@@ -5,7 +5,7 @@ import { createLogger } from '../shared/infrastructure/logging/logger.js';
 import { buildApp } from './app.js';
 import { composeApi } from './compose.js';
 import { loadConfig } from './config.js';
-import { loadDanfse, loadFiscalSchemas, loadNfseRouting } from './fiscal-resources.js';
+import { loadDanfse, loadFiscalSchemas, loadMunicipalities, loadNfseRouting } from './fiscal-resources.js';
 
 const config = loadConfig();
 const logger = createLogger({ level: config.LOG_LEVEL, service: 'api' });
@@ -19,6 +19,8 @@ const database = createDatabase({
 
 const perMinute = (limit: number, burst: number) => ({ capacity: burst, refillPerSecond: limit / 60 });
 
+const municipalities = loadMunicipalities();
+
 const modules = composeApi({
   db: database.db,
   apiKeyPepper: loadPepperFile(config.API_KEY_PEPPER_FILE),
@@ -27,7 +29,8 @@ const modules = composeApi({
   allowPrivateWebhookTargets: config.WEBHOOK_ALLOW_PRIVATE_TARGETS,
   schemaCatalog: loadFiscalSchemas(),
   nfseRouting: loadNfseRouting(),
-  danfse: loadDanfse(),
+  danfse: loadDanfse(municipalities),
+  municipalities,
   rateLimit: {
     perCredential: perMinute(config.RATE_LIMIT_PER_MINUTE, config.RATE_LIMIT_BURST),
     perAddress: perMinute(config.RATE_LIMIT_ADDRESS_PER_MINUTE, config.RATE_LIMIT_ADDRESS_BURST),

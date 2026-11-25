@@ -41,6 +41,7 @@ import {
   ServiceInvoiceService,
   DanfseService,
   type DanfseRenderer,
+  type MunicipalityDirectory,
   SubmissionProcessor,
   XmlDpsValidator,
   ManualResolutionDesk,
@@ -170,6 +171,8 @@ export interface ApiModulesDependencies {
   readonly nfseRouting: RoutingTable;
   /** Gerador do DANFSe (ADR-0057), com a logomarca e a tabela do IBGE conferidas na carga. */
   readonly danfse: DanfseRenderer;
+  /** Tabela de municípios do IBGE (ADR-0058): E0238, E0294 e E0302 no aceite. */
+  readonly municipalities: MunicipalityDirectory;
 }
 
 export interface ApiModules {
@@ -223,6 +226,7 @@ export function composeApi(deps: ApiModulesDependencies): ApiModules {
     uuidv7,
     deps.nfseRouting,
     new XmlDpsValidator(deps.schemaCatalog),
+    deps.municipalities,
   );
   const rateLimiter = new RateLimiter(deps.rateLimit);
 

@@ -48,7 +48,7 @@ Decisão aceita em [ADR-0026](../adr/0026-convencoes-api-referencia-mercado.md).
 | A12 | **Exportação para o contador**: ZIP mensal de XMLs por estabelecimento, gerado em job e entregue por link pré-assinado | backups mensais | Fase 5 (ou antes, se o piloto pedir) |
 | A13 | **`include=`** na consulta (`attempts`, `events`, `protocol`) para depuração, só com escopo próprio | `completa=1` | Fase 2a (NFS-e: feito como rota própria `…/diagnostics` com `nfse:debug`, [ADR-0055](../adr/0055-diagnostico-da-nota.md)) |
 | A14 | **Changelog e política de descontinuação** da API (`Deprecation`/`Sunset` nos headers), versão em `/v1` | ausência na Focus | Fase 1 sem. 7 (docs) |
-| A15 | **Dados de referência oficiais**: tabela de municípios do IBGE para validar `municipalityCode` (hoje só o formato) | API de municípios | Fase 2a (fonte: IBGE, com versão registrada). A tabela oficial já está versionada (`resources/fiscal/ibge`, ADR-0057) e é usada no DANFSe; a validação do `municipalityCode` ainda falta |
+| A15 | **Dados de referência oficiais**: tabela de municípios do IBGE para validar `municipalityCode` (hoje só o formato) | API de municípios | Fase 2a (fonte: IBGE, com versão registrada). A tabela oficial já está versionada (`resources/fiscal/ibge`, ADR-0057) e é usada no DANFSe e nas regras E0238, E0294 e E0302 do aceite ([ADR-0058](../adr/0058-municipios-ibge-no-aceite.md)); o município do estabelecimento continua conferido só no formato |
 
 ## 4. O que não vamos adotar
 - Token por empresa como única forma de autenticação: dificulta plataformas com muitas empresas; mantemos credencial por aplicação (podemos oferecer credenciais restritas a empresas específicas no futuro).

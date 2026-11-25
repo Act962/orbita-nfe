@@ -415,6 +415,11 @@ export interface NfseDocumentVerifier {
   ): Promise<NfseVerification>;
 }
 
+/** Tabela oficial de municípios do IBGE (ADR-0058): o código existe? */
+export interface MunicipalityDirectory {
+  exists(code: string): boolean;
+}
+
 /**
  * Gerador do DANFSe (ADR-0057; NT 008 SE/CGNFS-e v1.02): PDF a partir do XML autorizado. A marca
  * d'água vem da situação ATUAL da nota (CANCELADA, SUBSTITUÍDA), que o XML autorizado não traz.

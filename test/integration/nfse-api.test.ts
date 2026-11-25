@@ -358,6 +358,26 @@ describe('regras do Anexo I no aceite (ADR-0037)', () => {
     // A mesma DPS sem as violações é aceita.
     expect((await post({ establishmentId, ...sampleDpsData() }, 'regras-2')).statusCode).toBe(202);
   });
+
+  it('municípios fora da tabela do IBGE (ADR-0058): E0302 e E0238 antes de numerar; 0000000 vale no local da prestação', async () => {
+    const address = { municipalityCode: '9999999', postalCode: '64000000', street: 'Av. Ficticia', number: '100', district: 'Centro' };
+    const body = {
+      establishmentId,
+      ...sampleDpsData({
+        service: { ...sampleDpsData().service, municipalityCode: '9999999' },
+        taker: { document: { type: 'CPF', value: '12345678909' }, name: 'Tomador Ficticio', address },
+      }),
+    };
+    const res = await post(body, 'ibge-1');
+    expect(res.statusCode, res.body).toBe(422);
+    expect(problemCode(res)).toBe('NFSE_RULES_VIOLATED');
+    expect(res.json<{ issues: { code: string; field: string }[] }>().issues.map((i) => [i.code, i.field])).toEqual([
+      ['E0238', 'body.taker.address.municipalityCode'],
+      ['E0302', 'body.service.municipalityCode'],
+    ]);
+    const maritime = await post({ establishmentId, ...sampleDpsData({ service: { ...sampleDpsData().service, municipalityCode: '0000000' } }) }, 'ibge-2');
+    expect(maritime.statusCode, maritime.body).toBe(202);
+  });
 });
 
 describe('contrato v2 da DPS (ADR-0040)', () => {

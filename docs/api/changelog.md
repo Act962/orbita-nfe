@@ -8,6 +8,12 @@ last_updated: 2026-11-24
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
 
+## 2026-11-25 — v1 (municípios conferidos na tabela do IBGE)
+
+**Alterado:**
+
+- A emissão, a substituição e a validação recusam, com `422 NFSE_RULES_VIOLATED`, código de município que não existe na tabela do IBGE: endereço do tomador (`E0238`), endereço do intermediário (`E0294`) e local da prestação (`E0302`; `0000000`, "Águas Marítimas", continua aceito). Antes, a nota seguia e era rejeitada pelo autorizador com o mesmo código.
+
 ## 2026-11-25 — v1 (DANFSe)
 
 **Adicionado:**

@@ -22,7 +22,16 @@ export interface DpsRuleContext {
   readonly providerCnpj: string;
   /** Data de emissão (dhEmi) que a DPS terá, AAAA-MM-DD em UTC−03:00 (ADR-0033 item 4). */
   readonly issueDate: string;
+  /**
+   * Tabela de municípios do IBGE (ADR-0058). Sem ela, as regras que consultam a tabela (E0238,
+   * E0294, E0302) não são conferidas aqui e ficam com o autorizador.
+   */
+  readonly municipalityExists?: ((code: string) => boolean) | undefined;
 }
+
+/** Código nacional que NÃO está na tabela do IBGE (só com a tabela disponível). */
+const unknownMunicipality = (code: string | undefined, context: DpsRuleContext): boolean =>
+  code !== undefined && context.municipalityExists !== undefined && !context.municipalityExists(code);
 
 export interface DpsRuleViolation {
   /** Código de rejeição do Anexo I. */
@@ -317,6 +326,28 @@ export const DPS_RULES: readonly DpsRule[] = [
     field: 'service.foreignTrade.exportRegistration',
     message: 'Com movimentação temporária vinculada a declaração de exportação (3), o número do RE (nRE) é obrigatório.',
     violated: (d) => d.service.foreignTrade?.temporaryGoods === '3' && d.service.foreignTrade.exportRegistration === undefined,
+  },
+  // ------------------------------------------------------------------ municípios (tabela do IBGE, ADR-0058)
+  {
+    code: 'E0238',
+    environments: BOTH,
+    field: 'taker.address.municipalityCode',
+    message: 'O código do município do endereço do tomador não existe na tabela de municípios do IBGE.',
+    violated: (d, c) => isNationalAddress(d.taker?.address) && unknownMunicipality(d.taker.address.municipalityCode, c),
+  },
+  {
+    code: 'E0294',
+    environments: BOTH,
+    field: 'intermediary.address.municipalityCode',
+    message: 'O código do município do endereço do intermediário não existe na tabela de municípios do IBGE.',
+    violated: (d, c) => isNationalAddress(d.intermediary?.address) && unknownMunicipality(d.intermediary.address.municipalityCode, c),
+  },
+  {
+    code: 'E0302',
+    environments: BOTH,
+    field: 'service.municipalityCode',
+    message: 'O código do local da prestação não existe na tabela de municípios do IBGE (0000000, "Águas Marítimas", é aceito).',
+    violated: (d, c) => d.service.municipalityCode !== '0000000' && unknownMunicipality(d.service.municipalityCode, c),
   },
   // ------------------------------------------------------------------ serviço
   {

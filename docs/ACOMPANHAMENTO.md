@@ -70,6 +70,12 @@ Resultado: 215+ testes (unitários + integração com PostgreSQL real).
 - Destaques: habilitação de produção por estabelecimento, inscrições fiscais como recurso, API de certificados só com metadados, contingência configurável, documentação para agentes.
 - EPEC, contingência, inutilização e tipos de certificado vistos lá ficaram na lista "a confirmar em fonte oficial".
 
+### Municípios conferidos na tabela do IBGE (2026-11-25)
+Decisão: [ADR-0058](adr/0058-municipios-ibge-no-aceite.md).
+- [x] **E0238, E0294 e E0302 do Anexo I** no aceite e na validação, antes de numerar, com a tabela oficial do IBGE do ADR-0057. `0000000` ("Águas Marítimas") é aceito no local da prestação.
+- [x] O município do estabelecimento (`cLocEmi`) fica só no formato: pode ser trecho de concessão de rodovia, de outra tabela, e a regra dele (E0037) é do cadastro de convênio.
+- [ ] Depois: usar a tabela do ANEXO_A do Sistema Nacional (municípios e países ISO2), que fecharia também E0246, E0299 e E0304.
+
 ### DANFSe (2026-11-25)
 Decisão: [ADR-0057](adr/0057-danfse.md). Fonte: NT 008 SE/CGNFS-e v1.02, lida inteira (a API de DANFSe do ADN foi suspensa em 03/08/2026).
 - [x] **`GET /v1/service-invoices/{id}/danfse`**: PDF A4 de uma página, gerado na hora do XML autorizado (hash conferido); `links.danfse`.
@@ -649,6 +655,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-24 | `Prefer: wait` também no pedido de cancelamento | 0053 |
 | 2026-11-24 | Reenvio de webhook pelo documento, sem saber o id do evento | 0056 |
 | 2026-11-25 | DANFSe gerado pelo motor (NT 008 v1.02), Helvetica no lugar das fontes proprietárias | 0057 |
+| 2026-11-25 | Códigos de município conferidos na tabela do IBGE no aceite (E0238, E0294, E0302) | 0058 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |
