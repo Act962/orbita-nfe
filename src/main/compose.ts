@@ -74,10 +74,19 @@ import {
   type UnknownAlertSink,
 } from '../modules/nfse/public.js';
 import {
+  buildNfeProc,
   ConsumerInvoiceService,
+  NfceReconciler,
+  NfceSubmissionProcessor,
   nfceApiUnitOfWork,
+  nfceWorkerUnitOfWork,
   registerNfceRoutes,
+  type NfceAuthorizerGateway,
+  type NfceCredentialAccess,
+  type NfceEmitterReader,
   type NfceIssuerReader,
+  type NfcePreparer,
+  type NfceProcessorOptions,
   type NfceProductionGate,
   type NfceSeriesAllocator,
 } from '../modules/nfce/public.js';
@@ -323,7 +332,65 @@ export interface FiscalWorkerDependencies {
       readonly alerts: ArchiveIntegrityAlertSink;
     };
   };
+  /**
+   * Emissão de NFC-e (ADR-0072). Sem isto, as filas `nfce.*` ficam sem handler e os jobs esperam.
+   * Nesta etapa o autorizador disponível é o simulador, que a configuração recusa em produção.
+   */
+  readonly nfce?: {
+    readonly gateway: NfceAuthorizerGateway;
+    readonly preparer: NfcePreparer;
+    /** Tabela do IBGE (ADR-0058): nome do município e UF do emitente. */
+    readonly municipalities: { lookup(code: string): { readonly name: string; readonly uf: string } | undefined };
+    readonly options?: NfceProcessorOptions;
+  };
   readonly now?: () => Date;
+}
+
+/**
+ * O emitente completo da NFC-e (ADR-0071): razão social da empresa, perfil estadual do
+ * estabelecimento e, da tabela do IBGE, o nome do município e a UF. Falta de dado = código estável.
+ */
+function nfceEmitters(transactions: CompanyTransactions, municipalities: NonNullable<FiscalWorkerDependencies['nfce']>['municipalities']): NfceEmitterReader {
+  return {
+    emitter: (companyId, establishmentId) =>
+      transactions.run(companyId, async (tx) => {
+        const company = await companyRepository(tx).current();
+        const establishment = await establishmentRepository(tx).findById(establishmentId);
+        if (company === undefined || establishment === undefined) return { ok: false, code: 'ESTABLISHMENT_NOT_FOUND' };
+        const profile = establishment.stateProfile;
+        if (profile === null) return { ok: false, code: 'NFCE_STATE_PROFILE_REQUIRED' };
+        const municipality = municipalities.lookup(establishment.municipalityCode);
+        if (municipality === undefined) return { ok: false, code: 'NFCE_MUNICIPALITY_NOT_IN_IBGE' };
+        return {
+          ok: true,
+          emitter: {
+            cnpj: establishment.cnpj,
+            legalName: company.legalName,
+            tradeName: establishment.tradeName,
+            stateRegistration: profile.stateRegistration,
+            taxRegime: profile.taxRegime,
+            address: { ...profile.address, municipalityCode: establishment.municipalityCode, municipalityName: municipality.name, uf: municipality.uf },
+          },
+        } as const;
+      }),
+  };
+}
+
+/** Processador e reconciliador da NFC-e, com o certificado do cofre (ADR-0072). */
+function composeNfceWorker(
+  transactions: CompanyTransactions,
+  vault: CertificateVault,
+  nfce: NonNullable<FiscalWorkerDependencies['nfce']>,
+  now?: () => Date,
+): { processor: NfceSubmissionProcessor; reconciler: NfceReconciler } {
+  const credentials: NfceCredentialAccess = {
+    withCredential: (companyId, establishmentId, work) =>
+      vault.withCertificate(companyId, establishmentId, (certificate) => work({ privateKey: certificate.privateKey, certificatePem: certificate.certificatePem })),
+  };
+  const uow = nfceWorkerUnitOfWork(transactions, { productionFor: nfceProduction, auditFor, jobsFor: schedulerFor('fiscal') });
+  const processor = new NfceSubmissionProcessor(uow, nfceEmitters(transactions, nfce.municipalities), credentials, nfce.preparer, nfce.gateway, buildNfeProc, uuidv7, now, nfce.options);
+  const reconciler = new NfceReconciler(uow, credentials, nfce.gateway, buildNfeProc, now, nfce.options?.reconciliation);
+  return { processor, reconciler };
 }
 
 /** Composition root do worker-fiscal (validação e uso de certificados). */
@@ -337,6 +404,7 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
   cancellationReconciler?: CancellationReconciler;
   archiver?: AuthorizedXmlArchiver;
   archiveVerifier?: ArchivedXmlVerifier;
+  nfce?: { processor: NfceSubmissionProcessor; reconciler: NfceReconciler };
   handlers: Partial<Record<QueueName, JobHandler>>;
 } {
   const transactions = new CompanyTransactions(deps.db);
@@ -357,7 +425,18 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
       await vault.validate(payloadId(job, 'companyId'), payloadId(job, 'certificateId'), systemContext('worker-fiscal', job));
     },
   };
-  if (deps.nfse === undefined) return { vault, handlers };
+  const nfce = deps.nfce === undefined ? undefined : composeNfceWorker(transactions, vault, deps.nfce, deps.now);
+  if (nfce !== undefined) {
+    handlers['nfce.process'] = async (job) => {
+      const result = await nfce.processor.process(payloadId(job, 'companyId'), payloadId(job, 'invoiceId'), systemContext('worker-fiscal', job));
+      // Falha local depois de um envio anterior: o job tenta de novo (nunca FAILED depois de um envio).
+      if (result.kind === 'DEFERRED') throw new Error(`NFCE_PROCESSING_DEFERRED:${result.code}`);
+    };
+    handlers['nfce.reconcile'] = async (job) => {
+      await nfce.reconciler.reconcile(payloadId(job, 'companyId'), payloadId(job, 'invoiceId'), systemContext('worker-fiscal', job));
+    };
+  }
+  if (deps.nfse === undefined) return { vault, handlers, ...(nfce === undefined ? {} : { nfce }) };
 
   const credentials: CredentialAccess = {
     withCredential: (companyId, establishmentId, work) =>

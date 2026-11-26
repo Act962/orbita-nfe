@@ -12,11 +12,12 @@ import {
   type ArchiveIntegrityAlertSink,
   type UnknownAlertSink,
 } from '../modules/nfse/public.js';
+import { PI_QR_CODE_URL, qrCodeV3Online, SimulatedNfceAuthorizer, XmlNfcePreparer } from '../modules/nfce/public.js';
 import { createDatabase } from '../shared/infrastructure/database/database.js';
 import { createLogger } from '../shared/infrastructure/logging/logger.js';
 import { artifactArchiveOptions } from './artifact-config.js';
 import { composeFiscalWorker } from './compose.js';
-import { loadFiscalSchemas } from './fiscal-resources.js';
+import { loadFiscalSchemas, loadMunicipalities } from './fiscal-resources.js';
 import { loadFiscalWorkerConfig } from './worker-config.js';
 import { runWorker } from './worker-runtime.js';
 
@@ -78,11 +79,30 @@ if (config.NFSE_GATEWAY === 'real') {
   logger.warn({ sefin: SEFIN_NACIONAL.baseUrls, teresinaDsf: TERESINA_DSF.baseUrls }, 'NFS-e com autorizadores REAIS (NFSE_GATEWAY=real): só os ambientes de homologação estão configurados');
 }
 
+/**
+ * NFC-e (ADR-0072): só o simulador nesta etapa. A versão do QR Code (ADR-0066) e a `urlChave` do PI
+ * ainda são decisões em aberto: o simulador usa o QR Code 3.00 e um endereço `.invalid`.
+ */
+const nfce =
+  config.NFCE_GATEWAY === 'none'
+    ? undefined
+    : {
+        gateway: new SimulatedNfceAuthorizer(),
+        preparer: new XmlNfcePreparer(
+          schemas ?? loadFiscalSchemas(),
+          { qrCode: ({ accessKey, environment }) => qrCodeV3Online({ baseUrl: PI_QR_CODE_URL, accessKey, environment }), consultationUrl: 'https://consulta.exemplo.invalid/nfce' },
+          `orbita-nfe-${config.APP_VERSION}`,
+        ),
+        municipalities: loadMunicipalities(),
+      };
+if (config.NFCE_GATEWAY === 'simulator') logger.warn('NFC-e com autorizador SIMULADO (NFCE_GATEWAY=simulator): nada é enviado a órgão nenhum');
+
 const { handlers } = composeFiscalWorker({
   db: database.db,
   certificateKeks: [loadPrivateKek(config.WORKER_CERTIFICATE_KEK_PRIVATE_FILE)],
   trustStore: X509TrustStore.fromFile(config.CERTIFICATE_TRUST_BUNDLE_FILE),
   ...(nfse === undefined ? {} : { nfse }),
+  ...(nfce === undefined ? {} : { nfce }),
 });
 
 runWorker({

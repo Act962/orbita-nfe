@@ -1,6 +1,6 @@
 # ADR-0072 — Núcleo da emissão da NFC-e: estados, tentativas e XML montado no envio
 
-- Status: **Aceito** (fatias 1 e 2 de 3 implementadas) · Data: 2026-11-26
+- Status: **Aceito** (as 3 fatias implementadas, com o simulador) · Data: 2026-11-26
 - Relacionados:
   - ADR-0032 e ADR-0022 (núcleo da NFS-e e write-ahead: o molde);
   - ADR-0029 (incerteza se resolve consultando);
@@ -73,11 +73,43 @@ A NFC-e segue o mesmo molde, com duas diferenças que vêm das fontes:
      - job `nfce.process`, que espera na fila até a fatia 3.
    - **Visibilidade:** nota de outra aplicação ou de outro ambiente responde 404, como na NFS-e.
    - **Testes:** as três rotas entraram na matriz de isolamento. Os testes de integração cobrem o aceite, a repetição, a chave reusada, a regra violada, a forma do XSD, o perfil ausente, o CRT fora da v1, a referência ocupada e a produção sem habilitação.
-3. **Worker:**
-   - concessão e montagem com o nome do município e a UF da tabela do IBGE;
-   - assinatura, QR Code e envio (ADR-0070);
-   - reconciliação pela consulta (ADR-0064);
-   - simulador para os testes e o sandbox.
+3. **Feita: worker.**
+   - **Processador (`nfce.process`)**, no molde da NFS-e:
+     1. concessão;
+     2. emitente do cadastro (ADR-0071) e certificado do cofre;
+     3. XML **montado e assinado no envio**, validado no XSD do PL_010h;
+     4. tentativa `PREPARED` com o XML, a chave e o digest;
+     5. `SENDING` com commit antes da rede;
+     6. o resultado, pelo ADR-0070.
+   - **Emitente:** razão social da empresa, perfil estadual, e o nome do município e a UF pela tabela do IBGE. A razão social com mais de 60 caracteres falha antes do envio (`NFCE_ISSUER_NAME_LENGTH`): o motor não corta dado fiscal.
+   - **Fuso do `dhEmi`:** -03:00, só para o Piauí, que não tem horário de verão. Outra UF falha antes do envio (`NFCE_TIMEZONE_NOT_SUPPORTED`), em vez de presumir o fuso.
+   - **Destino de cada resposta:**
+     - `AUTHORIZED`: grava a chave, o cStat, o protocolo e o `nfeProc` (NFe + protNFe), com o SHA-256.
+     - `DENIED`: grava a chave e o cStat.
+     - `REJECTED`: guarda o código.
+     - `NOT_SENT`: volta a `PENDING`, com backoff.
+     - `UNKNOWN` e `ALREADY_EXISTS`: viram `UNKNOWN` e agendam a consulta.
+     - Queda: `PREPARED` volta a `PENDING`; `SENDING` vira `UNKNOWN`.
+   - **Reconciliador (`nfce.reconcile`):** a regra pura da NFS-e passou para `shared/domain/reconciliation.ts` e é a mesma nas duas notas. Ele consulta pela chave e pelo digest **da última tentativa**:
+     - autorizada ou denegada: grava o resultado;
+     - duas respostas "não consta" espaçadas: a nota volta a `PENDING`, e a tentativa seguinte monta um XML novo;
+     - erro: backoff, sem fim, e nunca `FAILED`.
+   - **Simulador (`SimulatedNfceAuthorizer`):** autoriza, denega, rejeita, não envia, processa e derruba, ou derruba antes. Responde duplicidade (204) para chave já gravada. O protocolo é fictício (`nProt` começa com 9).
+   - **Configuração `NFCE_GATEWAY`:** `none` ou `simulator`. O simulador é recusado em produção.
+   - **Teste de ponta a ponta:** Postgres real, preparador real (certificado ICP de teste, XSD oficial) e simulador. Cobre:
+     - autorizada, rejeitada e denegada;
+     - `NOT_SENT` com XML novo na tentativa seguinte;
+     - processa e derruba, resolvido pela consulta sem reenvio;
+     - nada chegou, com nova tentativa só depois de duas respostas "não consta";
+     - erro de consulta;
+     - queda em `SENDING`;
+     - falha local antes do envio.
+
+## Ainda falta
+- **Adaptador real do SVRS:** liga o `authorize` do ADR-0070 e a consulta do ADR-0064 ao processador. Entra com o credenciamento da empresa piloto.
+- **Webhook de mudança de estado da NFC-e:** hoje as mudanças ficam só na auditoria.
+- **Download do XML autorizado e DANFE NFC-e.**
+- **Arquivamento com Object Lock,** como no ADR-0048.
 
 ## Em aberto
 - **QR Code 2.00 (CSC) ou 3.00:** decisão do responsável (ADR-0066). O simulador usa o 3.00, que não precisa de CSC.

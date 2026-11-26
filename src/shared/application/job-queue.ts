@@ -84,6 +84,14 @@ export const QUEUES = {
     timeoutSeconds: 180,
     priority: 20,
   },
+  /** Uma consulta de reconciliação de NFC-e em UNKNOWN, pela chave da última tentativa (ADR-0072). */
+  'nfce.reconcile': {
+    lane: 'fiscal',
+    maxAttempts: 20,
+    backoff: { baseSeconds: 60, maxSeconds: 3600, jitter: 0.2 },
+    timeoutSeconds: 120,
+    priority: 30,
+  },
   /** Uma consulta de reconciliação de NFS-e em UNKNOWN; a próxima é um job novo com runAt. */
   'nfse.reconcile': {
     lane: 'fiscal',

@@ -39,11 +39,21 @@ const FiscalWorkerSchema = z
      * ambientes de HOMOLOGAÇÃO estão nos perfis: nota de produção não sai (NOT_SENT local).
      */
     NFSE_GATEWAY: z.enum(['none', 'simulator', 'real']).default('none'),
+    /**
+     * Autorizador da NFC-e (ADR-0072). `none`: as filas nfce.* ficam sem handler (os jobs esperam).
+     * `simulator`: autorizador SIMULADO em memória, só fora de produção. O adaptador real do SVRS
+     * entra com o credenciamento da empresa piloto.
+     */
+    NFCE_GATEWAY: z.enum(['none', 'simulator']).default('none'),
     ...artifactEnvShape,
   })
   .refine((c) => !(c.NODE_ENV === 'production' && c.NFSE_GATEWAY === 'simulator'), {
     path: ['NFSE_GATEWAY'],
     message: 'o simulador do autorizador não pode ser usado em produção',
+  })
+  .refine((c) => !(c.NODE_ENV === 'production' && c.NFCE_GATEWAY === 'simulator'), {
+    path: ['NFCE_GATEWAY'],
+    message: 'o simulador do autorizador da NFC-e não pode ser usado em produção',
   })
   .refine(notInProduction('GENERAL_WEBHOOK_SECRET_KEY_PRIVATE_FILE'), {
     path: ['GENERAL_WEBHOOK_SECRET_KEY_PRIVATE_FILE'],

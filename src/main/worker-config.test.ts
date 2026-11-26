@@ -36,6 +36,13 @@ describe('separação de segredos por processo (ADR-0021)', () => {
     expect(() => loadFiscalWorkerConfig({ ...FISCAL, NFSE_GATEWAY: 'sefin' })).toThrow(/NFSE_GATEWAY/);
   });
 
+  it('autorizador da NFC-e: desligado por padrão; o simulador só fora de produção (ADR-0072)', () => {
+    expect(loadFiscalWorkerConfig(FISCAL).NFCE_GATEWAY).toBe('none');
+    expect(loadFiscalWorkerConfig({ ...FISCAL, NFCE_GATEWAY: 'simulator' }).NFCE_GATEWAY).toBe('simulator');
+    expect(() => loadFiscalWorkerConfig({ ...FISCAL, NODE_ENV: 'production', NFCE_GATEWAY: 'simulator' })).toThrow(/NFCE_GATEWAY/);
+    expect(() => loadFiscalWorkerConfig({ ...FISCAL, NFCE_GATEWAY: 'real' })).toThrow(/NFCE_GATEWAY/);
+  });
+
   it('worker-general sobe com a chave de webhooks e, em produção, recusa a KEK dos certificados', () => {
     expect(loadGeneralWorkerConfig(GENERAL).WEBHOOK_ALLOW_PRIVATE_TARGETS).toBe(false);
     expect(() => loadGeneralWorkerConfig({ ...GENERAL, CERTIFICATE_KEK_PRIVATE_FILE: '/x' })).toThrow(/CERTIFICATE_KEK_PRIVATE_FILE/);

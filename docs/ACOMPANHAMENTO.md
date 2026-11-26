@@ -162,7 +162,12 @@ Diagnóstico: [nfce-piaui-diagnostico.md](fiscal/nfce-piaui-diagnostico.md). 16 
     - a série NFC-e.
   - **Na mesma transação:** número, `cNF` pela regra B03-10, auditoria e job `nfce.process`.
   - As três rotas estão na matriz de isolamento.
-- [ ] **Depois (fatia 3):** worker com simulador e reconciliação pela chave.
+- [x] **Núcleo da NFC-e, fatia 3** ([ADR-0072](adr/0072-nucleo-emissao-nfce.md)): worker com o simulador.
+  - **Processador:** monta o XML real, assinado e validado no XSD, a cada tentativa, com o emitente do cadastro e o município e a UF do IBGE. Grava a tentativa antes da rede e decide pelo ADR-0070.
+  - **Reconciliador:** consulta pela chave e pelo digest da tentativa, com a mesma regra da NFS-e, agora em `shared/domain`.
+  - **Configuração:** `NFCE_GATEWAY=simulator` (recusado em produção).
+  - **Teste de ponta a ponta:** 9 cenários (autorizada, rejeitada, denegada, não enviada, processa e derruba, nada chegou, erro de consulta, queda e falha local).
+- [ ] **Falta para emitir de verdade:** o adaptador real do SVRS, que depende do credenciamento. Depois: webhook, download do XML, DANFE NFC-e e arquivamento.
 - [ ] **Do responsável:** autorizar o download do `ICP-Brasilv10.crt` do ITI, para conferir a raiz copiada do repositório do Windows.
 
 ### Inscrição municipal no cadastro (2026-11-25)

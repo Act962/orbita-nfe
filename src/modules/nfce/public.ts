@@ -17,8 +17,21 @@ export { ICP_BRASIL_V10_FILE, loadServerTrust, ServerTrustError } from './infras
 export { checkConsumerSale, saleTotals, type ConsumerSale, type SaleIssuer, type SaleTotals } from './domain/consumer-sale.js';
 export { consumerSaleSchema } from './presentation/http/consumer-sale-schema.js';
 export { ConsumerInvoiceService, type AcceptConsumerInvoice } from './application/consumer-invoice-service.js';
-export type { ConsumerInvoice, NfceIssuerReader, NfceProductionGate, NfceSeriesAllocator } from './application/ports.js';
-export { nfceApiUnitOfWork } from './infrastructure/persistence/repositories.js';
+export type {
+  ConsumerInvoice,
+  NfceAuthorizerGateway,
+  NfceCredentialAccess,
+  NfceEmitterReader,
+  NfceIssuerReader,
+  NfcePreparer,
+  NfceProductionGate,
+  NfceSeriesAllocator,
+} from './application/ports.js';
+export { nfceApiUnitOfWork, nfceWorkerUnitOfWork } from './infrastructure/persistence/repositories.js';
+export { DEFAULT_NFCE_PROCESSOR_OPTIONS, NfceSubmissionProcessor, type NfceProcessorOptions } from './application/nfce-processor.js';
+export { NfceReconciler } from './application/nfce-reconciler.js';
+export { buildNfeProc, XmlNfcePreparer, type NfceSupplementSource } from './infrastructure/xml/nfce-preparer.js';
+export { SimulatedNfceAuthorizer } from './infrastructure/sefaz/simulated-authorizer.js';
 export { registerNfceRoutes } from './presentation/http/routes.js';
 export {
   authorize,

@@ -1,7 +1,8 @@
+import type { KeyObject } from 'node:crypto';
 import type { AuditTrail } from '../../../shared/application/audit.js';
 import type { JobScheduler } from '../../../shared/application/job-queue.js';
 import type { ConsumerSale } from '../domain/consumer-sale.js';
-import type { ConsumerInvoiceStatus } from '../domain/consumer-invoice.js';
+import type { AttemptOutcome, AttemptState, ConsumerInvoiceStatus } from '../domain/consumer-invoice.js';
 
 /** Portas da NFC-e (ADR-0072). Os módulos company e fiscal-settings as implementam no composition root. */
 export type FiscalEnvironment = 'PRODUCTION' | 'HOMOLOGATION';
@@ -88,6 +89,159 @@ export interface NfceSeriesAllocator {
 
 export interface NfceProductionGate {
   isEnabled(establishmentId: string): Promise<boolean>;
+}
+
+// ------------------------------------------------------------------ worker-fiscal (ADR-0072, fatia 3)
+
+/** Tentativa de transmissão: o XML que ela montou e assinou, com a chave e o digest. */
+export interface NfceAttempt {
+  readonly id: string;
+  readonly invoiceId: string;
+  readonly seq: number;
+  readonly state: AttemptState;
+  readonly accessKey: string;
+  readonly issuedAt: Date;
+  readonly payloadSha256: string;
+  readonly digestValue: string;
+  readonly preparedAt: Date;
+  readonly sendingAt: Date | null;
+  readonly closedAt: Date | null;
+  readonly outcome: AttemptOutcome | null;
+  readonly outcomeCode: string | null;
+  readonly lookups: number;
+  readonly firstNotFoundAt: Date | null;
+  readonly consecutiveLookupErrors: number;
+}
+
+export interface NfceAttemptRepository {
+  open(invoiceId: string): Promise<NfceAttempt | undefined>;
+  last(invoiceId: string): Promise<NfceAttempt | undefined>;
+  /** O XML assinado de uma tentativa (o que saiu, ou pode ter saído). */
+  signedXml(attemptId: string): Promise<string | undefined>;
+  anySent(invoiceId: string): Promise<boolean>;
+  insert(attempt: {
+    readonly id: string;
+    readonly companyId: string;
+    readonly invoiceId: string;
+    readonly seq: number;
+    readonly accessKey: string;
+    readonly issuedAt: Date;
+    readonly signedXml: string;
+    readonly payloadSha256: string;
+    readonly digestValue: string;
+  }): Promise<NfceAttempt>;
+  markSending(attemptId: string, at: Date): Promise<void>;
+  close(attemptId: string, outcome: AttemptOutcome, outcomeCode: string | null, at: Date): Promise<void>;
+  recordLookup(attemptId: string, state: { readonly firstNotFoundAt: Date | null; readonly consecutiveLookupErrors: number }): Promise<void>;
+}
+
+/** O que o autorizador gravou (autorização ou denegação), na nota, uma única vez. */
+export interface SettledByAuthorizer {
+  readonly accessKey: string;
+  readonly statusCode: string;
+  readonly protocolNumber: string | null;
+  readonly at: Date;
+  /** `nfeProc` (NFe + protNFe), só na autorização. */
+  readonly nfeProcXml?: string;
+}
+
+export interface ConsumerInvoiceStatusChange {
+  readonly leaseUntil?: Date | null;
+  readonly settled?: SettledByAuthorizer;
+  readonly rejection?: { readonly code: string; readonly message: string };
+  readonly failureCode?: string;
+}
+
+export interface ConsumerInvoiceWorkerRepository {
+  findById(id: string): Promise<ConsumerInvoice | undefined>;
+  /** Compare-and-set: muda o estado só se ainda for `from`. Devolve se mudou. */
+  changeStatus(id: string, from: ConsumerInvoiceStatus, to: ConsumerInvoiceStatus, change?: ConsumerInvoiceStatusChange): Promise<boolean>;
+}
+
+/** O emitente completo na montagem (grupo `emit`): cadastro + tabela do IBGE (ADR-0071). */
+export interface NfceEmitter {
+  readonly cnpj: string;
+  readonly legalName: string;
+  readonly tradeName: string;
+  readonly stateRegistration: string;
+  readonly taxRegime: '1' | '2' | '3' | '4';
+  readonly address: {
+    readonly street: string;
+    readonly number: string;
+    readonly complement: string | null;
+    readonly district: string;
+    readonly municipalityCode: string;
+    readonly municipalityName: string;
+    readonly uf: string;
+    readonly postalCode: string;
+    readonly phone: string | null;
+  };
+}
+
+export type EmitterLookup = { readonly ok: true; readonly emitter: NfceEmitter } | { readonly ok: false; readonly code: string };
+
+export interface NfceEmitterReader {
+  /** Falha com código estável (sem perfil estadual, município fora do IBGE) antes de qualquer envio. */
+  emitter(companyId: string, establishmentId: string): Promise<EmitterLookup>;
+}
+
+/** Material do certificado do estabelecimento, só dentro de `withCredential` (worker-fiscal). */
+export interface NfceCredential {
+  readonly privateKey: KeyObject;
+  readonly certificatePem: string;
+}
+
+export interface NfceCredentialAccess {
+  /** Lança `BusinessRuleError` (CERTIFICATE_*) antes de qualquer envio. */
+  withCredential<T>(companyId: string, establishmentId: string, work: (credential: NfceCredential) => Promise<T>): Promise<T>;
+}
+
+/** XML montado, assinado e validado no XSD para UMA tentativa (dhEmi = `issuedAt`). */
+export type NfcePreparation =
+  | { readonly ok: true; readonly signedXml: string; readonly accessKey: string; readonly digestValue: string }
+  /** Falha local: nada foi transmitido. `code` é estável; nada do conteúdo. */
+  | { readonly ok: false; readonly code: string };
+
+export interface NfcePreparer {
+  prepare(invoice: ConsumerInvoice, emitter: NfceEmitter, credential: NfceCredential, issuedAt: Date): Promise<NfcePreparation>;
+}
+
+export interface NfceGatewayContext {
+  readonly environment: FiscalEnvironment;
+  readonly credential: NfceCredential;
+}
+
+/** Resultado do envio (ADR-0070), já com o transporte classificado (ADR-0022). */
+export type NfceSubmission =
+  | { readonly kind: 'AUTHORIZED'; readonly statusCode: string; readonly protocolNumber: string; readonly authorizedAt: Date; readonly protocolXml: string }
+  | { readonly kind: 'DENIED'; readonly statusCode: string; readonly protocolNumber: string | null }
+  | { readonly kind: 'REJECTED'; readonly code: string; readonly message: string }
+  /** A chave ou o número já existem no autorizador: só a consulta diz o que houve. */
+  | { readonly kind: 'ALREADY_EXISTS'; readonly code: string }
+  /** Provado que nada saiu. */
+  | { readonly kind: 'NOT_SENT'; readonly errorCode: string }
+  /** Pode ter saído, ou a resposta não prova o resultado. */
+  | { readonly kind: 'UNKNOWN'; readonly errorCode: string };
+
+/** Situação pela chave (ADR-0064), conferida contra o digest da tentativa. */
+export type NfceLookup =
+  | { readonly kind: 'AUTHORIZED'; readonly statusCode: string; readonly protocolNumber: string; readonly authorizedAt: Date; readonly protocolXml: string }
+  | { readonly kind: 'DENIED'; readonly statusCode: string; readonly protocolNumber: string | null }
+  | { readonly kind: 'NOT_FOUND' }
+  /** Consulta recusada, falha de transporte, ou nota com outro digest: não prova nada. */
+  | { readonly kind: 'ERROR'; readonly errorCode: string };
+
+export interface NfceAuthorizerGateway {
+  submit(signedXml: string, expected: { readonly accessKey: string; readonly digestValue: string }, context: NfceGatewayContext): Promise<NfceSubmission>;
+  lookup(expected: { readonly accessKey: string; readonly digestValue: string }, context: NfceGatewayContext): Promise<NfceLookup>;
+}
+
+export interface NfceWorkerRepositories {
+  readonly invoices: ConsumerInvoiceWorkerRepository;
+  readonly attempts: NfceAttemptRepository;
+  readonly production: NfceProductionGate;
+  readonly audit: AuditTrail;
+  readonly jobs: JobScheduler;
 }
 
 export interface NfceApiRepositories {

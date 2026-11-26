@@ -1,4 +1,5 @@
-import { and, desc, eq, notInArray, sql } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
+import { and, desc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
 import type { AuditTrail } from '../../../../shared/application/audit.js';
 import { ConflictError, NotFoundError } from '../../../../shared/application/errors.js';
 import type { JobScheduler } from '../../../../shared/application/job-queue.js';
@@ -10,15 +11,19 @@ import { NFCE_IDEMPOTENCY_RACE } from '../../application/consumer-invoice-servic
 import type {
   ConsumerInvoice,
   ConsumerInvoiceRepository,
+  ConsumerInvoiceWorkerRepository,
   FiscalEnvironment,
   NfceApiRepositories,
+  NfceAttempt,
+  NfceAttemptRepository,
   NfceIssuerReader,
   NfceProductionGate,
   NfceSeriesAllocator,
+  NfceWorkerRepositories,
 } from '../../application/ports.js';
 import type { ConsumerSale } from '../../domain/consumer-sale.js';
-import type { ConsumerInvoiceStatus } from '../../domain/consumer-invoice.js';
-import { consumerInvoices } from './schema.js';
+import type { AttemptOutcome, AttemptState, ConsumerInvoiceStatus } from '../../domain/consumer-invoice.js';
+import { consumerInvoiceAttempts, consumerInvoices } from './schema.js';
 
 export const NFCE_CONSTRAINTS: ConstraintErrorMap = {
   // Corrida na mesma Idempotency-Key: o serviço relê a vencedora numa transação nova.
@@ -126,6 +131,129 @@ export function consumerInvoiceRepository(tx: Transaction): ConsumerInvoiceRepos
       return found;
     },
   };
+}
+
+// ------------------------------------------------------------------ worker-fiscal (ADR-0072, fatia 3)
+
+export function consumerInvoiceWorkerRepository(tx: Transaction): ConsumerInvoiceWorkerRepository {
+  return {
+    findById: (id) => selectOne(tx, eq(consumerInvoices.id, id)),
+    async changeStatus(id, from, to, change = {}) {
+      const settled = change.settled;
+      const rows = await tx
+        .update(consumerInvoices)
+        .set({
+          status: to,
+          ...(change.leaseUntil === undefined ? {} : { leaseUntil: change.leaseUntil }),
+          ...(settled === undefined
+            ? {}
+            : {
+                accessKey: settled.accessKey,
+                authorizerStatusCode: settled.statusCode,
+                protocolNumber: settled.protocolNumber,
+                ...(settled.nfeProcXml === undefined
+                  ? {}
+                  : {
+                      nfeProcXml: settled.nfeProcXml,
+                      // Junto com o XML: o arquivamento futuro confere estes bytes (como no ADR-0048).
+                      nfeProcXmlSha256: createHash('sha256').update(settled.nfeProcXml, 'utf8').digest('hex'),
+                      authorizedAt: settled.at,
+                    }),
+              }),
+          ...(change.rejection === undefined ? {} : { rejectionCode: change.rejection.code, rejectionMessage: change.rejection.message }),
+          ...(change.failureCode === undefined ? {} : { failureCode: change.failureCode }),
+        })
+        .where(and(eq(consumerInvoices.id, id), eq(consumerInvoices.status, from)))
+        .returning({ id: consumerInvoices.id });
+      return rows.length === 1;
+    },
+  };
+}
+
+type AttemptRow = typeof consumerInvoiceAttempts.$inferSelect;
+
+/** Colunas da tentativa sem o XML assinado (lido só quando preciso). */
+const attemptColumns = {
+  id: consumerInvoiceAttempts.id,
+  invoiceId: consumerInvoiceAttempts.invoiceId,
+  seq: consumerInvoiceAttempts.seq,
+  state: consumerInvoiceAttempts.state,
+  accessKey: consumerInvoiceAttempts.accessKey,
+  issuedAt: consumerInvoiceAttempts.issuedAt,
+  payloadSha256: consumerInvoiceAttempts.payloadSha256,
+  digestValue: consumerInvoiceAttempts.digestValue,
+  preparedAt: consumerInvoiceAttempts.preparedAt,
+  sendingAt: consumerInvoiceAttempts.sendingAt,
+  closedAt: consumerInvoiceAttempts.closedAt,
+  outcome: consumerInvoiceAttempts.outcome,
+  outcomeCode: consumerInvoiceAttempts.outcomeCode,
+  lookups: consumerInvoiceAttempts.lookups,
+  firstNotFoundAt: consumerInvoiceAttempts.firstNotFoundAt,
+  consecutiveLookupErrors: consumerInvoiceAttempts.consecutiveLookupErrors,
+};
+
+const toAttempt = (row: Omit<AttemptRow, 'companyId' | 'signedXml'>): NfceAttempt => ({
+  ...row,
+  state: row.state as AttemptState,
+  outcome: row.outcome as AttemptOutcome | null,
+});
+
+export function nfceAttemptRepository(tx: Transaction): NfceAttemptRepository {
+  const one = async (where: ReturnType<typeof and>): Promise<NfceAttempt | undefined> => {
+    const rows = await tx.select(attemptColumns).from(consumerInvoiceAttempts).where(where).orderBy(desc(consumerInvoiceAttempts.seq)).limit(1);
+    return rows[0] === undefined ? undefined : toAttempt(rows[0]);
+  };
+  return {
+    open: (invoiceId) => one(and(eq(consumerInvoiceAttempts.invoiceId, invoiceId), sql`${consumerInvoiceAttempts.state} <> 'CLOSED'`)),
+    last: (invoiceId) => one(eq(consumerInvoiceAttempts.invoiceId, invoiceId)),
+    async signedXml(attemptId) {
+      const rows = await tx.select({ xml: consumerInvoiceAttempts.signedXml }).from(consumerInvoiceAttempts).where(eq(consumerInvoiceAttempts.id, attemptId)).limit(1);
+      return rows[0]?.xml;
+    },
+    async anySent(invoiceId) {
+      const rows = await tx
+        .select({ id: consumerInvoiceAttempts.id })
+        .from(consumerInvoiceAttempts)
+        .where(and(eq(consumerInvoiceAttempts.invoiceId, invoiceId), isNotNull(consumerInvoiceAttempts.sendingAt)))
+        .limit(1);
+      return rows.length > 0;
+    },
+    async insert(attempt) {
+      await tx.execute(sql`
+        insert into consumer_invoice_attempts (id, company_id, invoice_id, seq, access_key, issued_at, signed_xml, payload_sha256, digest_value)
+        values (${attempt.id}, ${attempt.companyId}, ${attempt.invoiceId}, ${attempt.seq}, ${attempt.accessKey}, ${attempt.issuedAt},
+          ${attempt.signedXml}, ${attempt.payloadSha256}, ${attempt.digestValue})`);
+      const found = await one(eq(consumerInvoiceAttempts.id, attempt.id));
+      if (found === undefined) throw new Error('INSERT sem linha');
+      return found;
+    },
+    async markSending(attemptId, at) {
+      await tx.update(consumerInvoiceAttempts).set({ state: 'SENDING', sendingAt: at }).where(eq(consumerInvoiceAttempts.id, attemptId));
+    },
+    async close(attemptId, outcome, outcomeCode, at) {
+      await tx.update(consumerInvoiceAttempts).set({ state: 'CLOSED', outcome, outcomeCode, closedAt: at }).where(eq(consumerInvoiceAttempts.id, attemptId));
+    },
+    async recordLookup(attemptId, state) {
+      await tx
+        .update(consumerInvoiceAttempts)
+        .set({ lookups: sql`${consumerInvoiceAttempts.lookups} + 1`, firstNotFoundAt: state.firstNotFoundAt, consecutiveLookupErrors: state.consecutiveLookupErrors })
+        .where(eq(consumerInvoiceAttempts.id, attemptId));
+    },
+  };
+}
+
+export function nfceWorkerUnitOfWork(transactions: CompanyTransactions, ports: Pick<NfceExternalPorts, 'productionFor' | 'auditFor' | 'jobsFor'>): UnitOfWork<NfceWorkerRepositories> {
+  return companyScopedUnitOfWork(
+    transactions,
+    (tx) => ({
+      invoices: consumerInvoiceWorkerRepository(tx),
+      attempts: nfceAttemptRepository(tx),
+      production: ports.productionFor(tx),
+      audit: ports.auditFor(tx),
+      jobs: ports.jobsFor(tx),
+    }),
+    NFCE_CONSTRAINTS,
+  );
 }
 
 export interface NfceExternalPorts {
