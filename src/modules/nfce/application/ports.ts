@@ -159,6 +159,20 @@ export interface ConsumerInvoiceWorkerRepository {
   findById(id: string): Promise<ConsumerInvoice | undefined>;
   /** Compare-and-set: muda o estado só se ainda for `from`. Devolve se mudou. */
   changeStatus(id: string, from: ConsumerInvoiceStatus, to: ConsumerInvoiceStatus, change?: ConsumerInvoiceStatusChange): Promise<boolean>;
+  /** `nfeProc`, o hash gravado junto, a autorização e a situação do arquivamento (ADR-0074). */
+  authorizedXml(id: string): Promise<
+    { readonly xml: string | null; readonly sha256: string | null; readonly authorizedAt: Date | null; readonly objectKey: string | null } | undefined
+  >;
+  /** Grava o arquivamento uma única vez. Devolve se gravou (falso: já estava arquivado). */
+  markArchived(id: string, archive: { readonly objectKey: string; readonly archivedAt: Date; readonly retainUntil: Date }): Promise<boolean>;
+}
+
+/**
+ * Object storage dos artefatos fiscais com Object Lock (ADR-0010). `put` grava com retenção
+ * COMPLIANCE e devolve os bytes relidos do bucket, para conferir o hash (mesma forma da NFS-e).
+ */
+export interface NfceArtifactStore {
+  put(object: { readonly key: string; readonly body: Buffer; readonly contentType: string; readonly retainUntil: Date }): Promise<Buffer>;
 }
 
 /** O emitente completo na montagem (grupo `emit`): cadastro + tabela do IBGE (ADR-0071). */

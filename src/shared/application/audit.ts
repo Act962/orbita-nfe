@@ -36,6 +36,7 @@ export const COMPANY_AUDIT_ACTIONS = [
   'consumer_invoice.failed',
   'consumer_invoice.unknown',
   'consumer_invoice.new_attempt_scheduled',
+  'consumer_invoice.xml_archived',
   'service_invoice.authorized',
   'service_invoice.rejected',
   'service_invoice.failed',

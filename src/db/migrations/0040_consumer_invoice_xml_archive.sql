@@ -1,0 +1,5 @@
+ALTER TABLE "consumer_invoices" ADD COLUMN "nfe_proc_xml_object_key" text;--> statement-breakpoint
+ALTER TABLE "consumer_invoices" ADD COLUMN "nfe_proc_xml_archived_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "consumer_invoices" ADD COLUMN "nfe_proc_xml_retain_until" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "consumer_invoices" ADD CONSTRAINT "ck_consumer_invoices_proc_archive" CHECK (("consumer_invoices"."nfe_proc_xml_object_key" is null) = ("consumer_invoices"."nfe_proc_xml_archived_at" is null) and ("consumer_invoices"."nfe_proc_xml_object_key" is null) = ("consumer_invoices"."nfe_proc_xml_retain_until" is null)
+        and ("consumer_invoices"."nfe_proc_xml_object_key" is null or ("consumer_invoices"."nfe_proc_xml" is not null and "consumer_invoices"."nfe_proc_xml_sha256" is not null and "consumer_invoices"."nfe_proc_xml_object_key" like '%' || "consumer_invoices"."nfe_proc_xml_sha256" || '%')));

@@ -78,6 +78,8 @@ import {
   ConsumerInvoiceService,
   NfceReconciler,
   NfceSubmissionProcessor,
+  NfceXmlArchiver,
+  type NfceArtifactStore,
   nfceApiUnitOfWork,
   nfceWorkerUnitOfWork,
   registerNfceRoutes,
@@ -342,6 +344,8 @@ export interface FiscalWorkerDependencies {
     /** Tabela do IBGE (ADR-0058): nome do município e UF do emitente. */
     readonly municipalities: { lookup(code: string): { readonly name: string; readonly uf: string } | undefined };
     readonly options?: NfceProcessorOptions;
+    /** Arquivamento do nfeProc com Object Lock (ADR-0074). Sem isto, a fila `nfce.archive` espera. */
+    readonly archive?: { readonly store: NfceArtifactStore; readonly retentionDays: number };
   };
   readonly now?: () => Date;
 }
@@ -382,7 +386,7 @@ function composeNfceWorker(
   vault: CertificateVault,
   nfce: NonNullable<FiscalWorkerDependencies['nfce']>,
   now?: () => Date,
-): { processor: NfceSubmissionProcessor; reconciler: NfceReconciler } {
+): { processor: NfceSubmissionProcessor; reconciler: NfceReconciler; archiver?: NfceXmlArchiver } {
   const credentials: NfceCredentialAccess = {
     withCredential: (companyId, establishmentId, work) =>
       vault.withCertificate(companyId, establishmentId, (certificate) => work({ privateKey: certificate.privateKey, certificatePem: certificate.certificatePem })),
@@ -390,7 +394,8 @@ function composeNfceWorker(
   const uow = nfceWorkerUnitOfWork(transactions, { productionFor: nfceProduction, auditFor, jobsFor: schedulerFor('fiscal'), outboxFor: outboxWith(schedulerFor('fiscal')) });
   const processor = new NfceSubmissionProcessor(uow, nfceEmitters(transactions, nfce.municipalities), credentials, nfce.preparer, nfce.gateway, buildNfeProc, uuidv7, now, nfce.options);
   const reconciler = new NfceReconciler(uow, credentials, nfce.gateway, buildNfeProc, now, nfce.options?.reconciliation);
-  return { processor, reconciler };
+  if (nfce.archive === undefined) return { processor, reconciler };
+  return { processor, reconciler, archiver: new NfceXmlArchiver(uow, nfce.archive.store, nfce.archive.retentionDays, now) };
 }
 
 /** Composition root do worker-fiscal (validação e uso de certificados). */
@@ -404,7 +409,7 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
   cancellationReconciler?: CancellationReconciler;
   archiver?: AuthorizedXmlArchiver;
   archiveVerifier?: ArchivedXmlVerifier;
-  nfce?: { processor: NfceSubmissionProcessor; reconciler: NfceReconciler };
+  nfce?: { processor: NfceSubmissionProcessor; reconciler: NfceReconciler; archiver?: NfceXmlArchiver };
   handlers: Partial<Record<QueueName, JobHandler>>;
 } {
   const transactions = new CompanyTransactions(deps.db);
@@ -435,6 +440,12 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
     handlers['nfce.reconcile'] = async (job) => {
       await nfce.reconciler.reconcile(payloadId(job, 'companyId'), payloadId(job, 'invoiceId'), systemContext('worker-fiscal', job));
     };
+    const archiver = nfce.archiver;
+    if (archiver !== undefined) {
+      handlers['nfce.archive'] = async (job) => {
+        await archiver.archive(payloadId(job, 'companyId'), payloadId(job, 'invoiceId'), systemContext('worker-fiscal', job));
+      };
+    }
   }
   if (deps.nfse === undefined) return { vault, handlers, ...(nfce === undefined ? {} : { nfce }) };
 

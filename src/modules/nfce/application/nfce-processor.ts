@@ -5,6 +5,7 @@ import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-o
 import { retryDelaySeconds } from '../../../shared/domain/backoff.js';
 import { DEFAULT_RECONCILIATION_POLICY, type ReconciliationPolicy } from '../../../shared/domain/reconciliation.js';
 import { recoverStuck, type ConsumerInvoiceStatus } from '../domain/consumer-invoice.js';
+import { scheduleNfceArchive } from './nfce-archiver.js';
 import type {
   ConsumerInvoice,
   ConsumerInvoiceStatusChange,
@@ -152,6 +153,7 @@ export class NfceSubmissionProcessor {
               nfeProcXml: this.nfeProc(prepared.signedXml, outcome.protocolXml),
             },
           });
+          await scheduleNfceArchive(r.jobs, { companyId, invoiceId: invoice.id, correlationId: context.correlationId });
           return;
         case 'DENIED':
           await r.attempts.close(attempt.id, 'DENIED', outcome.statusCode, at);

@@ -33,6 +33,10 @@ export const consumerInvoices = pgTable(
     /** `nfeProc` (NFe + protNFe) da nota autorizada e o SHA-256 gravado junto. */
     nfeProcXml: text('nfe_proc_xml'),
     nfeProcXmlSha256: char('nfe_proc_xml_sha256', { length: 64 }),
+    /** Arquivamento no bucket com Object Lock (ADR-0074, molde do ADR-0048). Gravados uma vez. */
+    nfeProcXmlObjectKey: text('nfe_proc_xml_object_key'),
+    nfeProcXmlArchivedAt: timestamp('nfe_proc_xml_archived_at', { withTimezone: true }),
+    nfeProcXmlRetainUntil: timestamp('nfe_proc_xml_retain_until', { withTimezone: true }),
     authorizedAt: timestamp('authorized_at', { withTimezone: true }),
     rejectionCode: text('rejection_code'),
     rejectionMessage: text('rejection_message'),
@@ -60,6 +64,12 @@ export const consumerInvoices = pgTable(
     check('ck_consumer_invoices_settled', sql`${t.status} not in ('AUTHORIZED', 'DENIED') or (${t.accessKey} is not null and ${t.authorizerStatusCode} is not null)`),
     check('ck_consumer_invoices_authorized', sql`${t.status} <> 'AUTHORIZED' or (${t.nfeProcXml} is not null and ${t.protocolNumber} is not null)`),
     check('ck_consumer_invoices_proc_hash', sql`(${t.nfeProcXml} is null) = (${t.nfeProcXmlSha256} is null)`),
+    // Arquivado = chave, data e retenção juntas, e só com o XML e o hash gravados; a chave contém o hash.
+    check(
+      'ck_consumer_invoices_proc_archive',
+      sql`(${t.nfeProcXmlObjectKey} is null) = (${t.nfeProcXmlArchivedAt} is null) and (${t.nfeProcXmlObjectKey} is null) = (${t.nfeProcXmlRetainUntil} is null)
+        and (${t.nfeProcXmlObjectKey} is null or (${t.nfeProcXml} is not null and ${t.nfeProcXmlSha256} is not null and ${t.nfeProcXmlObjectKey} like '%' || ${t.nfeProcXmlSha256} || '%'))`,
+    ),
   ],
 );
 

@@ -30,6 +30,8 @@ export type {
 export { nfceApiUnitOfWork, nfceWorkerUnitOfWork } from './infrastructure/persistence/repositories.js';
 export { DEFAULT_NFCE_PROCESSOR_OPTIONS, NfceSubmissionProcessor, type NfceProcessorOptions } from './application/nfce-processor.js';
 export { NfceReconciler } from './application/nfce-reconciler.js';
+export { NfceXmlArchiver, nfceArchiveKey } from './application/nfce-archiver.js';
+export type { NfceArtifactStore } from './application/ports.js';
 export { buildNfeProc, XmlNfcePreparer, type NfceSupplementSource } from './infrastructure/xml/nfce-preparer.js';
 export { SimulatedNfceAuthorizer } from './infrastructure/sefaz/simulated-authorizer.js';
 export { registerNfceRoutes } from './presentation/http/routes.js';

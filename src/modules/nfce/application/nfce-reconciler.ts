@@ -2,6 +2,7 @@ import type { AuditContext } from '../../../shared/application/audit.js';
 import { BusinessRuleError } from '../../../shared/application/errors.js';
 import type { UnitOfWork } from '../../../shared/application/unit-of-work.js';
 import { afterLookup, DEFAULT_RECONCILIATION_POLICY, nextStep, type LookupResult, type ReconciliationPolicy } from '../../../shared/domain/reconciliation.js';
+import { scheduleNfceArchive } from './nfce-archiver.js';
 import { recordStatus, scheduleLookup, type NfeProcBuilder } from './nfce-processor.js';
 import type { NfceAuthorizerGateway, NfceCredentialAccess, NfceLookup, NfceWorkerRepositories } from './ports.js';
 
@@ -82,6 +83,7 @@ export class NfceReconciler {
             });
             if (!changed) return { kind: 'SKIPPED', reason: 'NOT_UNKNOWN' };
             await recordStatus(r, invoice, 'AUTHORIZED', context, { resolvedBy: 'LOOKUP', statusCode: lookup.statusCode, accessKey: attempt.accessKey });
+            await scheduleNfceArchive(r.jobs, { companyId, invoiceId: invoice.id, correlationId: context.correlationId });
             return { kind: 'AUTHORIZED' };
           }
           if (lookup.kind !== 'DENIED') throw new Error('inconsistência na decisão da reconciliação');

@@ -84,6 +84,14 @@ export const QUEUES = {
     timeoutSeconds: 180,
     priority: 20,
   },
+  /** Arquivamento do nfeProc da NFC-e autorizada no bucket com Object Lock (ADR-0074). */
+  'nfce.archive': {
+    lane: 'fiscal',
+    maxAttempts: 20,
+    backoff: { baseSeconds: 60, maxSeconds: 3600, jitter: 0.2 },
+    timeoutSeconds: 120,
+    priority: 40,
+  },
   /** Uma consulta de reconciliação de NFC-e em UNKNOWN, pela chave da última tentativa (ADR-0072). */
   'nfce.reconcile': {
     lane: 'fiscal',

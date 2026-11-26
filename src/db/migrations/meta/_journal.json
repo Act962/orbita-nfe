@@ -281,6 +281,20 @@
       "when": 1795701746100,
       "tag": "0039_security_consumer_invoices",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1795712907717,
+      "tag": "0040_consumer_invoice_xml_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1795712911906,
+      "tag": "0041_security_consumer_invoice_xml_archive",
+      "breakpoints": true
     }
   ]
 }

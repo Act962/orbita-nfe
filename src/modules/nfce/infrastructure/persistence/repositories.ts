@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, desc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
 import type { AuditTrail } from '../../../../shared/application/audit.js';
 import { ConflictError, NotFoundError } from '../../../../shared/application/errors.js';
 import type { JobScheduler } from '../../../../shared/application/job-queue.js';
@@ -169,6 +169,22 @@ export function consumerInvoiceWorkerRepository(tx: Transaction): ConsumerInvoic
           ...(change.failureCode === undefined ? {} : { failureCode: change.failureCode }),
         })
         .where(and(eq(consumerInvoices.id, id), eq(consumerInvoices.status, from)))
+        .returning({ id: consumerInvoices.id });
+      return rows.length === 1;
+    },
+    async authorizedXml(id) {
+      const rows = await tx
+        .select({ xml: consumerInvoices.nfeProcXml, sha256: consumerInvoices.nfeProcXmlSha256, authorizedAt: consumerInvoices.authorizedAt, objectKey: consumerInvoices.nfeProcXmlObjectKey })
+        .from(consumerInvoices)
+        .where(eq(consumerInvoices.id, id))
+        .limit(1);
+      return rows[0];
+    },
+    async markArchived(id, archive) {
+      const rows = await tx
+        .update(consumerInvoices)
+        .set({ nfeProcXmlObjectKey: archive.objectKey, nfeProcXmlArchivedAt: archive.archivedAt, nfeProcXmlRetainUntil: archive.retainUntil })
+        .where(and(eq(consumerInvoices.id, id), isNull(consumerInvoices.nfeProcXmlObjectKey)))
         .returning({ id: consumerInvoices.id });
       return rows.length === 1;
     },
