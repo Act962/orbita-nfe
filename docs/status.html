@@ -82,7 +82,7 @@
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">895 ✓</div>
+    <div class="value">903 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -220,6 +220,7 @@
     <li><span class="tag block">Você</span><div>Perguntar à SEFAZ-PI se o Piauí aceita a emissão em contingência off-line da NFC-e</div></li>
     <li><span class="tag done">Pronto</span><div>Primeira conversa real com o autorizador da NFC-e (homologação), com o certificado de teste<small>O autorizador respondeu "serviço em operação" para o Piauí, o que confirma que é ele quem atende o estado. A consulta de uma nota inexistente respondeu "não consta", como esperado. Para conectar, foi preciso incluir no projeto o certificado raiz oficial do governo (ICP-Brasil), sem desligar nenhuma verificação.</small></div></li>
     <li><span class="tag done">Pronto</span><div>Proposta de como a API da NFC-e vai receber uma venda<small>Os dados da empresa (CNPJ, inscrição estadual, regime) saem sempre do cadastro, nunca do pedido. Os impostos de cada produto vêm sempre do seu sistema: o motor só confere, não escolhe.</small></div></li>
+    <li><span class="tag done">Pronto</span><div>Base de dados da nota de venda, com as mesmas travas da nota de serviço<small>Cada tentativa de envio fica registrada antes de sair, com o arquivo assinado, e nada pode ser apagado ou alterado depois. A nota só volta a ser enviada quando está provado que a anterior não existe no autorizador.</small></div></li>
     <li><span class="tag done">Pronto</span><div>Cadastro da inscrição estadual, do regime (CRT) e do endereço de cada loja<small>São os dados da loja que saem impressos na nota de venda. Vocês informam, e o motor só confere o formato oficial. Sem esse cadastro a loja não emite NFC-e.</small></div></li>
     <li><span class="tag done">Pronto</span><div>Envio da nota de venda ao autorizador (ainda testado só com um autorizador simulado)<small>O motor só considera a nota autorizada quando a resposta prova que é a mesma nota que ele enviou. Se a resposta for incompleta ou indicar duplicidade, ele consulta a situação da nota em vez de reenviar, para nunca gerar duas notas da mesma venda.</small></div></li>
     <li><span class="tag done">Pronto</span><div>A nota de venda (NFC-e) para o Simples Nacional já é montada e assinada no formato oficial<small>Uma venda de teste vira o arquivo XML da nota, assinado e aprovado pelo validador oficial do governo. O motor também recusa o que a SEFAZ recusaria, como uma combinação de CFOP e CSOSN que não pode, ou uma forma de pagamento proibida. Ainda não envia nada ao autorizador.</small></div></li>

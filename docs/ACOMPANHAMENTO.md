@@ -148,7 +148,13 @@ Diagnóstico: [nfce-piaui-diagnostico.md](fiscal/nfce-piaui-diagnostico.md). 16 
   - `PUT`/`DELETE /v1/establishments/{id}/state-profile`, com auditoria e matriz de isolamento.
   - Migration 0037: o banco recusa perfil pela metade.
   - Nome do município e UF virão da tabela do IBGE.
-- [ ] **Próximo (núcleo da emissão):** `ConsumerInvoice`, série e número, write-ahead, worker e rota `POST /v1/consumer-invoices`.
+- [x] **Núcleo da emissão da NFC-e, fatia 1** ([ADR-0072](adr/0072-nucleo-emissao-nfce.md)): máquina de estados com `DENIED` e tabelas `consumer_invoices` e `consumer_invoice_attempts` (migrations 0038/0039).
+  - O XML é montado e assinado a cada tentativa, por causa da regra B09-40 (5 minutos).
+  - Cada tentativa guarda o XML, a chave e o digest.
+  - Uma tentativa nova só nasce depois da prova de que nada foi gravado.
+  - Travas no banco (transições, imutabilidade, `FAILED` só antes do envio, uma tentativa aberta), permissões por coluna e RLS, com testes de integração.
+- [ ] **Próximo (fatia 2):** aceite idempotente e `POST /v1/consumer-invoices`.
+- [ ] **Depois (fatia 3):** worker com simulador e reconciliação pela chave.
 - [ ] **Do responsável:** autorizar o download do `ICP-Brasilv10.crt` do ITI, para conferir a raiz copiada do repositório do Windows.
 
 ### Inscrição municipal no cadastro (2026-11-25)
@@ -762,6 +768,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-26 | NFC-e v1 para o Simples Nacional: CSOSN 102/103/300/400/500, regras do aceite com fonte, XML validado no XSD do PL_010h | 0069 |
 | 2026-11-26 | Autorização da NFC-e: síncrona, uma nota, só a prova vira estado final; duplicidade e incerteza vão para a consulta | 0070 |
 | 2026-11-26 | Perfil estadual do estabelecimento (IE, CRT, endereço do emitente), informado e auditado; nada deduzido | 0071 |
+| 2026-11-26 | Núcleo da NFC-e: estados com DENIED, XML montado a cada tentativa (B09-40), travas de banco | 0072 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |

@@ -1,0 +1,72 @@
+# ADR-0072 — Núcleo da emissão da NFC-e: estados, tentativas e XML montado no envio
+
+- Status: **Aceito** (fatia 1 de 3 implementada) · Data: 2026-11-26
+- Relacionados:
+  - ADR-0032 e ADR-0022 (núcleo da NFS-e e write-ahead: o molde);
+  - ADR-0029 (incerteza se resolve consultando);
+  - ADR-0064 (consulta pela chave);
+  - ADR-0065 (chave e assinatura);
+  - ADR-0067 (contingência, em aberto);
+  - ADR-0069 (contrato e XML);
+  - ADR-0070 (autorização);
+  - ADR-0071 (perfil estadual).
+
+## Contexto
+O núcleo da NFS-e já garante:
+- aceite idempotente;
+- número alocado na transação;
+- registro da tentativa antes da rede;
+- `UNKNOWN` resolvido só por consulta.
+
+A NFC-e segue o mesmo molde, com duas diferenças que vêm das fontes:
+1. **Prazo de 5 minutos:** a NFC-e de emissão normal (`tpEmis=1`) com `dhEmi` mais de 5 minutos antes da recepção é rejeitada (regra **B09-40**, cStat 704, NT 2026.002 v1.11). A NFS-e retransmite os mesmos bytes, o que na NFC-e só traria rejeição.
+2. **Denegação de uso (110, 301–303):** grava a nota no autorizador (MOC 7.0, item 5.1.6). É um fim diferente da rejeição, e o número fica consumido.
+
+## Decisão
+1. **Estados:** `PENDING`, `PROCESSING`, `AUTHORIZED`, `REJECTED`, `DENIED`, `FAILED`, `UNKNOWN`. O cancelamento virá com o seu próprio ADR.
+   - `PENDING → PROCESSING | FAILED`
+   - `PROCESSING → AUTHORIZED | REJECTED | DENIED | UNKNOWN | PENDING | FAILED`
+   - `UNKNOWN → AUTHORIZED | DENIED | PENDING`
+   - `FAILED` só se nenhuma tentativa chegou a `SENDING`.
+2. **O XML é montado e assinado a cada tentativa,** com `dhEmi` no momento do envio. A tentativa guarda:
+   - o XML assinado;
+   - a chave;
+   - o SHA-256;
+   - o `DigestValue`.
+
+   A reconciliação usa a chave e o digest da tentativa (ADR-0070).
+3. **Uma tentativa nova só nasce quando a nota voltou a `PENDING`,** e isso só acontece quando está provado que nada foi gravado:
+   - `NOT_SENT` (o transporte provou que nada saiu);
+   - queda com a tentativa ainda em `PREPARED`;
+   - consulta pela chave que respondeu "não consta" (217) duas vezes, com intervalo, como na NFS-e.
+
+   O número e o `cNF` são os mesmos em toda tentativa. A chave só muda se o mês virar entre as tentativas, porque o AAMM da chave segue o `dhEmi`. Nesse caso a chave antiga já foi provada inexistente, e a duplicidade de número (539) segue como rede de proteção (ADR-0070).
+4. **Banco (migrations 0038 e 0039),** no molde da 0012:
+   - `consumer_invoices` e `consumer_invoice_attempts`, com FKs compostas pela empresa e RLS forçado;
+   - triggers de transição, imutabilidade da venda e da identidade, resultado do autorizador gravado uma vez, nada apagado;
+   - `FAILED` proibido depois de `SENDING`;
+   - no máximo uma tentativa aberta;
+   - o XML, a chave e o digest da tentativa nunca mudam.
+   - **Permissões por coluna:**
+     - a API insere o pedido e lê, mas não muda estado nem lê o XML assinado das tentativas;
+     - o worker-fiscal muda só as colunas de processamento;
+     - o XML assinado é barrado duas vezes: pela permissão e pelo trigger.
+
+## Fatias
+1. **Feita:** domínio da máquina de estados, tabelas e travas, com testes de integração. Cobrem as transições, a imutabilidade (inclusive para o superusuário), as permissões por papel e o RLS entre empresas.
+2. **Aceite e API:**
+   - `POST /v1/consumer-invoices`, com `Idempotency-Key`;
+   - venda conferida (contrato e regras do ADR-0069);
+   - estabelecimento com perfil estadual e CRT 1;
+   - série NFC-e ativa e número alocado na transação;
+   - `cNF` sorteado pela regra B03-10;
+   - consulta por id e por referência.
+3. **Worker:**
+   - concessão e montagem com o nome do município e a UF da tabela do IBGE;
+   - assinatura, QR Code e envio (ADR-0070);
+   - reconciliação pela consulta (ADR-0064);
+   - simulador para os testes e o sandbox.
+
+## Em aberto
+- **QR Code 2.00 (CSC) ou 3.00:** decisão do responsável (ADR-0066). O simulador usa o 3.00, que não precisa de CSC.
+- **Contingência off-line:** decisão do responsável (ADR-0067). Até lá, a incerteza segue o caminho da consulta, e a venda fica `UNKNOWN` até a SEFAZ responder.
