@@ -138,7 +138,12 @@ Diagnóstico: [nfce-piaui-diagnostico.md](fiscal/nfce-piaui-diagnostico.md). 16 
   - assinatura `nfe400` e `infNFeSupl`.
   - Uma venda com CSOSN 102 e 500 passa no XSD oficial, e a assinatura confere.
 - [ ] **Conferir (ADR-0069):** a obrigatoriedade de IBS/CBS no modelo 65 em 2026, antes de entrar no contrato.
-- [ ] **Próximo (fatia 3):** núcleo da emissão, com `ConsumerInvoice`, write-ahead, `NfeAutorizacao4` e reconciliação pela consulta.
+- [x] **Autorização da NFC-e (transporte)** ([ADR-0070](adr/0070-autorizacao-nfce.md)): `NfeAutorizacao4` síncrono com uma nota por lote.
+  - Os envelopes do PL_009q entram compostos com o leiaute do PL_010h, e o manifesto registra os dois zips.
+  - Só a prova vira estado final: autorizada exige 104 + `protNFe` da nossa chave, com o nosso `digVal` e `nProt`.
+  - Denegada (110, 301–303) não é rejeição. Duplicidade (204, 205, 539) e resposta assíncrona viram consulta pela chave, nunca reenvio.
+  - Testado contra um servidor mTLS local; nada enviado ao SVRS.
+- [ ] **Próximo (núcleo da emissão):** `ConsumerInvoice`, série e número, write-ahead, worker e rota `POST /v1/consumer-invoices`.
 - [ ] **Do responsável:** autorizar o download do `ICP-Brasilv10.crt` do ITI, para conferir a raiz copiada do repositório do Windows.
 
 ### Inscrição municipal no cadastro (2026-11-25)
@@ -750,6 +755,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-25 | Raiz ICP-Brasil v10 versionada como âncora do TLS do SVRS; primeiros testes reais (107 e 217) | 0068 |
 | 2026-11-25 | Contrato da API da NFC-e v1: quem preenche cada grupo do leiaute (Proposto) | 0069 |
 | 2026-11-26 | NFC-e v1 para o Simples Nacional: CSOSN 102/103/300/400/500, regras do aceite com fonte, XML validado no XSD do PL_010h | 0069 |
+| 2026-11-26 | Autorização da NFC-e: síncrona, uma nota, só a prova vira estado final; duplicidade e incerteza vão para a consulta | 0070 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |

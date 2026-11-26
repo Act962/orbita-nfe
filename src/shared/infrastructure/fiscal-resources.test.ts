@@ -14,7 +14,9 @@ interface Manifest {
   sourceUrl: string;
   retrievedOn: string;
   package: { file: string; sha256: string };
-  files: Record<string, { sha256: string }>;
+  /** Pacotes oficiais adicionais de uma composição (ADR-0062): cada arquivo diz de qual veio. */
+  composedWith?: { file: string; sha256: string; sourceUrl: string }[];
+  files: Record<string, { sha256: string; from?: string }>;
 }
 
 const schemasRoot = resolve(import.meta.dirname, '../../../resources/fiscal/schemas');
@@ -42,6 +44,18 @@ describe('arquivos fiscais oficiais (ADR-0013)', () => {
 
     it('o pacote original confere com o SHA-256 do manifesto', () => {
       expect(sha256(join(dir, manifest.package.file))).toBe(manifest.package.sha256);
+    });
+
+    it('pacotes da composição conferem e cada arquivo aponta para um pacote declarado', () => {
+      const declared = new Set([manifest.package.file]);
+      for (const extra of manifest.composedWith ?? []) {
+        expect(extra.sourceUrl).toMatch(/^https:\/\/www\.(gov\.br|nfe\.fazenda\.gov\.br)\//);
+        expect(sha256(join(dir, extra.file)), extra.file).toBe(extra.sha256);
+        declared.add(extra.file);
+      }
+      for (const [file, { from }] of Object.entries(manifest.files)) {
+        if (from !== undefined) expect(declared.has(from), `${file} ← ${from}`).toBe(true);
+      }
     });
 
     it('cada arquivo extraído confere com o manifesto, sem arquivos extras', () => {

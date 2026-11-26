@@ -41,5 +41,5 @@ Fase atual: **Fase 1 — Fundação** (arquitetura aprovada em 2026-11-09; spike
 | — | [Repositórios da Receita Federal (Calculadora RTC e gerador de DANFSe) como referência](architecture/18-referencia-receita-federal-rtc.md) |
 | — | [Riscos e dúvidas abertas](riscos.md) |
 | — | [Roadmap](roadmap.md) |
-| — | [ADRs](adr/) (0001–0069) |
+| — | [ADRs](adr/) (0001–0070) |
 | — | [Acompanhamento do projeto](ACOMPANHAMENTO.md) |

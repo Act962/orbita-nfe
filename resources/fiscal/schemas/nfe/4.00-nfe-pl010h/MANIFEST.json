@@ -9,12 +9,28 @@
   "publishedOn": "2026-11-13",
   "retrievedOn": "2026-11-25",
   "sourceUrl": "https://www.nfe.fazenda.gov.br/portal/exibirArquivo.aspx?conteudo=YhWikFoTxUo=",
-  "note": "Leiaute da NF-e/NFC-e 4.00 (TNFe) do PL_010h v1.03, com os grupos da Reforma Tributária. Só a pasta NFe do pacote; os eventos RTC ficam de fora (ADR-0062, ADR-0069).",
+  "note": "Leiaute da NF-e/NFC-e 4.00 (TNFe) do PL_010h v1.03, com os grupos da Reforma Tributária. Só a pasta NFe do pacote; os eventos RTC ficam de fora (ADR-0062, ADR-0069). Os envelopes do envio (enviNFe/retEnviNFe) vêm do PL_009q, o pacote completo mais recente que os traz, e incluem este leiaute (ADR-0062 item 1, ADR-0070).",
   "package": {
     "file": "PL_010h_v1.03.zip",
     "sha256": "bcbf6b277f79a6983d69016dfe0430f09b8a191997a4706a24938acddc18dc81"
   },
+  "composedWith": [
+    {
+      "file": "PL_009q_NT2025_001_v1.00.zip",
+      "sha256": "82a26d04a778fc214bf8c6c6e5c65ea577721e32ed5efa9a11a80098b8f9802f",
+      "publishedOn": "2025-05-19",
+      "sourceUrl": "https://www.nfe.fazenda.gov.br/portal/exibirArquivo.aspx?conteudo=0qRvxtvKcj4="
+    }
+  ],
   "files": {
+    "enviNFe_v4.00.xsd": {
+      "sha256": "9ba17a12e3fd6e153bd8676450526ba3bcfc15b75ecb372823826ee827b8c3ef",
+      "from": "PL_009q_NT2025_001_v1.00.zip"
+    },
+    "retEnviNFe_v4.00.xsd": {
+      "sha256": "d58b700f849ea7df9f1d35580ae0de425dfa1e295408c02609b81905b04ce4ce",
+      "from": "PL_009q_NT2025_001_v1.00.zip"
+    },
     "nfe_v4.00.xsd": {
       "sha256": "adce3646c13ceb54922ec3142fc1dc45bd4fb839ac35ad583e86c733c07d27df"
     },
