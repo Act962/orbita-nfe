@@ -94,7 +94,7 @@ const nfce =
           `orbita-nfe-${config.APP_VERSION}`,
         ),
         municipalities: loadMunicipalities(),
-        ...(artifactStore === undefined || archiveOptions === undefined ? {} : { archive: { store: artifactStore, retentionDays: archiveOptions.retentionDays } }),
+        ...(artifactStore === undefined || archiveOptions === undefined ? {} : { archive: { store: artifactStore, retentionDays: archiveOptions.retentionDays, alerts: archiveAlerts } }),
       };
 if (config.NFCE_GATEWAY === 'simulator') logger.warn('NFC-e com autorizador SIMULADO (NFCE_GATEWAY=simulator): nada é enviado a órgão nenhum');
 

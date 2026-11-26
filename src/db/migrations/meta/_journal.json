@@ -295,6 +295,13 @@
       "when": 1795712911906,
       "tag": "0041_security_consumer_invoice_xml_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1795715947217,
+      "tag": "0042_archived_xml_checks_nfce",
+      "breakpoints": true
     }
   ]
 }

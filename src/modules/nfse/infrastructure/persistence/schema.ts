@@ -215,7 +215,7 @@ export const archivedXmlChecks = pgTable(
   },
   (t) => [
     primaryKey({ name: 'pk_archived_xml_checks', columns: [t.companyId, t.kind, t.documentId] }),
-    check('ck_archived_xml_checks_kind', sql`${t.kind} in ('NFSE', 'CANCELLATION_EVENT')`),
+    check('ck_archived_xml_checks_kind', sql`${t.kind} in ('NFSE', 'CANCELLATION_EVENT', 'NFCE')`),
     check('ck_archived_xml_checks_failure', sql`${t.failureCode} is null or ${t.lastFailedAt} is not null`),
   ],
 );

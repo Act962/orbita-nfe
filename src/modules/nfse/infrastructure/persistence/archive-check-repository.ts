@@ -44,6 +44,13 @@ export function archivedXmlCheckRepository(tx: Transaction): ArchivedXmlCheckRep
             from service_invoice_cancellations x
             left join archived_xml_checks k on k.company_id = x.company_id and k.kind = 'CANCELLATION_EVENT' and k.document_id = x.id
            where x.event_xml_object_key is not null
+          union all
+          select 'NFCE', c.id, c.id, c.nfe_proc_xml, c.nfe_proc_xml_sha256,
+                 c.nfe_proc_xml_object_key, c.nfe_proc_xml_retain_until,
+                 coalesce(k.last_verified_at, c.nfe_proc_xml_archived_at), k.last_failed_at, k.failure_code
+            from consumer_invoices c
+            left join archived_xml_checks k on k.company_id = c.company_id and k.kind = 'NFCE' and k.document_id = c.id
+           where c.nfe_proc_xml_object_key is not null
         ) d
         where d.verified_at < ${verifiedBefore}::timestamptz
           and (d.last_failed_at is null or d.last_failed_at < ${failedBefore}::timestamptz)

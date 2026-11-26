@@ -1,8 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { AuditContext } from '../../../shared/application/audit.js';
-import type { JobScheduler } from '../../../shared/application/job-queue.js';
+import type { AuditContext, CompanyAuditAction } from '../../../shared/application/audit.js';
 import type { UnitOfWork } from '../../../shared/application/unit-of-work.js';
-import { nextDailyRun, runDay } from '../../../shared/domain/daily-schedule.js';
 import type { ArchivedXmlDue, ArchivedXmlKind, NfseArtifactStore, NfseWorkerRepositories } from './ports.js';
 
 const DAY_MS = 86_400_000;
@@ -40,11 +38,15 @@ export interface VerifyOutcome {
 
 const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex');
 
-/** Agenda a próxima conferência diária da empresa (no máximo um job por dia, pela chave). */
-export async function scheduleArchiveVerification(jobs: JobScheduler, companyId: string, now: Date, correlationId: string | null): Promise<void> {
-  const next = nextDailyRun(now);
-  await jobs.enqueue({ queue: 'nfse.verify-archives', payload: { companyId }, singletonKey: `${companyId}:${runDay(next)}`, runAt: next, correlationId });
-}
+/** Agenda a próxima conferência diária da empresa; comum aos documentos arquivados (ADR-0075). */
+export { scheduleArchiveVerification } from '../../../shared/application/archive-verification.js';
+
+/** Auditoria da falha, no assunto certo de cada tipo de documento. */
+const FAILURE_AUDIT: Record<ArchivedXmlKind, { readonly action: CompanyAuditAction; readonly subject: string }> = {
+  NFSE: { action: 'service_invoice.archived_xml_check_failed', subject: 'service_invoice' },
+  CANCELLATION_EVENT: { action: 'service_invoice.archived_xml_check_failed', subject: 'service_invoice' },
+  NFCE: { action: 'consumer_invoice.archived_xml_check_failed', subject: 'consumer_invoice' },
+};
 
 /**
  * Conferência periódica dos XML arquivados no bucket com Object Lock (ADR-0051): relê cada objeto
@@ -84,8 +86,8 @@ export class ArchivedXmlVerifier {
         }
         await r.archiveChecks.recordFailed(item.kind, item.documentId, failure, checkedAt);
         await r.audit.record(context, {
-          action: 'service_invoice.archived_xml_check_failed',
-          subject: { type: 'service_invoice', id: item.invoiceId },
+          action: FAILURE_AUDIT[item.kind].action,
+          subject: { type: FAILURE_AUDIT[item.kind].subject, id: item.invoiceId },
           details: { kind: item.kind, documentId: item.documentId, objectKey: item.objectKey, failureCode: failure },
         });
       });

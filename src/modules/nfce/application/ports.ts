@@ -173,6 +173,8 @@ export interface ConsumerInvoiceWorkerRepository {
  */
 export interface NfceArtifactStore {
   put(object: { readonly key: string; readonly body: Buffer; readonly contentType: string; readonly retainUntil: Date }): Promise<Buffer>;
+  /** Lê o objeto e a trava, para a conferência periódica (ADR-0051, ADR-0075). */
+  read(key: string): Promise<{ readonly body: Buffer; readonly lockMode: string | null; readonly retainUntil: Date | null } | undefined>;
 }
 
 /** O emitente completo na montagem (grupo `emit`): cadastro + tabela do IBGE (ADR-0071). */

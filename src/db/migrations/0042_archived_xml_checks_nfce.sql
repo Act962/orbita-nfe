@@ -1,0 +1,2 @@
+ALTER TABLE "archived_xml_checks" DROP CONSTRAINT "ck_archived_xml_checks_kind";--> statement-breakpoint
+ALTER TABLE "archived_xml_checks" ADD CONSTRAINT "ck_archived_xml_checks_kind" CHECK ("archived_xml_checks"."kind" in ('NFSE', 'CANCELLATION_EVENT', 'NFCE'));

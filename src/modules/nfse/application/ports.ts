@@ -213,7 +213,8 @@ export interface StoredArtifact {
 
 // ------------------------------------------------------------------ conferência periódica (ADR-0051)
 
-export type ArchivedXmlKind = 'NFSE' | 'CANCELLATION_EVENT';
+/** Documentos arquivados conferidos periodicamente; a NFC-e entrou no ADR-0075. */
+export type ArchivedXmlKind = 'NFSE' | 'CANCELLATION_EVENT' | 'NFCE';
 
 /** XML arquivado na vez de ser conferido: o do banco, o hash gravado e onde está no bucket. */
 export interface ArchivedXmlDue {

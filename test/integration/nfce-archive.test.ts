@@ -7,7 +7,7 @@ import { composeFiscalWorker } from '../../src/main/compose.js';
 import { loadMunicipalities } from '../../src/main/fiscal-resources.js';
 import { X509TrustStore } from '../../src/modules/certificates/public.js';
 import { PI_QR_CODE_URL, qrCodeV3Online, SimulatedNfceAuthorizer, XmlNfcePreparer, type NfceArtifactStore } from '../../src/modules/nfce/public.js';
-import { S3ArtifactStore } from '../../src/modules/nfse/public.js';
+import { S3ArtifactStore, type ArchiveIntegrityAlertSink } from '../../src/modules/nfse/public.js';
 import type { AuditContext } from '../../src/shared/application/audit.js';
 import type { ClaimedJob } from '../../src/shared/application/job-queue.js';
 import type { DatabaseHandle } from '../../src/shared/infrastructure/database/database.js';
@@ -45,12 +45,15 @@ const preparer = new XmlNfcePreparer(
 );
 const municipalities = loadMunicipalities();
 
-function fiscalWorker(store: NfceArtifactStore = s3Store) {
+const alerts: Parameters<ArchiveIntegrityAlertSink['raise']>[0][] = [];
+
+function fiscalWorker(store: NfceArtifactStore = s3Store, options: { now?: () => Date; retentionDays?: number } = {}) {
   const composed = composeFiscalWorker({
     db: worker.db,
     certificateKeks: [testCertificateKek().privateKey],
     trustStore: X509TrustStore.fromPem(pki.trustBundlePem),
-    nfce: { gateway, preparer, municipalities, archive: { store, retentionDays: RETENTION_DAYS } },
+    nfce: { gateway, preparer, municipalities, archive: { store, retentionDays: options.retentionDays ?? RETENTION_DAYS, alerts: { raise: (alert) => alerts.push(alert) } } },
+    ...(options.now === undefined ? {} : { now: options.now }),
   });
   if (composed.nfce?.archiver === undefined) throw new Error('nfce sem arquivamento');
   return composed;
@@ -155,10 +158,40 @@ describe('arquivamento do nfeProc da NFC-e (ADR-0074)', () => {
 
   it('releitura diferente do que foi gravado → erro e a nota NÃO fica arquivada', async () => {
     const id = await authorizedInvoice();
-    const corrupting: NfceArtifactStore = { put: async (object) => Buffer.concat([await s3Store.put(object), Buffer.from(' ')]) };
+    const corrupting: NfceArtifactStore = { put: async (object) => Buffer.concat([await s3Store.put(object), Buffer.from(' ')]), read: (objectKey) => s3Store.read(objectKey) };
     await expect(fiscalWorker(corrupting).nfce?.archiver?.archive(companyId, id, WORKER)).rejects.toMatchObject({ code: 'NFCE_ARCHIVE_READBACK_MISMATCH' });
     expect((await row(id)).nfe_proc_xml_object_key).toBeNull();
     expect(await fiscalWorker().nfce?.archiver?.archive(companyId, id, WORKER)).toMatchObject({ kind: 'ARCHIVED' });
+  });
+
+  it('conferência diária (ADR-0075): o objeto íntegro vira conferência boa; o objeto sumido vira alerta e auditoria', async () => {
+    // Retenção maior que os 30 dias da reconferência, para o objeto entrar na vez da conferência.
+    const id = await authorizedInvoice();
+    // 120 dias: o objeto continua dentro da retenção nas duas conferências simuladas (31 e 62 dias depois).
+    await fiscalWorker(s3Store, { retentionDays: 120 }).nfce?.archiver?.archive(companyId, id, WORKER);
+    const job = await superuser.db.execute<{ singleton_key: string }>(sql`select singleton_key from jobs where queue = 'nfse.verify-archives' and payload->>'companyId' = ${companyId}`);
+    expect(job.rows.length).toBeGreaterThan(0);
+
+    const later = new Date(Date.now() + 31 * 86_400_000);
+    const verify = (store: NfceArtifactStore) => fiscalWorker(store, { now: () => later }).archiveVerifier?.verifyCompany(companyId, WORKER);
+    expect(await verify(s3Store)).toMatchObject({ failed: 0 });
+    const ok = await superuser.db.execute<{ failure_code: string | null; last_verified_at: string | null }>(
+      sql`select failure_code, last_verified_at from archived_xml_checks where company_id = ${companyId} and kind = 'NFCE' and document_id = ${id}`,
+    );
+    expect(ok.rows).toHaveLength(1);
+    expect(ok.rows[0]?.failure_code).toBeNull();
+    expect(ok.rows[0]?.last_verified_at).not.toBeNull();
+
+    // Dois dias depois, com o objeto "sumido" do bucket: alerta e auditoria no assunto da NFC-e.
+    const missing: NfceArtifactStore = { put: (object) => s3Store.put(object), read: () => Promise.resolve(undefined) };
+    const muchLater = new Date(later.getTime() + 31 * 86_400_000);
+    const before = alerts.length;
+    expect(await fiscalWorker(missing, { now: () => muchLater }).archiveVerifier?.verifyCompany(companyId, WORKER)).toMatchObject({ failed: 1 });
+    expect(alerts.slice(before)).toEqual([{ companyId, kind: 'NFCE', documentId: id, invoiceId: id, failureCode: 'ARCHIVE_OBJECT_MISSING' }]);
+    const audit = await superuser.db.execute<{ subject_type: string }>(
+      sql`select subject_type from audit_log where subject_id = ${id} and action = 'consumer_invoice.archived_xml_check_failed'`,
+    );
+    expect(audit.rows).toEqual([{ subject_type: 'consumer_invoice' }]);
   });
 
   it('o banco recusa trocar a chave do objeto depois de gravada, mesmo para o superusuário', async () => {

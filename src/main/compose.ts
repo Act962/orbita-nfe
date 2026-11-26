@@ -345,7 +345,12 @@ export interface FiscalWorkerDependencies {
     readonly municipalities: { lookup(code: string): { readonly name: string; readonly uf: string } | undefined };
     readonly options?: NfceProcessorOptions;
     /** Arquivamento do nfeProc com Object Lock (ADR-0074). Sem isto, a fila `nfce.archive` espera. */
-    readonly archive?: { readonly store: NfceArtifactStore; readonly retentionDays: number };
+    readonly archive?: {
+      readonly store: NfceArtifactStore;
+      readonly retentionDays: number;
+      /** Falhas da conferência periódica (ADR-0051), quando só a NFC-e está configurada. */
+      readonly alerts: ArchiveIntegrityAlertSink;
+    };
   };
   readonly now?: () => Date;
 }
@@ -447,7 +452,12 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
       };
     }
   }
-  if (deps.nfse === undefined) return { vault, handlers, ...(nfce === undefined ? {} : { nfce }) };
+  if (deps.nfse === undefined) {
+    // Só NFC-e: a conferência dos arquivados é ligada pelo bucket dela (ADR-0075).
+    const archiveVerifier =
+      deps.nfce?.archive === undefined ? undefined : registerArchiveVerification(handlers, transactions, deps.nfce.archive.store, deps.nfce.archive.alerts, deps.now);
+    return { vault, handlers, ...(nfce === undefined ? {} : { nfce }), ...(archiveVerifier === undefined ? {} : { archiveVerifier }) };
+  }
 
   const credentials: CredentialAccess = {
     withCredential: (companyId, establishmentId, work) =>
@@ -494,20 +504,36 @@ export function composeFiscalWorker(deps: FiscalWorkerDependencies): {
   handlers['nfse.archive-cancellation'] = async (job) => {
     await archiver.archiveCancellationEvent(payloadId(job, 'companyId'), payloadId(job, 'cancellationId'), systemContext('worker-fiscal', job));
   };
-  const now = deps.now ?? (() => new Date());
-  const archiveVerifier = new ArchivedXmlVerifier(nfseUow, deps.nfse.archive.store, deps.nfse.archive.alerts, now);
+  const archiveVerifier = registerArchiveVerification(handlers, transactions, deps.nfse.archive.store, deps.nfse.archive.alerts, deps.now);
+  return { vault, processor, reconciler, resolutions, escalator, cancellations, cancellationReconciler, archiver, archiveVerifier, handlers };
+}
+
+/**
+ * Conferência diária dos XML arquivados (ADR-0051): NFS-e, eventos e NFC-e (ADR-0075), no mesmo job
+ * por empresa. Ligada pelo bucket da NFS-e ou, sem ele, pelo da NFC-e.
+ */
+function registerArchiveVerification(
+  handlers: Partial<Record<QueueName, JobHandler>>,
+  transactions: CompanyTransactions,
+  store: NfseArtifactStore,
+  alerts: ArchiveIntegrityAlertSink,
+  clock?: () => Date,
+): ArchivedXmlVerifier {
+  const now = clock ?? (() => new Date());
+  const uow = nfseWorkerUnitOfWork(transactions, { productionFor: nfseProduction, auditFor, jobsFor: schedulerFor('fiscal'), outboxFor: outboxWith(schedulerFor('fiscal')) });
+  const verifier = new ArchivedXmlVerifier(uow, store, alerts, now);
   handlers['nfse.verify-archives'] = async (job) => {
     const companyId = payloadId(job, 'companyId');
     // A de amanhã primeiro: a corrente não para se esta execução falhar até o job morrer.
-    await nfseUow.inCompany(companyId, (r) => scheduleArchiveVerification(r.jobs, companyId, now(), job.correlationId));
-    const outcome = await archiveVerifier.verifyCompany(companyId, systemContext('worker-fiscal', job));
+    await uow.inCompany(companyId, (r) => scheduleArchiveVerification(r.jobs, companyId, now(), job.correlationId));
+    const outcome = await verifier.verifyCompany(companyId, systemContext('worker-fiscal', job));
     if (!outcome.more) return;
     const at = new Date(now().getTime() + VERIFY_CONTINUE_AFTER_MS);
-    await nfseUow.inCompany(companyId, (r) =>
+    await uow.inCompany(companyId, (r) =>
       r.jobs.enqueue({ queue: 'nfse.verify-archives', payload: { companyId }, singletonKey: `${companyId}:more:${at.toISOString()}`, runAt: at, correlationId: job.correlationId }),
     );
   };
-  return { vault, processor, reconciler, resolutions, escalator, cancellations, cancellationReconciler, archiver, archiveVerifier, handlers };
+  return verifier;
 }
 
 export interface GeneralWorkerDependencies {

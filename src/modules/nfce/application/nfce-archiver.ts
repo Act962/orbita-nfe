@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { AuditContext } from '../../../shared/application/audit.js';
+import { scheduleArchiveVerification } from '../../../shared/application/archive-verification.js';
 import { InternalError } from '../../../shared/application/errors.js';
 import { PermanentJobError, type JobScheduler } from '../../../shared/application/job-queue.js';
 import type { UnitOfWork } from '../../../shared/application/unit-of-work.js';
@@ -64,6 +65,8 @@ export class NfceXmlArchiver {
         subject: { type: 'consumer_invoice', id: invoiceId },
         details: { objectKey, sha256: stored.sha256, retainUntil: retainUntil.toISOString() },
       });
+      // A conferência diária dos arquivados (ADR-0051) passa a incluir esta empresa (ADR-0075).
+      await scheduleArchiveVerification(r.jobs, companyId, this.now(), context.correlationId);
       return { kind: 'ARCHIVED', objectKey };
     });
   }
