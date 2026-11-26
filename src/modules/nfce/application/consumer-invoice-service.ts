@@ -1,4 +1,4 @@
-import { randomInt } from 'node:crypto';
+import { createHash, randomInt } from 'node:crypto';
 import { clientApplicationOf, type AuditContext } from '../../../shared/application/audit.js';
 import { BusinessRuleError, ConflictError, ForbiddenError, InternalError, NotFoundError } from '../../../shared/application/errors.js';
 import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-of-work.js';
@@ -19,6 +19,13 @@ export interface AcceptConsumerInvoice {
   readonly requestHash: string;
   /** Contrato v1 (ADR-0069), já conferido na forma pela apresentação. */
   readonly sale: ConsumerSale;
+}
+
+/** XML pronto para download: os bytes, o SHA-256 conferido e o nome sugerido. */
+export interface NfceXmlDownload {
+  readonly xml: string;
+  readonly sha256: string;
+  readonly fileName: string;
 }
 
 export interface AcceptResult {
@@ -67,6 +74,24 @@ export class ConsumerInvoiceService {
     const found = await this.uow.inCompany(companyId, (r) => r.invoices.findById(id));
     if (found?.clientApplicationId !== clientApplicationId || found.environment !== environment) throw notFound();
     return found;
+  }
+
+  /**
+   * XML da nota autorizada (`nfeProc`: NFe + protNFe), ADR-0073. Os bytes são conferidos contra o
+   * SHA-256 gravado junto com eles antes de sair: se não baterem, nada sai. A mesma visibilidade do `get`.
+   */
+  async authorizedXml(companyId: string, clientApplicationId: string, environment: FiscalEnvironment, id: string): Promise<NfceXmlDownload> {
+    return this.uow.inCompany(companyId, async (r) => {
+      const invoice = await r.invoices.findById(id);
+      if (invoice?.clientApplicationId !== clientApplicationId || invoice.environment !== environment) throw notFound();
+      const stored = await r.invoices.storedXml(id);
+      if (stored?.xml == null || stored.sha256 === null || invoice.accessKey === null) {
+        throw new NotFoundError('NFCE_XML_NOT_AVAILABLE', `A NFC-e não tem XML autorizado (a nota está em ${invoice.status}).`);
+      }
+      const sha256 = createHash('sha256').update(stored.xml, 'utf8').digest('hex');
+      if (sha256 !== stored.sha256) throw new InternalError('NFCE_XML_HASH_MISMATCH');
+      return { xml: stored.xml, sha256, fileName: `${invoice.accessKey}-procNFe.xml` };
+    });
   }
 
   /** Notas da referência externa no ambiente da credencial, da mais nova para a mais antiga. */

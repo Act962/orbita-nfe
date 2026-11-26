@@ -167,6 +167,7 @@ const CASES: Record<string, MatrixCase> = {
     },
   },
   'GET /v1/consumer-invoices/:id': { expectCrossCompany: expectNotFound('CONSUMER_INVOICE_NOT_FOUND') },
+  'GET /v1/consumer-invoices/:id/xml': { expectCrossCompany: expectNotFound('CONSUMER_INVOICE_NOT_FOUND') },
   'POST /v1/webhook-subscriptions': {
     payload: () => ({ url: 'http://127.0.0.1:9/matriz', eventTypes: ['certificate.activated'] }),
     expectCrossCompany: (res, { a }) => {

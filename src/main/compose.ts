@@ -387,7 +387,7 @@ function composeNfceWorker(
     withCredential: (companyId, establishmentId, work) =>
       vault.withCertificate(companyId, establishmentId, (certificate) => work({ privateKey: certificate.privateKey, certificatePem: certificate.certificatePem })),
   };
-  const uow = nfceWorkerUnitOfWork(transactions, { productionFor: nfceProduction, auditFor, jobsFor: schedulerFor('fiscal') });
+  const uow = nfceWorkerUnitOfWork(transactions, { productionFor: nfceProduction, auditFor, jobsFor: schedulerFor('fiscal'), outboxFor: outboxWith(schedulerFor('fiscal')) });
   const processor = new NfceSubmissionProcessor(uow, nfceEmitters(transactions, nfce.municipalities), credentials, nfce.preparer, nfce.gateway, buildNfeProc, uuidv7, now, nfce.options);
   const reconciler = new NfceReconciler(uow, credentials, nfce.gateway, buildNfeProc, now, nfce.options?.reconciliation);
   return { processor, reconciler };

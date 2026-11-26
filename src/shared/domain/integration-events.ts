@@ -12,6 +12,8 @@ export const INTEGRATION_EVENT_TYPES = [
   'service_invoice.status_changed',
   /** Andamento do pedido de cancelamento: REGISTERED, REJECTED, FAILED ou UNKNOWN (em verificação). */
   'service_invoice.cancellation_changed',
+  /** Mudança visível de estado da NFC-e: AUTHORIZED, REJECTED, DENIED, FAILED ou UNKNOWN (ADR-0073). */
+  'consumer_invoice.status_changed',
   /** Evento de teste disparado pelo cliente para conferir a assinatura de webhook. */
   'webhook.test',
 ] as const;

@@ -19,7 +19,11 @@ Recursos separados por modalidade (contratos diferentes), com consulta unificada
 | GET | `/v1/service-invoices/{id}/danfse` | `nfse:read` — **implementado** (DANFSe v2.0 em PDF, NT 008 v1.02, gerado do XML autorizado, ADR-0057) |
 | GET | `/v1/service-invoices/{id}/diagnostics` | `nfse:debug` — **implementado** (tentativas, protocolo e pedidos de cancelamento, sem XML, ADR-0055) |
 | GET | `/v1/service-invoices/{id}/pdf` | `nfse:read` |
-| POST | `/v1/product-invoices` / `/v1/consumer-invoices` | Fases 4 e 3 |
+| PUT / DELETE | `/v1/establishments/{id}/state-profile` | `companies:manage` — **implementado** (inscrição estadual, CRT e endereço do emitente, ADR-0071) |
+| POST | `/v1/consumer-invoices` | `nfce:issue` — **implementado** (venda v1 do Simples, ADR-0069 e ADR-0072; autorizador SIMULADO nesta versão) |
+| GET | `/v1/consumer-invoices?externalReference=…`, `/v1/consumer-invoices/{id}` | `nfce:read` — **implementado** |
+| GET | `/v1/consumer-invoices/{id}/xml` | `nfce:read` — **implementado** (`nfeProc` da nota autorizada, hash conferido, ADR-0073) |
+| POST | `/v1/product-invoices` | Fase 4 |
 | POST | `/v1/product-invoices/{id}/correction-letters` | NF-e apenas |
 | POST | `/v1/number-voidings` | NF-e/NFC-e |
 | GET | `/v1/fiscal-documents?status=&kind=&from=&to=&cursor=` | listagem unificada, paginação por cursor |
@@ -111,6 +115,12 @@ Motivos de rejeição de certificado (campo `rejectionReason`, não é erro HTTP
   - `certificate.expiring` (30, 15, 7 e 1 dia antes; `data.thresholdDays`, `data.daysRemaining`) e `certificate.expired` (semana 7);
   - `webhook.test`, que só sai pelo endpoint de teste.
   - `service_invoice.status_changed` (ADR-0032): `data.status` = `AUTHORIZED`, `REJECTED` (`data.rejectionCode`), `FAILED` (`data.failureCode`) ou `UNKNOWN`, que significa **em verificação, não reemita**. As rotas de emissão chegam com o contrato da DPS.
+  - `consumer_invoice.status_changed` (ADR-0073), na NFC-e:
+    - `AUTHORIZED` (`data.accessKey`, `data.statusCode`);
+    - `REJECTED` (`data.rejectionCode`; nada gravado no autorizador);
+    - `DENIED`: uso denegado; a nota foi gravada e o número consumido (`data.accessKey`, `data.statusCode`);
+    - `FAILED` (`data.failureCode`);
+    - `UNKNOWN`: **em verificação, não emita outra**.
 - **Corpo:** `{ id, type, occurredAt, companyId, subject: { type, id }, data }`. Só identificadores e status, nunca XML ou dados pessoais.
 - **Headers (Standard Webhooks):**
   - `webhook-id` = `id` do evento, igual em todas as tentativas e reenvios: o consumidor deduplica por ele;

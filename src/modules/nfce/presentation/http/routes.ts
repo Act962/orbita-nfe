@@ -49,7 +49,7 @@ const ConsumerInvoiceResponse = z
     failureCode: z.string().nullable(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
-    links: z.object({ self: z.string() }),
+    links: z.object({ self: z.string(), xml: z.string().nullable().meta({ description: 'XML autorizado (nfeProc), só na nota AUTHORIZED.' }) }),
   })
   .meta({ id: 'ConsumerInvoice' });
 
@@ -71,7 +71,7 @@ function invoiceJson(i: ConsumerInvoice): z.infer<typeof ConsumerInvoiceResponse
     failureCode: i.failureCode,
     createdAt: i.createdAt.toISOString(),
     updatedAt: i.updatedAt.toISOString(),
-    links: { self: invoicePath(i.id) },
+    links: { self: invoicePath(i.id), xml: i.status === 'AUTHORIZED' ? `${invoicePath(i.id)}/xml` : null },
   };
 }
 
@@ -158,6 +158,40 @@ export function registerNfceRoutes(app: HttpApp, service: ConsumerInvoiceService
       const caller = callerOf(request);
       const items = await service.listByExternalReference(companyIdOf(request), caller.clientApplicationId, environmentOf(caller.environment), request.query.externalReference);
       return { items: items.map(invoiceJson) };
+    },
+  );
+
+  app.get(
+    '/v1/consumer-invoices/:id/xml',
+    {
+      config: { auth: { scope: 'nfce:read', company: true } },
+      schema: {
+        tags: [TAG],
+        summary: 'Baixar o XML da NFC-e',
+        description:
+          'XML da NFC-e autorizada no formato de distribuição `nfeProc` (a NFe assinada + o protocolo de autorização devolvido pelo autorizador), só na nota AUTHORIZED. ' +
+          'Cabeçalhos: `ETag` com o SHA-256 dos bytes e `Repr-Digest: sha-256=:…:` (RFC 9530), para conferir o que chegou; `Cache-Control: private, no-store` (pode ter dados do consumidor).',
+        security: [{ apiKey: [] }],
+        headers: CompanyHeaders,
+        params: z.object({ id: z.uuid() }),
+        response: {
+          200: { description: 'XML autorizado (nfeProc).', content: { 'application/xml': { schema: z.string().meta({ description: 'nfeProc em UTF-8.' }) } } },
+          ...commonErrorResponses,
+          ...authErrorResponses,
+          404: ProblemSchema.describe('CONSUMER_INVOICE_NOT_FOUND ou NFCE_XML_NOT_AVAILABLE (nota que não foi autorizada).'),
+        },
+      },
+    },
+    async (request, reply) => {
+      const caller = callerOf(request);
+      const download = await service.authorizedXml(companyIdOf(request), caller.clientApplicationId, environmentOf(caller.environment), request.params.id);
+      return reply
+        .type('application/xml; charset=utf-8')
+        .header('content-disposition', `attachment; filename="${download.fileName}"`)
+        .header('etag', `"${download.sha256}"`)
+        .header('repr-digest', `sha-256=:${Buffer.from(download.sha256, 'hex').toString('base64')}:`)
+        .header('cache-control', 'private, no-store')
+        .send(download.xml);
     },
   );
 

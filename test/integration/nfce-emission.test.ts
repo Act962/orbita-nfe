@@ -81,6 +81,15 @@ async function state(invoiceId: string) {
   });
 }
 
+/** Eventos `consumer_invoice.status_changed` da nota: só os campos que variam com o resultado. */
+async function events(invoiceId: string): Promise<Record<string, unknown>[]> {
+  const rows = await new CompanyTransactions(t.api.db).run(companyId, (tx) =>
+    tx.execute<{ data: Record<string, unknown> }>(sql`select data from outbox_events where subject_id = ${invoiceId} and type = 'consumer_invoice.status_changed' order by occurred_at`),
+  );
+  const varying = ['status', 'accessKey', 'statusCode', 'rejectionCode', 'failureCode'];
+  return rows.rows.map(({ data }) => Object.fromEntries(Object.entries(data).filter(([k]) => varying.includes(k))));
+}
+
 async function jobs(invoiceId: string, queue: string) {
   const rows = await t.adminDb.db.execute<{ singleton_key: string; run_at: Date }>(sql`select singleton_key, run_at from jobs where queue = ${queue} and payload->>'invoiceId' = ${invoiceId} order by created_at`);
   return rows.rows;
@@ -135,6 +144,15 @@ describe('envio da NFC-e (ADR-0072, ADR-0070)', () => {
     expect(s.nfe_proc_xml).toContain(`<chNFe>${s.access_key ?? ''}</chNFe>`);
     expect(s.nfe_proc_xml).toContain('<xMun>Teresina</xMun>');
     expect(gateway.received.get(s.access_key ?? '')).toBe(1);
+
+    // ADR-0073: o nfeProc gravado passa no procNFe_v4.00.xsd oficial e sai no download com o hash conferido.
+    const proc = await catalog.validate('nfe/4.00-nfe-pl010h', 'procNFe_v4.00.xsd', s.nfe_proc_xml ?? '');
+    expect(proc.errors).toEqual([]);
+    const download = await t.modules.nfce.authorizedXml(companyId, app.id, 'HOMOLOGATION', id);
+    expect(download).toMatchObject({ xml: s.nfe_proc_xml, fileName: `${s.access_key ?? ''}-procNFe.xml` });
+    expect(download.sha256).toBe(createHash('sha256').update(s.nfe_proc_xml ?? '', 'utf8').digest('hex'));
+    // Webhook consumer_invoice.status_changed na mesma transação, só com identificadores.
+    expect(await events(id)).toEqual([{ status: 'AUTHORIZED', accessKey: s.access_key, statusCode: '100' }]);
   });
 
   it('rejeitada: REJECTED com o código, nada gravado no autorizador', async () => {
@@ -142,6 +160,8 @@ describe('envio da NFC-e (ADR-0072, ADR-0070)', () => {
     const id = await accept();
     await buildWorker().nfce?.processor.process(companyId, id, WORKER);
     expect(await state(id)).toMatchObject({ status: 'REJECTED', rejection_code: '725', access_key: null });
+    expect(await events(id)).toEqual([{ status: 'REJECTED', rejectionCode: '725' }]);
+    await expect(t.modules.nfce.authorizedXml(companyId, app.id, 'HOMOLOGATION', id)).rejects.toMatchObject({ code: 'NFCE_XML_NOT_AVAILABLE' });
   });
 
   it('denegada: DENIED com a chave e o cStat (a nota foi gravada; número consumido)', async () => {
@@ -184,6 +204,7 @@ describe('envio da NFC-e (ADR-0072, ADR-0070)', () => {
     expect(await nfce?.reconciler.reconcile(companyId, id, WORKER)).toEqual({ kind: 'AUTHORIZED' });
     const s = await state(id);
     expect(s).toMatchObject({ status: 'AUTHORIZED', authorizer_status_code: '100' });
+    expect((await events(id)).map((e) => e['status'])).toEqual(['UNKNOWN', 'AUTHORIZED']);
     expect(s.nfe_proc_xml).toContain('<protNFe');
     expect(gateway.submits).toBe(1);
   });

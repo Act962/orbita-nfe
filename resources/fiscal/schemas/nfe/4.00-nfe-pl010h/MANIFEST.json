@@ -31,6 +31,10 @@
       "sha256": "d58b700f849ea7df9f1d35580ae0de425dfa1e295408c02609b81905b04ce4ce",
       "from": "PL_009q_NT2025_001_v1.00.zip"
     },
+    "procNFe_v4.00.xsd": {
+      "sha256": "b7af3072ff7398aa557c42bc6d8198dd3c006b1a6ecaad66bc839a5c34cbcb84",
+      "from": "PL_009q_NT2025_001_v1.00.zip"
+    },
     "nfe_v4.00.xsd": {
       "sha256": "adce3646c13ceb54922ec3142fc1dc45bd4fb839ac35ad583e86c733c07d27df"
     },

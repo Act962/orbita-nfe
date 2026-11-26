@@ -1,12 +1,28 @@
 ---
 title: Changelog da API
 status: current
-last_updated: 2026-11-24
+last_updated: 2026-11-26
 ---
 
 # Changelog da API
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
+
+## 2026-11-26 — v1 (NFC-e, com o autorizador simulado)
+
+**Adicionado:**
+
+- **Perfil estadual do estabelecimento** (ADR-0071):
+  - `PUT` e `DELETE /v1/establishments/{id}/state-profile` (`companies:manage`), com inscrição estadual, CRT e endereço do emitente;
+  - `stateProfile` passa a ser devolvido nas consultas do estabelecimento.
+- **Escopos `nfce:issue` e `nfce:read`.**
+- **`POST /v1/consumer-invoices`** (`nfce:issue`, com `Idempotency-Key`), ADR-0069 e ADR-0072:
+  - aceita a venda e devolve 202 `PENDING`;
+  - recusa com `NFCE_RULES_VIOLATED` o que a SEFAZ recusaria, com a regra oficial em `issues[].ruleId`.
+- **`GET /v1/consumer-invoices/{id}`, `GET /v1/consumer-invoices?externalReference=…` e `GET /v1/consumer-invoices/{id}/xml`** (`nfce:read`). O XML é o `nfeProc` da nota autorizada, com `ETag` e `Repr-Digest` (ADR-0073).
+- **Webhook `consumer_invoice.status_changed`:** AUTHORIZED, REJECTED, DENIED, FAILED ou UNKNOWN, só com identificadores e códigos (ADR-0073).
+
+**Atenção:** nesta versão a transmissão usa o autorizador SIMULADO, e nenhuma nota tem validade fiscal. O autorizador real entra com o credenciamento na SEFAZ-PI.
 
 ## 2026-11-25 — v1 (inscrição municipal no cadastro)
 

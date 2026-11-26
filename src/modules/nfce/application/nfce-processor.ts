@@ -234,7 +234,7 @@ export class NfceSubmissionProcessor {
     await recordStatus(r, invoice, to, context, {
       ...(change.rejection === undefined ? {} : { rejectionCode: change.rejection.code }),
       ...(change.failureCode === undefined ? {} : { failureCode: change.failureCode }),
-      ...(change.settled === undefined ? {} : { statusCode: change.settled.statusCode }),
+      ...(change.settled === undefined ? {} : { statusCode: change.settled.statusCode, accessKey: change.settled.accessKey }),
     });
   }
 }
@@ -247,15 +247,33 @@ const AUDIT_BY_STATUS: Record<'AUTHORIZED' | 'REJECTED' | 'DENIED' | 'FAILED' | 
   UNKNOWN: 'consumer_invoice.unknown',
 };
 
-/** Auditoria da mudança, na mesma transação. Os webhooks da NFC-e entram com o seu próprio ADR. */
+/**
+ * Auditoria + webhook `consumer_invoice.status_changed` na mesma transação da mudança (ADR-0073).
+ * O evento leva só identificadores e códigos (ADR-0015): nada do XML nem do consumidor.
+ */
 export async function recordStatus(
-  r: Pick<NfceWorkerRepositories, 'audit'>,
+  r: Pick<NfceWorkerRepositories, 'audit' | 'events'>,
   invoice: ConsumerInvoice,
   status: keyof typeof AUDIT_BY_STATUS,
   context: AuditContext,
   extra: Readonly<Record<string, string>> = {},
 ): Promise<void> {
   await r.audit.record(context, { action: AUDIT_BY_STATUS[status], subject: { type: 'consumer_invoice', id: invoice.id }, details: { series: invoice.series, number: invoice.number, ...extra } });
+  await r.events.publish({
+    type: 'consumer_invoice.status_changed',
+    subject: { type: 'consumer_invoice', id: invoice.id },
+    data: {
+      consumerInvoiceId: invoice.id,
+      establishmentId: invoice.establishmentId,
+      externalReference: invoice.externalReference,
+      environment: invoice.environment,
+      series: invoice.series,
+      number: invoice.number,
+      status,
+      ...extra,
+    },
+    correlationId: context.correlationId,
+  });
 }
 
 export async function scheduleLookup(

@@ -41,6 +41,12 @@ export const EVENT_CATALOG: readonly EventTypeDescription[] = [
       'O pedido de cancelamento mudou de estado. `data.status`: REGISTERED (cancelada), REJECTED (recusado pelo autorizador, `data.rejectionCode`; a nota continua autorizada), FAILED (falha local antes de qualquer envio, `data.failureCode`) ou UNKNOWN (em verificação: NÃO peça de novo; o motor consulta e resolve).',
     subscribable: true,
   },
+  {
+    type: 'consumer_invoice.status_changed',
+    description:
+      'A NFC-e mudou de estado. `data.status`: AUTHORIZED (autorizada, `data.accessKey`), REJECTED (rejeitada; nada foi gravado no autorizador, `data.rejectionCode`), DENIED (uso denegado: a nota foi gravada e o número consumido, `data.statusCode`), FAILED (falha local antes de qualquer envio, `data.failureCode`) ou UNKNOWN (em verificação junto ao autorizador: NÃO emita outra; o motor consulta pela chave e resolve).',
+    subscribable: true,
+  },
   { type: 'webhook.test', description: 'Evento de teste disparado pelo endpoint de teste da assinatura.', subscribable: false },
 ];
 

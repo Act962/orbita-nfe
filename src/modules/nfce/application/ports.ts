@@ -1,6 +1,7 @@
 import type { KeyObject } from 'node:crypto';
 import type { AuditTrail } from '../../../shared/application/audit.js';
 import type { JobScheduler } from '../../../shared/application/job-queue.js';
+import type { EventOutbox } from '../../../shared/application/outbox.js';
 import type { ConsumerSale } from '../domain/consumer-sale.js';
 import type { AttemptOutcome, AttemptState, ConsumerInvoiceStatus } from '../domain/consumer-invoice.js';
 
@@ -60,6 +61,8 @@ export interface ConsumerInvoiceRepository {
   /** Todas as notas da referência no ambiente, da mais nova para a mais antiga, até `limit`. */
   listByExternalReference(clientApplicationId: string, environment: FiscalEnvironment, reference: string, limit: number): Promise<readonly ConsumerInvoice[]>;
   insert(invoice: NewConsumerInvoice): Promise<ConsumerInvoice>;
+  /** `nfeProc` da nota autorizada e o SHA-256 gravado junto (ADR-0073). */
+  storedXml(id: string): Promise<{ readonly xml: string | null; readonly sha256: string | null } | undefined>;
 }
 
 /** O emitente no aceite: só o que decide se a loja pode emitir NFC-e (ADR-0071). */
@@ -242,6 +245,8 @@ export interface NfceWorkerRepositories {
   readonly production: NfceProductionGate;
   readonly audit: AuditTrail;
   readonly jobs: JobScheduler;
+  /** Webhook `consumer_invoice.status_changed`, na mesma transação da mudança (ADR-0073). */
+  readonly events: EventOutbox;
 }
 
 export interface NfceApiRepositories {

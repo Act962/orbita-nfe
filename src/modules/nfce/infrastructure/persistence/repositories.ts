@@ -3,6 +3,7 @@ import { and, desc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
 import type { AuditTrail } from '../../../../shared/application/audit.js';
 import { ConflictError, NotFoundError } from '../../../../shared/application/errors.js';
 import type { JobScheduler } from '../../../../shared/application/job-queue.js';
+import type { EventOutbox } from '../../../../shared/application/outbox.js';
 import type { UnitOfWork } from '../../../../shared/application/unit-of-work.js';
 import type { ConstraintErrorMap } from '../../../../shared/infrastructure/database/database-errors.js';
 import type { CompanyTransactions, Transaction } from '../../../../shared/infrastructure/database/database.js';
@@ -130,6 +131,10 @@ export function consumerInvoiceRepository(tx: Transaction): ConsumerInvoiceRepos
       if (found === undefined) throw new Error('INSERT sem linha');
       return found;
     },
+    async storedXml(id) {
+      const rows = await tx.select({ xml: consumerInvoices.nfeProcXml, sha256: consumerInvoices.nfeProcXmlSha256 }).from(consumerInvoices).where(eq(consumerInvoices.id, id)).limit(1);
+      return rows[0];
+    },
   };
 }
 
@@ -242,7 +247,10 @@ export function nfceAttemptRepository(tx: Transaction): NfceAttemptRepository {
   };
 }
 
-export function nfceWorkerUnitOfWork(transactions: CompanyTransactions, ports: Pick<NfceExternalPorts, 'productionFor' | 'auditFor' | 'jobsFor'>): UnitOfWork<NfceWorkerRepositories> {
+export function nfceWorkerUnitOfWork(
+  transactions: CompanyTransactions,
+  ports: Pick<NfceExternalPorts, 'productionFor' | 'auditFor' | 'jobsFor'> & { readonly outboxFor: (tx: Transaction) => EventOutbox },
+): UnitOfWork<NfceWorkerRepositories> {
   return companyScopedUnitOfWork(
     transactions,
     (tx) => ({
@@ -251,6 +259,7 @@ export function nfceWorkerUnitOfWork(transactions: CompanyTransactions, ports: P
       production: ports.productionFor(tx),
       audit: ports.auditFor(tx),
       jobs: ports.jobsFor(tx),
+      events: ports.outboxFor(tx),
     }),
     NFCE_CONSTRAINTS,
   );

@@ -81,7 +81,7 @@ export class NfceReconciler {
               },
             });
             if (!changed) return { kind: 'SKIPPED', reason: 'NOT_UNKNOWN' };
-            await recordStatus(r, invoice, 'AUTHORIZED', context, { resolvedBy: 'LOOKUP', statusCode: lookup.statusCode });
+            await recordStatus(r, invoice, 'AUTHORIZED', context, { resolvedBy: 'LOOKUP', statusCode: lookup.statusCode, accessKey: attempt.accessKey });
             return { kind: 'AUTHORIZED' };
           }
           if (lookup.kind !== 'DENIED') throw new Error('inconsistência na decisão da reconciliação');
@@ -89,7 +89,7 @@ export class NfceReconciler {
             settled: { accessKey: attempt.accessKey, statusCode: lookup.statusCode, protocolNumber: lookup.protocolNumber, at },
           });
           if (!changed) return { kind: 'SKIPPED', reason: 'NOT_UNKNOWN' };
-          await recordStatus(r, invoice, 'DENIED', context, { resolvedBy: 'LOOKUP', statusCode: lookup.statusCode });
+          await recordStatus(r, invoice, 'DENIED', context, { resolvedBy: 'LOOKUP', statusCode: lookup.statusCode, accessKey: attempt.accessKey });
           return { kind: 'DENIED' };
         }
         case 'RETRANSMIT': {
