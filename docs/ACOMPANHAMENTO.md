@@ -178,7 +178,12 @@ Diagnóstico: [nfce-piaui-diagnostico.md](fiscal/nfce-piaui-diagnostico.md). 16 
 - [x] **Conferência periódica dos XML da NFC-e** ([ADR-0075](adr/0075-conferencia-xml-nfce.md)): a conferência diária do ADR-0051 passa a cobrir a NFC-e (tipo `NFCE`, migration 0042).
   - Mesma regra da NFS-e: bytes, trava e retenção; alerta e auditoria no assunto `consumer_invoice`.
   - Ligada também quando só a NFC-e está configurada.
-- [ ] **Falta para emitir de verdade:** o adaptador real do SVRS, que depende do credenciamento. Depois: DANFE NFC-e.
+- [x] **DANFE NFC-e** ([ADR-0076](adr/0076-danfe-nfce.md)): PDF em bobina de 80 mm, gerado do `nfeProc` autorizado.
+  - Segue o manual v6.0, divisões I a IX, com o QR Code centralizado.
+  - Datas no horário local, vírgula decimal e forma de pagamento pela tabela `tPag` do Anexo I.
+  - Em homologação traz "SEM VALOR FISCAL".
+  - `GET /v1/consumer-invoices/{id}/danfe`.
+- [ ] **Falta para emitir de verdade:** o adaptador real do SVRS, que depende do credenciamento.
 - [ ] **Do responsável:** autorizar o download do `ICP-Brasilv10.crt` do ITI, para conferir a raiz copiada do repositório do Windows.
 
 ### Inscrição municipal no cadastro (2026-11-25)
@@ -796,6 +801,7 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-26 | Webhook consumer_invoice.status_changed e download do nfeProc com hash conferido | 0073 |
 | 2026-11-26 | Arquivamento do nfeProc da NFC-e com Object Lock, no molde da NFS-e | 0074 |
 | 2026-11-26 | Conferência periódica dos XML arquivados estendida à NFC-e | 0075 |
+| 2026-11-26 | DANFE NFC-e em PDF pelo manual v6.0, só com o que está no XML | 0076 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |

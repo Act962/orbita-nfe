@@ -49,7 +49,11 @@ const ConsumerInvoiceResponse = z
     failureCode: z.string().nullable(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
-    links: z.object({ self: z.string(), xml: z.string().nullable().meta({ description: 'XML autorizado (nfeProc), só na nota AUTHORIZED.' }) }),
+    links: z.object({
+      self: z.string(),
+      xml: z.string().nullable().meta({ description: 'XML autorizado (nfeProc), só na nota AUTHORIZED.' }),
+      danfe: z.string().nullable().meta({ description: 'DANFE NFC-e em PDF, só na nota AUTHORIZED.' }),
+    }),
   })
   .meta({ id: 'ConsumerInvoice' });
 
@@ -71,7 +75,11 @@ function invoiceJson(i: ConsumerInvoice): z.infer<typeof ConsumerInvoiceResponse
     failureCode: i.failureCode,
     createdAt: i.createdAt.toISOString(),
     updatedAt: i.updatedAt.toISOString(),
-    links: { self: invoicePath(i.id), xml: i.status === 'AUTHORIZED' ? `${invoicePath(i.id)}/xml` : null },
+    links: {
+      self: invoicePath(i.id),
+      xml: i.status === 'AUTHORIZED' ? `${invoicePath(i.id)}/xml` : null,
+      danfe: i.status === 'AUTHORIZED' ? `${invoicePath(i.id)}/danfe` : null,
+    },
   };
 }
 
@@ -88,6 +96,12 @@ function canonical(value: unknown): string {
 }
 
 const environmentOf = (credential: 'live' | 'test'): FiscalEnvironment => (credential === 'live' ? 'PRODUCTION' : 'HOMOLOGATION');
+
+interface BinaryReply {
+  type(contentType: string): BinaryReply;
+  header(name: string, value: string): BinaryReply;
+  send(payload: Buffer): unknown;
+}
 
 export function registerNfceRoutes(app: HttpApp, service: ConsumerInvoiceService): void {
   app.post(
@@ -192,6 +206,39 @@ export function registerNfceRoutes(app: HttpApp, service: ConsumerInvoiceService
         .header('repr-digest', `sha-256=:${Buffer.from(download.sha256, 'hex').toString('base64')}:`)
         .header('cache-control', 'private, no-store')
         .send(download.xml);
+    },
+  );
+
+  app.get(
+    '/v1/consumer-invoices/:id/danfe',
+    {
+      config: { auth: { scope: 'nfce:read', company: true } },
+      schema: {
+        tags: [TAG],
+        summary: 'Baixar o DANFE NFC-e (PDF)',
+        description:
+          'DANFE NFC-e conforme o Manual de Especificações Técnicas do DANFE NFC-e e QR Code v6.0 (divisões I a IX, QR Code centralizado), em bobina de 80 mm, ' +
+          'gerado na hora a partir do XML autorizado (o documento fiscal é o XML). Só na nota AUTHORIZED. Em homologação traz "EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO – SEM VALOR FISCAL".',
+        security: [{ apiKey: [] }],
+        headers: CompanyHeaders,
+        params: z.object({ id: z.uuid() }),
+        response: {
+          200: { description: 'DANFE NFC-e em PDF.', content: { 'application/pdf': { schema: z.string().meta({ format: 'binary' }) } } },
+          ...commonErrorResponses,
+          ...authErrorResponses,
+          404: ProblemSchema.describe('CONSUMER_INVOICE_NOT_FOUND, NFCE_XML_NOT_AVAILABLE (nota não autorizada) ou NFCE_DANFE_NOT_AVAILABLE.'),
+        },
+      },
+    },
+    async (request, reply) => {
+      const caller = callerOf(request);
+      const danfe = await service.danfe(companyIdOf(request), caller.clientApplicationId, environmentOf(caller.environment), request.params.id);
+      // Buffer vai cru (o Fastify não serializa Buffer); o schema de 200 só documenta o PDF.
+      (reply as unknown as BinaryReply)
+        .type('application/pdf')
+        .header('content-disposition', `inline; filename="${danfe.fileName}"`)
+        .header('cache-control', 'private, no-store')
+        .send(Buffer.from(danfe.pdf));
     },
   );
 

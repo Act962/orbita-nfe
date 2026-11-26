@@ -94,6 +94,11 @@ export interface NfceProductionGate {
   isEnabled(establishmentId: string): Promise<boolean>;
 }
 
+/** DANFE NFC-e (ADR-0076): PDF gerado do `nfeProc` autorizado. */
+export interface NfceDanfeRenderer {
+  render(nfeProcXml: string): Promise<{ readonly ok: true; readonly pdf: Uint8Array } | { readonly ok: false; readonly code: string }>;
+}
+
 // ------------------------------------------------------------------ worker-fiscal (ADR-0072, fatia 3)
 
 /** Tentativa de transmissão: o XML que ela montou e assinou, com a chave e o digest. */

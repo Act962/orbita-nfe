@@ -34,6 +34,7 @@ export { NfceXmlArchiver, nfceArchiveKey } from './application/nfce-archiver.js'
 export type { NfceArtifactStore } from './application/ports.js';
 export { buildNfeProc, XmlNfcePreparer, type NfceSupplementSource } from './infrastructure/xml/nfce-preparer.js';
 export { SimulatedNfceAuthorizer } from './infrastructure/sefaz/simulated-authorizer.js';
+export { PdfDanfeNfceRenderer } from './infrastructure/danfe/danfe-nfce-renderer.js';
 export { registerNfceRoutes } from './presentation/http/routes.js';
 export {
   authorize,

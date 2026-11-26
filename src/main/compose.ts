@@ -79,6 +79,7 @@ import {
   NfceReconciler,
   NfceSubmissionProcessor,
   NfceXmlArchiver,
+  PdfDanfeNfceRenderer,
   type NfceArtifactStore,
   nfceApiUnitOfWork,
   nfceWorkerUnitOfWork,
@@ -268,6 +269,8 @@ export function composeApi(deps: ApiModulesDependencies): ApiModules {
   const nfce = new ConsumerInvoiceService(
     nfceApiUnitOfWork(transactions, { issuersFor: nfceIssuers, seriesFor: nfceSeries, productionFor: nfceProduction, auditFor, jobsFor: apiJobs }),
     uuidv7,
+    undefined,
+    new PdfDanfeNfceRenderer(),
   );
   const rateLimiter = new RateLimiter(deps.rateLimit);
 

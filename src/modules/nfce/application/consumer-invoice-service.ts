@@ -4,7 +4,7 @@ import { BusinessRuleError, ConflictError, ForbiddenError, InternalError, NotFou
 import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-of-work.js';
 import { isAcceptableNumericCode } from '../domain/access-key.js';
 import { checkConsumerSale, type ConsumerSale } from '../domain/consumer-sale.js';
-import type { ConsumerInvoice, FiscalEnvironment, NfceApiRepositories, NfceIssuer, NfceSeries } from './ports.js';
+import type { ConsumerInvoice, FiscalEnvironment, NfceApiRepositories, NfceDanfeRenderer, NfceIssuer, NfceSeries } from './ports.js';
 
 export interface AcceptConsumerInvoice {
   readonly companyId: string;
@@ -56,7 +56,21 @@ export class ConsumerInvoiceService {
     private readonly uow: UnitOfWork<NfceApiRepositories>,
     private readonly newId: IdGenerator,
     private readonly numericCode: NumericCodeSource = randomNumericCode,
+    /** Sem gerador, a rota do DANFE responde 404 NFCE_DANFE_NOT_AVAILABLE. */
+    private readonly danfeRenderer?: NfceDanfeRenderer,
   ) {}
+
+  /**
+   * DANFE NFC-e em PDF (ADR-0076), gerado na hora do `nfeProc` autorizado, depois de conferir os bytes
+   * contra o hash gravado (o mesmo caminho do XML). Só a nota AUTHORIZED tem DANFE.
+   */
+  async danfe(companyId: string, clientApplicationId: string, environment: FiscalEnvironment, id: string): Promise<{ readonly pdf: Uint8Array; readonly fileName: string }> {
+    const download = await this.authorizedXml(companyId, clientApplicationId, environment, id);
+    if (this.danfeRenderer === undefined) throw new NotFoundError('NFCE_DANFE_NOT_AVAILABLE', 'O gerador do DANFE NFC-e não está configurado.');
+    const rendered = await this.danfeRenderer.render(download.xml);
+    if (!rendered.ok) throw new InternalError(rendered.code);
+    return { pdf: rendered.pdf, fileName: download.fileName.replace(/-procNFe\.xml$/, '-danfe-nfce.pdf') };
+  }
 
   async accept(input: AcceptConsumerInvoice, context: AuditContext): Promise<AcceptResult> {
     try {

@@ -151,6 +151,10 @@ describe('envio da NFC-e (ADR-0072, ADR-0070)', () => {
     const download = await t.modules.nfce.authorizedXml(companyId, app.id, 'HOMOLOGATION', id);
     expect(download).toMatchObject({ xml: s.nfe_proc_xml, fileName: `${s.access_key ?? ''}-procNFe.xml` });
     expect(download.sha256).toBe(createHash('sha256').update(s.nfe_proc_xml ?? '', 'utf8').digest('hex'));
+    // ADR-0076: o DANFE NFC-e sai do mesmo nfeProc, em PDF.
+    const danfe = await t.modules.nfce.danfe(companyId, app.id, 'HOMOLOGATION', id);
+    expect(Buffer.from(danfe.pdf).subarray(0, 5).toString()).toBe('%PDF-');
+    expect(danfe.fileName).toBe(`${s.access_key ?? ''}-danfe-nfce.pdf`);
     // Webhook consumer_invoice.status_changed na mesma transação, só com identificadores.
     expect(await events(id)).toEqual([{ status: 'AUTHORIZED', accessKey: s.access_key, statusCode: '100' }]);
   });
