@@ -7,7 +7,7 @@ import type { ConstraintErrorMap } from '../../../../shared/infrastructure/datab
 import type { CompanyTransactions, Transaction } from '../../../../shared/infrastructure/database/database.js';
 import { companyScopedUnitOfWork } from '../../../../shared/infrastructure/database/unit-of-work.js';
 import type { AccessGrants, EstablishmentRepository, CompanyRepositories, CompanyRepository } from '../../application/company-service.js';
-import type { Establishment, EstablishmentStatus, Company, CompanyStatus } from '../../domain/company.js';
+import type { Establishment, EstablishmentStatus, Company, CompanyStatus, StateProfile, TaxRegime } from '../../domain/company.js';
 import { establishments, companies } from './schema.js';
 
 /** Constraints que a regra de negócio prevê (as demais são bug → 500). */
@@ -20,7 +20,49 @@ type CompanyRow = typeof companies.$inferSelect;
 type EstablishmentRow = typeof establishments.$inferSelect;
 
 const toCompany = (row: CompanyRow): Company => ({ ...row, status: row.status as CompanyStatus });
-const toEstablishment = (row: EstablishmentRow): Establishment => ({ ...row, status: row.status as EstablishmentStatus });
+const toEstablishment = (row: EstablishmentRow): Establishment => ({
+  id: row.id,
+  companyId: row.companyId,
+  cnpj: row.cnpj,
+  tradeName: row.tradeName,
+  municipalityCode: row.municipalityCode,
+  municipalRegistration: row.municipalRegistration,
+  stateProfile: toStateProfile(row),
+  status: row.status as EstablishmentStatus,
+  createdAt: row.createdAt,
+});
+
+/** A constraint ck_establishments_state_profile_complete garante tudo ou nada. */
+function toStateProfile(row: EstablishmentRow): StateProfile | null {
+  if (row.stateRegistration === null || row.taxRegime === null || row.addressStreet === null || row.addressNumber === null || row.addressDistrict === null || row.addressPostalCode === null) {
+    return null;
+  }
+  return {
+    stateRegistration: row.stateRegistration,
+    taxRegime: row.taxRegime as TaxRegime,
+    address: {
+      street: row.addressStreet,
+      number: row.addressNumber,
+      complement: row.addressComplement,
+      district: row.addressDistrict,
+      postalCode: row.addressPostalCode,
+      phone: row.addressPhone,
+    },
+  };
+}
+
+function stateProfileColumns(profile: StateProfile | null) {
+  return {
+    stateRegistration: profile?.stateRegistration ?? null,
+    taxRegime: profile?.taxRegime ?? null,
+    addressStreet: profile?.address.street ?? null,
+    addressNumber: profile?.address.number ?? null,
+    addressComplement: profile?.address.complement ?? null,
+    addressDistrict: profile?.address.district ?? null,
+    addressPostalCode: profile?.address.postalCode ?? null,
+    addressPhone: profile?.address.phone ?? null,
+  };
+}
 
 function one<T>(rows: T[]): T {
   const row = rows[0];
@@ -56,6 +98,10 @@ export function establishmentRepository(tx: Transaction): EstablishmentRepositor
     },
     async setMunicipalRegistration(id, value) {
       const rows = await tx.update(establishments).set({ municipalRegistration: value }).where(eq(establishments.id, id)).returning();
+      return rows[0] === undefined ? undefined : toEstablishment(rows[0]);
+    },
+    async setStateProfile(id, profile) {
+      const rows = await tx.update(establishments).set(stateProfileColumns(profile)).where(eq(establishments.id, id)).returning();
       return rows[0] === undefined ? undefined : toEstablishment(rows[0]);
     },
   };

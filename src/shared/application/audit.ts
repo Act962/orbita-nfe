@@ -13,6 +13,7 @@ export const COMPANY_AUDIT_ACTIONS = [
   'company.registered',
   'establishment.registered',
   'establishment.municipal_registration_changed',
+  'establishment.state_profile_changed',
   'document_series.created',
   'company_grant.granted',
   'company_grant.revoked',

@@ -110,6 +110,49 @@ describe('Estabelecimentos', () => {
     expect(audit.rows.map((r) => r.action)).toEqual(['establishment.registered', 'establishment.municipal_registration_changed', 'establishment.municipal_registration_changed']);
   });
 
+  it('perfil estadual (ADR-0071): gravado, normalizado, recusado fora do XSD, apagado e auditado', async () => {
+    const company = await createCompany(t.app, key);
+    const headers = bearer(key, company.id);
+    const created = await t.app.inject({ method: 'POST', url: '/v1/establishments', headers, payload: { cnpj: cnpjOf(company.root, '0001'), tradeName: 'Loja', municipalityCode: '2211001' } });
+    const id = created.json<{ id: string }>().id;
+    expect(created.json()).toMatchObject({ stateProfile: null });
+
+    const url = `/v1/establishments/${id}/state-profile`;
+    const profile = { stateRegistration: '123456789', taxRegime: '1', address: { street: ' RUA TESTE ', number: '100', district: 'CENTRO', postalCode: '64000-000', phone: '(86) 3222-0000' } };
+    const put = await t.app.inject({ method: 'PUT', url, headers, payload: profile });
+    expect(put.statusCode, put.body).toBe(200);
+    expect(put.json()).toMatchObject({
+      stateProfile: { stateRegistration: '123456789', taxRegime: '1', address: { street: 'RUA TESTE', number: '100', complement: null, district: 'CENTRO', postalCode: '64000000', phone: '8632220000' } },
+    });
+    expect((await t.app.inject({ method: 'GET', url: `/v1/establishments/${id}`, headers })).json()).toMatchObject({ stateProfile: { stateRegistration: '123456789' } });
+
+    // Formatos do XSD (TIe, CRT, CEP); o motor não completa nem deduz nada.
+    const bad = await t.app.inject({ method: 'PUT', url, headers, payload: { ...profile, stateRegistration: '12.345.678-9', taxRegime: '5', address: { ...profile.address, postalCode: '640' } } });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json<{ issues: { field: string }[] }>().issues.map((i) => i.field).sort()).toEqual(['body.address.postalCode', 'body.stateRegistration', 'body.taxRegime']);
+    expect((await t.app.inject({ method: 'PUT', url, headers, payload: { ...profile, extra: 1 } })).statusCode).toBe(400);
+
+    // Repetir o mesmo perfil não gera auditoria; apagar volta a null.
+    expect((await t.app.inject({ method: 'PUT', url, headers, payload: profile })).statusCode).toBe(200);
+    const removed = await t.app.inject({ method: 'DELETE', url, headers });
+    expect(removed.json()).toMatchObject({ stateProfile: null });
+
+    const superuser = connect('superuser');
+    const audit = await superuser.db.transaction(async (tx) =>
+      tx.execute<{ action: string }>(sql`select action from audit_log where subject_id = ${id} order by sequence`),
+    );
+    // O banco recusa perfil pela metade, mesmo fora da API.
+    const partial = await superuser.db
+      .transaction(async (tx) => tx.execute(sql`update establishments set state_registration = '123' where id = ${id}`))
+      .then(
+        () => 'aceitou',
+        (error: unknown) => (error as { cause?: { constraint?: string } }).cause?.constraint,
+      );
+    expect(partial).toBe('ck_establishments_state_profile_complete');
+    await superuser.close();
+    expect(audit.rows.map((r) => r.action)).toEqual(['establishment.registered', 'establishment.state_profile_changed', 'establishment.state_profile_changed']);
+  });
+
   it('COMPANY-001: CNPJ de outra raiz → 422 com campo body.cnpj', async () => {
     const company = await createCompany(t.app, key);
     const res = await t.app.inject({

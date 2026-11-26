@@ -34,6 +34,15 @@ export const establishments = pgTable(
     municipalityCode: char('municipality_code', { length: 7 }).notNull(),
     /** Inscrição municipal, só cadastro (ADR-0061; TSInscMun, 1 a 15 caracteres). */
     municipalRegistration: varchar('municipal_registration', { length: 15 }),
+    /** Perfil estadual para NF-e/NFC-e (ADR-0071): TIe, CRT e TEnderEmi; tudo ou nada. */
+    stateRegistration: varchar('state_registration', { length: 14 }),
+    taxRegime: char('tax_regime', { length: 1 }),
+    addressStreet: varchar('address_street', { length: 60 }),
+    addressNumber: varchar('address_number', { length: 60 }),
+    addressComplement: varchar('address_complement', { length: 60 }),
+    addressDistrict: varchar('address_district', { length: 60 }),
+    addressPostalCode: char('address_postal_code', { length: 8 }),
+    addressPhone: varchar('address_phone', { length: 14 }),
     status: text('status').notNull().default('ACTIVE'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -47,6 +56,18 @@ export const establishments = pgTable(
     check('ck_establishments_cnpj', sql`${t.cnpj} ~ '^[0-9A-Z]{12}[0-9]{2}$'`),
     check('ck_establishments_municipality', sql`${t.municipalityCode} ~ '^[0-9]{7}$'`),
     check('ck_establishments_municipal_registration', sql`${t.municipalRegistration} is null or length(${t.municipalRegistration}) between 1 and 15`),
+    // Perfil estadual: os obrigatórios existem juntos ou não existem (complemento e fone são opcionais).
+    check(
+      'ck_establishments_state_profile_complete',
+      sql`(${t.stateRegistration} is null) = (${t.taxRegime} is null) and (${t.stateRegistration} is null) = (${t.addressStreet} is null)
+        and (${t.stateRegistration} is null) = (${t.addressNumber} is null) and (${t.stateRegistration} is null) = (${t.addressDistrict} is null)
+        and (${t.stateRegistration} is null) = (${t.addressPostalCode} is null)
+        and (${t.stateRegistration} is not null or (${t.addressComplement} is null and ${t.addressPhone} is null))`,
+    ),
+    check('ck_establishments_state_registration', sql`${t.stateRegistration} is null or ${t.stateRegistration} ~ '^([0-9]{2,14}|ISENTO)$'`),
+    check('ck_establishments_tax_regime', sql`${t.taxRegime} is null or ${t.taxRegime} in ('1', '2', '3', '4')`),
+    check('ck_establishments_postal_code', sql`${t.addressPostalCode} is null or ${t.addressPostalCode} ~ '^[0-9]{8}$'`),
+    check('ck_establishments_phone', sql`${t.addressPhone} is null or ${t.addressPhone} ~ '^[0-9]{6,14}$'`),
     index('ix_establishments_company').on(t.companyId),
   ],
 );

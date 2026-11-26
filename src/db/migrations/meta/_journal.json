@@ -260,6 +260,13 @@
       "when": 1795616866705,
       "tag": "0036_establishment_municipal_registration",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1795700735175,
+      "tag": "0037_establishment_state_profile",
+      "breakpoints": true
     }
   ]
 }

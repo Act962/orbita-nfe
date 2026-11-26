@@ -83,6 +83,11 @@ const CASES: Record<string, MatrixCase> = {
     },
   },
   'GET /v1/establishments/:establishmentId': { expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND') },
+  'PUT /v1/establishments/:establishmentId/state-profile': {
+    payload: () => ({ stateRegistration: '123456789', taxRegime: '1', address: { street: 'RUA OUTRA', number: '1', district: 'CENTRO', postalCode: '64000000' } }),
+    expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),
+  },
+  'DELETE /v1/establishments/:establishmentId/state-profile': { expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND') },
   'PATCH /v1/establishments/:establishmentId': {
     payload: () => ({ municipalRegistration: 'OUTRA' }),
     expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),

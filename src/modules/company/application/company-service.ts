@@ -4,7 +4,18 @@ import { BusinessRuleError, InternalError, NotFoundError, ValidationFailedError 
 import type { JobScheduler } from '../../../shared/application/job-queue.js';
 import { runDay } from '../../../shared/domain/daily-schedule.js';
 import type { IdGenerator, TransactionOptions, UnitOfWork } from '../../../shared/application/unit-of-work.js';
-import { newEstablishment, newCompany, type Establishment, type NewEstablishment, type NewCompany, type Company, municipalRegistration } from '../domain/company.js';
+import {
+  newEstablishment,
+  newCompany,
+  type Establishment,
+  type NewEstablishment,
+  type NewCompany,
+  type Company,
+  municipalRegistration,
+  stateProfile,
+  type StateProfile,
+  type StateProfileInput,
+} from '../domain/company.js';
 
 export interface CompanyRepository {
   /** Insere na empresa do contexto da transação. Conflito de raiz → COMPANY_ALREADY_REGISTERED. */
@@ -20,6 +31,8 @@ export interface EstablishmentRepository {
   list(): Promise<Establishment[]>;
   /** Grava (ou apaga, com null) a IM; `undefined` se o estabelecimento não existe na empresa. */
   setMunicipalRegistration(id: string, value: string | null): Promise<Establishment | undefined>;
+  /** Grava (ou apaga, com null) o perfil estadual inteiro (ADR-0071). */
+  setStateProfile(id: string, profile: StateProfile | null): Promise<Establishment | undefined>;
 }
 
 /** Porta para o IAM: concede ao criador acesso à empresa nova, na mesma transação. */
@@ -130,6 +143,35 @@ export class CompanyService {
         action: 'establishment.municipal_registration_changed',
         subject: { type: 'establishment', id },
         details: { from: before.municipalRegistration, to: registration },
+      });
+      return updated;
+    });
+  }
+
+  /**
+   * Perfil estadual do estabelecimento para NF-e/NFC-e (ADR-0071): inscrição estadual, CRT e
+   * endereço, informados pelo contribuinte e conferidos só no formato do XSD. `null` apaga.
+   * O estabelecimento sem perfil não emite NFC-e (o motor nunca completa esses dados sozinho).
+   */
+  async changeStateProfile(companyId: string, id: string, input: StateProfileInput | null, context: AuditContext): Promise<Establishment> {
+    const issues: ValidationIssue[] = [];
+    const profile = input === null ? null : stateProfile(input, issues);
+    if (issues.length > 0) throw new ValidationFailedError(issues);
+    return this.uow.inCompany(companyId, async (r) => {
+      const before = await r.establishments.findById(id);
+      if (before === undefined) throw establishmentNotFound();
+      if (JSON.stringify(before.stateProfile) === JSON.stringify(profile)) return before;
+      const updated = await r.establishments.setStateProfile(id, profile);
+      if (updated === undefined) throw establishmentNotFound();
+      await r.audit.record(context, {
+        action: 'establishment.state_profile_changed',
+        subject: { type: 'establishment', id },
+        details: {
+          stateRegistrationFrom: before.stateProfile?.stateRegistration ?? null,
+          stateRegistrationTo: profile?.stateRegistration ?? null,
+          taxRegimeFrom: before.stateProfile?.taxRegime ?? null,
+          taxRegimeTo: profile?.taxRegime ?? null,
+        },
       });
       return updated;
     });
