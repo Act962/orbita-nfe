@@ -12,6 +12,9 @@ coverage/
 *.pem
 *.key
 secrets/
+# Exceção estreita: certificados RAIZ públicos de ACs, versionados com hash no MANIFEST (ADR-0068).
+# Nunca chave privada nem certificado de cliente: a carga recusa o que não for AC raiz autoassinada.
+!resources/fiscal/trust/**/*.pem
 
 # Saídas locais de testes com o autorizador real (DPS assinada, NFS-e, resultados): não versionar
 .local/
