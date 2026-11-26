@@ -29,6 +29,7 @@ export const COMPANY_AUDIT_ACTIONS = [
   'production_enablement.granted',
   'production_enablement.revoked',
   'service_invoice.accepted',
+  'consumer_invoice.accepted',
   'service_invoice.authorized',
   'service_invoice.rejected',
   'service_invoice.failed',

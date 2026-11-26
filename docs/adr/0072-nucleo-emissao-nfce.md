@@ -1,6 +1,6 @@
 # ADR-0072 — Núcleo da emissão da NFC-e: estados, tentativas e XML montado no envio
 
-- Status: **Aceito** (fatia 1 de 3 implementada) · Data: 2026-11-26
+- Status: **Aceito** (fatias 1 e 2 de 3 implementadas) · Data: 2026-11-26
 - Relacionados:
   - ADR-0032 e ADR-0022 (núcleo da NFS-e e write-ahead: o molde);
   - ADR-0029 (incerteza se resolve consultando);
@@ -54,13 +54,25 @@ A NFC-e segue o mesmo molde, com duas diferenças que vêm das fontes:
 
 ## Fatias
 1. **Feita:** domínio da máquina de estados, tabelas e travas, com testes de integração. Cobrem as transições, a imutabilidade (inclusive para o superusuário), as permissões por papel e o RLS entre empresas.
-2. **Aceite e API:**
-   - `POST /v1/consumer-invoices`, com `Idempotency-Key`;
-   - venda conferida (contrato e regras do ADR-0069);
-   - estabelecimento com perfil estadual e CRT 1;
-   - série NFC-e ativa e número alocado na transação;
-   - `cNF` sorteado pela regra B03-10;
-   - consulta por id e por referência.
+2. **Feita: aceite e API.**
+   - **Rotas, com os escopos novos `nfce:issue` e `nfce:read`:**
+     - `POST /v1/consumer-invoices`, com `Idempotency-Key`. Devolve 202 `PENDING`, e 200 numa repetição com o mesmo corpo.
+     - `GET /v1/consumer-invoices/{id}`.
+     - `GET /v1/consumer-invoices?externalReference=…`.
+   - **Conferências, na ordem, antes de numerar:**
+     1. referência externa ocupada (409);
+     2. estabelecimento ativo **com perfil estadual** (422 `NFCE_STATE_PROFILE_REQUIRED`);
+     3. regras da venda do ADR-0069, todas de uma vez em `issues` com `ruleId` (422 `NFCE_RULES_VIOLATED`);
+     4. habilitação de produção, para credencial `live`;
+     5. série NFC-e ativa no ambiente.
+   - **Depois, na mesma transação:**
+     - número alocado;
+     - `cNF` sorteado e conferido pela regra B03-10 (ADR-0065);
+     - `PENDING`;
+     - auditoria `consumer_invoice.accepted`;
+     - job `nfce.process`, que espera na fila até a fatia 3.
+   - **Visibilidade:** nota de outra aplicação ou de outro ambiente responde 404, como na NFS-e.
+   - **Testes:** as três rotas entraram na matriz de isolamento. Os testes de integração cobrem o aceite, a repetição, a chave reusada, a regra violada, a forma do XSD, o perfil ausente, o CRT fora da v1, a referência ocupada e a produção sem habilitação.
 3. **Worker:**
    - concessão e montagem com o nome do município e a UF da tabela do IBGE;
    - assinatura, QR Code e envio (ADR-0070);

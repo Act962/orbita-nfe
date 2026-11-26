@@ -73,6 +73,17 @@ export const QUEUES = {
     timeoutSeconds: 180,
     priority: 20,
   },
+  /**
+   * Transmissão de uma NFC-e com write-ahead (ADR-0072): monta, assina e envia (ADR-0070). Também é a
+   * recuperação de queda, como na NFS-e. Até o worker da NFC-e existir, o job espera na fila.
+   */
+  'nfce.process': {
+    lane: 'fiscal',
+    maxAttempts: 20,
+    backoff: { baseSeconds: 30, maxSeconds: 1800, jitter: 0.2 },
+    timeoutSeconds: 180,
+    priority: 20,
+  },
   /** Uma consulta de reconciliação de NFS-e em UNKNOWN; a próxima é um job novo com runAt. */
   'nfse.reconcile': {
     lane: 'fiscal',

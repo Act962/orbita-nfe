@@ -153,7 +153,15 @@ Diagnóstico: [nfce-piaui-diagnostico.md](fiscal/nfce-piaui-diagnostico.md). 16 
   - Cada tentativa guarda o XML, a chave e o digest.
   - Uma tentativa nova só nasce depois da prova de que nada foi gravado.
   - Travas no banco (transições, imutabilidade, `FAILED` só antes do envio, uma tentativa aberta), permissões por coluna e RLS, com testes de integração.
-- [ ] **Próximo (fatia 2):** aceite idempotente e `POST /v1/consumer-invoices`.
+- [x] **Núcleo da NFC-e, fatia 2** ([ADR-0072](adr/0072-nucleo-emissao-nfce.md)): aceite idempotente.
+  - **Rotas:** `POST /v1/consumer-invoices`, `GET /v1/consumer-invoices/{id}` e a consulta pela referência externa, com os escopos `nfce:issue` e `nfce:read`.
+  - **Antes de numerar, o motor confere:**
+    - o perfil estadual do estabelecimento;
+    - as regras da venda, com fonte;
+    - a habilitação de produção;
+    - a série NFC-e.
+  - **Na mesma transação:** número, `cNF` pela regra B03-10, auditoria e job `nfce.process`.
+  - As três rotas estão na matriz de isolamento.
 - [ ] **Depois (fatia 3):** worker com simulador e reconciliação pela chave.
 - [ ] **Do responsável:** autorizar o download do `ICP-Brasilv10.crt` do ITI, para conferir a raiz copiada do repositório do Windows.
 

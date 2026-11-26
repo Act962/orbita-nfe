@@ -74,6 +74,14 @@ import {
   type UnknownAlertSink,
 } from '../modules/nfse/public.js';
 import {
+  ConsumerInvoiceService,
+  nfceApiUnitOfWork,
+  registerNfceRoutes,
+  type NfceIssuerReader,
+  type NfceProductionGate,
+  type NfceSeriesAllocator,
+} from '../modules/nfce/public.js';
+import {
   AccessControl,
   DrizzleCredentialLookup,
   DrizzleIamAdminStore,
@@ -141,6 +149,23 @@ const nfseSeries = (tx: Transaction): SeriesAllocator => ({
 const nfseProduction = (tx: Transaction): ProductionGate => ({
   isEnabled: (establishmentId) => productionEnablementRepository(tx).isEnabled(establishmentId, 'NFSE_DPS'),
 });
+// Portas da NFC-e (ADR-0072): o emitente do cadastro (perfil estadual, ADR-0071), séries NFCE e habilitação NFCE.
+const nfceIssuers = (tx: Transaction): NfceIssuerReader => ({
+  find: async (id) => {
+    const found = await establishmentRepository(tx).findById(id);
+    return found === undefined ? undefined : { id: found.id, cnpj: found.cnpj, status: found.status, taxRegime: found.stateProfile?.taxRegime ?? null };
+  },
+});
+const nfceSeries = (tx: Transaction): NfceSeriesAllocator => ({
+  activeSeries: async (establishmentId, environment) =>
+    (await documentSeriesRepository(tx).listByEstablishment(establishmentId))
+      .filter((s) => s.kind === 'NFCE' && s.environment === environment && s.status === 'ACTIVE')
+      .map((s) => ({ id: s.id, series: s.series })),
+  allocate: async (seriesId) => requireAllocated(await documentSeriesRepository(tx).allocateNext(seriesId)),
+});
+const nfceProduction = (tx: Transaction): NfceProductionGate => ({
+  isEnabled: (establishmentId) => productionEnablementRepository(tx).isEnabled(establishmentId, 'NFCE'),
+});
 /** Agendador de jobs do processo: só absorve repetição de chave na lane que ele consome (ADR-0030). */
 const schedulerFor =
   (ownLane?: JobLane) =>
@@ -179,6 +204,7 @@ export interface ApiModules {
   readonly company: CompanyService;
   readonly nfse: ServiceInvoiceService;
   readonly nfseCancellations: CancellationService;
+  readonly nfce: ConsumerInvoiceService;
   readonly fiscalSettings: FiscalSettingsService;
   readonly certificates: CertificateService;
   readonly webhooks: WebhookService;
@@ -228,12 +254,17 @@ export function composeApi(deps: ApiModulesDependencies): ApiModules {
     new XmlDpsValidator(deps.schemaCatalog),
     deps.references,
   );
+  const nfce = new ConsumerInvoiceService(
+    nfceApiUnitOfWork(transactions, { issuersFor: nfceIssuers, seriesFor: nfceSeries, productionFor: nfceProduction, auditFor, jobsFor: apiJobs }),
+    uuidv7,
+  );
   const rateLimiter = new RateLimiter(deps.rateLimit);
 
   return {
     company,
     nfse,
     nfseCancellations,
+    nfce,
     fiscalSettings,
     certificates,
     webhooks,
@@ -246,6 +277,7 @@ export function composeApi(deps: ApiModulesDependencies): ApiModules {
       registerCertificateRoutes(app, certificates);
       registerWebhookRoutes(app, webhooks);
       registerNfseRoutes(app, nfse, nfseCancellations, nfseDanfse);
+      registerNfceRoutes(app, nfce);
     },
   };
 }

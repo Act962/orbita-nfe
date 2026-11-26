@@ -16,6 +16,10 @@ export { buildSoapEnvelope, readWsdlContract, type SefazFailure, type WsdlContra
 export { ICP_BRASIL_V10_FILE, loadServerTrust, ServerTrustError } from './infrastructure/sefaz/server-trust.js';
 export { checkConsumerSale, saleTotals, type ConsumerSale, type SaleIssuer, type SaleTotals } from './domain/consumer-sale.js';
 export { consumerSaleSchema } from './presentation/http/consumer-sale-schema.js';
+export { ConsumerInvoiceService, type AcceptConsumerInvoice } from './application/consumer-invoice-service.js';
+export type { ConsumerInvoice, NfceIssuerReader, NfceProductionGate, NfceSeriesAllocator } from './application/ports.js';
+export { nfceApiUnitOfWork } from './infrastructure/persistence/repositories.js';
+export { registerNfceRoutes } from './presentation/http/routes.js';
 export {
   authorize,
   AUTHORIZATION_SCHEMA_PACKAGE,

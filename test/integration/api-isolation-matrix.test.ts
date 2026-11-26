@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { sampleDpsData } from '../support/dps-fixtures.js';
+import { MINIMAL_SALE } from '../support/nfce-fixtures.js';
 import type { LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SCOPES } from '../../src/modules/iam/public.js';
@@ -151,6 +152,21 @@ const CASES: Record<string, MatrixCase> = {
     headers: { 'idempotency-key': 'matriz-isolamento-substituicao' },
     expectCrossCompany: expectNotFound('SERVICE_INVOICE_NOT_FOUND'),
   },
+  'POST /v1/consumer-invoices': {
+    // B tenta emitir NFC-e na própria empresa usando o estabelecimento de A.
+    payload: ({ a }) => ({ establishmentId: a.establishmentId, ...MINIMAL_SALE }),
+    headers: { 'idempotency-key': 'matriz-isolamento-nfce' },
+    expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),
+  },
+  'GET /v1/consumer-invoices': {
+    query: `externalReference=${MATRIX_REFERENCE}`,
+    expectCrossCompany: (res, { a }) => {
+      expect(res.statusCode).toBe(200);
+      expect(res.body).not.toContain(a.companyId);
+      expect(res.body).not.toContain(a.establishmentId);
+    },
+  },
+  'GET /v1/consumer-invoices/:id': { expectCrossCompany: expectNotFound('CONSUMER_INVOICE_NOT_FOUND') },
   'POST /v1/webhook-subscriptions': {
     payload: () => ({ url: 'http://127.0.0.1:9/matriz', eventTypes: ['certificate.activated'] }),
     expectCrossCompany: (res, { a }) => {
