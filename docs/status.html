@@ -82,7 +82,7 @@
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">866 ✓</div>
+    <div class="value">880 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -219,6 +219,8 @@
     <li><span class="tag block">Você</span><div>Contingência: no motor central já agora, ou só no NERP do caixa depois? E guardar o XML no lugar da segunda via impressa (exige declaração à SEFAZ-PI)?</div></li>
     <li><span class="tag block">Você</span><div>Perguntar à SEFAZ-PI se o Piauí aceita a emissão em contingência off-line da NFC-e</div></li>
     <li><span class="tag done">Pronto</span><div>Primeira conversa real com o autorizador da NFC-e (homologação), com o certificado de teste<small>O autorizador respondeu "serviço em operação" para o Piauí, o que confirma que é ele quem atende o estado. A consulta de uma nota inexistente respondeu "não consta", como esperado. Para conectar, foi preciso incluir no projeto o certificado raiz oficial do governo (ICP-Brasil), sem desligar nenhuma verificação.</small></div></li>
+    <li><span class="tag done">Pronto</span><div>Proposta de como a API da NFC-e vai receber uma venda<small>Os dados da empresa (CNPJ, inscrição estadual, regime) saem sempre do cadastro, nunca do pedido. Os impostos de cada produto vêm sempre do seu sistema: o motor só confere, não escolhe.</small></div></li>
+    <li><span class="tag done">Pronto</span><div>A nota de venda (NFC-e) para o Simples Nacional já é montada e assinada no formato oficial<small>Uma venda de teste vira o arquivo XML da nota, assinado e aprovado pelo validador oficial do governo. O motor também recusa o que a SEFAZ recusaria, como uma combinação de CFOP e CSOSN que não pode, ou uma forma de pagamento proibida. Ainda não envia nada ao autorizador.</small></div></li>
     <li><span class="tag block">Você</span><div>Autorizar o download do certificado raiz no site do ITI, para conferir a cópia que veio do Windows</div></li>
     <li><span class="tag block">Você</span><div>Credenciar a empresa-piloto como emissora de NFC-e em homologação na SEFAZ-PI (inscrição estadual e, se for o caso, o CSC)</div></li>
     <li><span class="tag block">Você</span><div>Escolher com o contador o tipo de QR Code (versão 2, com código de segurança, ou versão 3, sem)</div></li>

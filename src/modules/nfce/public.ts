@@ -14,6 +14,9 @@ export {
 } from './domain/access-key.js';
 export { buildSoapEnvelope, readWsdlContract, type SefazFailure, type WsdlContract } from './infrastructure/sefaz/sefaz-soap.js';
 export { ICP_BRASIL_V10_FILE, loadServerTrust, ServerTrustError } from './infrastructure/sefaz/server-trust.js';
+export { checkConsumerSale, saleTotals, type ConsumerSale, type SaleIssuer, type SaleTotals } from './domain/consumer-sale.js';
+export { consumerSaleSchema } from './presentation/http/consumer-sale-schema.js';
+export { buildNfceXml, finishNfceXml, type NfceIssuerData, type NfceXmlInput } from './infrastructure/xml/nfce-xml.js';
 export {
   digestValueHex,
   hashWithCsc,
