@@ -12,7 +12,7 @@ import {
   type ArchiveIntegrityAlertSink,
   type UnknownAlertSink,
 } from '../modules/nfse/public.js';
-import { PI_QR_CODE_URL, qrCodeV3Online, SimulatedNfceAuthorizer, XmlNfcePreparer } from '../modules/nfce/public.js';
+import { PI_QR_CODE_URL, qrCodeV3Online, SimulatedNfceAuthorizer, XmlNfcePreparer, type NfceUnknownAlertSink } from '../modules/nfce/public.js';
 import { createDatabase } from '../shared/infrastructure/database/database.js';
 import { createLogger } from '../shared/infrastructure/logging/logger.js';
 import { artifactArchiveOptions } from './artifact-config.js';
@@ -40,6 +40,15 @@ const alerts: UnknownAlertSink = {
     const line = { event: 'nfse.unknown_age', ...alert };
     if (alert.level === 'WARNING') logger.warn(line, 'NFS-e em UNKNOWN há mais de 15 min');
     else logger.error(line, alert.level === 'CRITICAL' ? 'NFS-e em UNKNOWN há mais de 2 h' : 'INCIDENTE: NFS-e em UNKNOWN há mais de 24 h; análise manual obrigatória');
+  },
+};
+
+/** O mesmo para a NFC-e (ADR-0079), com o evento `nfce.unknown_age`. */
+const nfceAlerts: NfceUnknownAlertSink = {
+  raise: (alert) => {
+    const line = { event: 'nfce.unknown_age', ...alert };
+    if (alert.level === 'WARNING') logger.warn(line, 'NFC-e em UNKNOWN há mais de 15 min');
+    else logger.error(line, alert.level === 'CRITICAL' ? 'NFC-e em UNKNOWN há mais de 2 h' : 'INCIDENTE: NFC-e em UNKNOWN há mais de 24 h; análise manual obrigatória');
   },
 };
 
@@ -94,6 +103,7 @@ const nfce =
           `orbita-nfe-${config.APP_VERSION}`,
         ),
         municipalities: loadMunicipalities(),
+        alerts: nfceAlerts,
         ...(artifactStore === undefined || archiveOptions === undefined ? {} : { archive: { store: artifactStore, retentionDays: archiveOptions.retentionDays, alerts: archiveAlerts } }),
       };
 if (config.NFCE_GATEWAY === 'simulator') logger.warn('NFC-e com autorizador SIMULADO (NFCE_GATEWAY=simulator): nada é enviado a órgão nenhum');

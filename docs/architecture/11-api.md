@@ -24,6 +24,8 @@ Recursos separados por modalidade (contratos diferentes), com consulta unificada
 | GET | `/v1/consumer-invoices?externalReference=…`, `/v1/consumer-invoices/{id}` | `nfce:read` — **implementado** |
 | GET | `/v1/consumer-invoices/{id}/xml` | `nfce:read` — **implementado** (`nfeProc` da nota autorizada, hash conferido, ADR-0073) |
 | GET | `/v1/consumer-invoices/{id}/danfe` | `nfce:read` — **implementado** (DANFE NFC-e em PDF, manual v6.0, ADR-0076) |
+| POST | `/v1/consumer-invoices/validation` | `nfce:issue` — **implementado** (sem efeitos, ADR-0077) |
+| GET | `/v1/consumer-invoices/{id}/diagnostics` | `nfce:debug` — **implementado** (tentativas e protocolo, sem XML, ADR-0078) |
 | POST | `/v1/product-invoices` | Fase 4 |
 | POST | `/v1/product-invoices/{id}/correction-letters` | NF-e apenas |
 | POST | `/v1/number-voidings` | NF-e/NFC-e |

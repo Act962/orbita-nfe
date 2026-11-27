@@ -31,7 +31,8 @@ export { nfceApiUnitOfWork, nfceWorkerUnitOfWork } from './infrastructure/persis
 export { DEFAULT_NFCE_PROCESSOR_OPTIONS, NfceSubmissionProcessor, type NfceProcessorOptions } from './application/nfce-processor.js';
 export { NfceReconciler } from './application/nfce-reconciler.js';
 export { NfceXmlArchiver, nfceArchiveKey } from './application/nfce-archiver.js';
-export type { NfceArtifactStore } from './application/ports.js';
+export { NfceUnknownEscalator, type NfceEscalationResult } from './application/nfce-unknown-escalator.js';
+export type { NfceArtifactStore, NfceUnknownAlert, NfceUnknownAlertSink } from './application/ports.js';
 export { buildNfeProc, XmlNfcePreparer, type NfceSupplementSource } from './infrastructure/xml/nfce-preparer.js';
 export { SimulatedNfceAuthorizer } from './infrastructure/sefaz/simulated-authorizer.js';
 export { PdfDanfeNfceRenderer } from './infrastructure/danfe/danfe-nfce-renderer.js';

@@ -65,7 +65,7 @@
 
 <header>
   <h1>orbita-nfe · Status do projeto</h1>
-  <p>Motor fiscal próprio (NFS-e, NFC-e, NF-e) para o Orbita e o NERP · Atualizado em <strong>25/11/2026</strong></p>
+  <p>Motor fiscal próprio (NFS-e, NFC-e, NF-e) para o Orbita e o NERP · Atualizado em <strong>27/11/2026</strong></p>
 </header>
 
 <h2>Visão geral</h2>
@@ -82,7 +82,7 @@
   </div>
   <div class="card kpi">
     <div class="label">Testes automatizados</div>
-    <div class="value">930 ✓</div>
+    <div class="value">935 ✓</div>
     <div class="note">Typecheck, lint, camadas e build verdes</div>
   </div>
   <div class="card kpi">
@@ -220,6 +220,7 @@
     <li><span class="tag block">Você</span><div>Perguntar à SEFAZ-PI se o Piauí aceita a emissão em contingência off-line da NFC-e</div></li>
     <li><span class="tag done">Pronto</span><div>Primeira conversa real com o autorizador da NFC-e (homologação), com o certificado de teste<small>O autorizador respondeu "serviço em operação" para o Piauí, o que confirma que é ele quem atende o estado. A consulta de uma nota inexistente respondeu "não consta", como esperado. Para conectar, foi preciso incluir no projeto o certificado raiz oficial do governo (ICP-Brasil), sem desligar nenhuma verificação.</small></div></li>
     <li><span class="tag done">Pronto</span><div>Proposta de como a API da NFC-e vai receber uma venda<small>Os dados da empresa (CNPJ, inscrição estadual, regime) saem sempre do cadastro, nunca do pedido. Os impostos de cada produto vêm sempre do seu sistema: o motor só confere, não escolhe.</small></div></li>
+    <li><span class="tag done">Pronto</span><div>Resultado da venda na mesma chamada, conferência antes de emitir, diagnóstico e alerta de nota parada<small>O caixa pode pedir para esperar o resultado e já receber a nota autorizada (ou o motivo da recusa) na resposta. Também pode conferir uma venda antes de fechá-la, sem gastar número. O suporte vê cada tentativa de envio de uma nota, sem ver o arquivo nem os dados do consumidor. Se uma nota ficar "em verificação" por mais de 15 minutos, o motor avisa, e o aviso sobe de nível com 2 e 24 horas.</small></div></li>
     <li><span class="tag done">Pronto</span><div>Cupom da nota de venda (DANFE NFC-e) em PDF<small>O cupom segue o manual oficial: dados da loja, itens, totais, formas de pagamento, troco, chave de acesso, QR Code e protocolo. Sai em bobina de 80 mm, pronto para a impressora do caixa. Em homologação vem marcado "sem valor fiscal".</small></div></li>
     <li><span class="tag done">Pronto</span><div>Cópia imutável do XML de cada nota de venda autorizada, fora do servidor, conferida periodicamente<small>Igual à nota de serviço: o XML vai para um armazenamento que ninguém consegue apagar nem alterar durante o prazo de guarda. O motor confere se o que ficou guardado é exatamente o que foi autorizado e repete a conferência de tempos em tempos, avisando se algo sumir ou mudar.</small></div></li>
     <li><span class="tag done">Pronto</span><div>Aviso automático (webhook) quando a nota de venda muda de situação, e download do XML autorizado<small>O seu sistema é avisado na hora quando a nota é autorizada, rejeitada, denegada ou fica em verificação, sem precisar consultar toda hora. O XML oficial da nota pode ser baixado e chega conferido.</small></div></li>
@@ -254,7 +255,7 @@
     <h2>Próximos passos (desenvolvimento)</h2>
     <div class="card">
       <ol>
-        <li>NFC-e: montagem do XML da nota e do DANFE NFC-e, depois do credenciamento e da escolha do QR Code</li>
+        <li>NFC-e: ligar o autorizador real do Piauí, depois do credenciamento e da escolha do QR Code</li>
         <li>NFS-e: primeira nota de teste autorizada (SEMF/DSF ou MEI de Teresina)</li>
         <li>Dedução por documentos e IBS/CBS (2027)</li>
         <li>Piloto controlado em produção</li>

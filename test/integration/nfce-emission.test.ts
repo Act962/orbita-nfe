@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { composeFiscalWorker } from '../../src/main/compose.js';
 import { loadMunicipalities } from '../../src/main/fiscal-resources.js';
 import { X509TrustStore } from '../../src/modules/certificates/public.js';
-import { PI_QR_CODE_URL, qrCodeV3Online, SimulatedNfceAuthorizer, XmlNfcePreparer, type NfceAuthorizerGateway } from '../../src/modules/nfce/public.js';
+import { PI_QR_CODE_URL, qrCodeV3Online, SimulatedNfceAuthorizer, XmlNfcePreparer, type NfceAuthorizerGateway, type NfceUnknownAlert } from '../../src/modules/nfce/public.js';
 import type { AuditContext } from '../../src/shared/application/audit.js';
 import { CompanyTransactions, type DatabaseHandle } from '../../src/shared/infrastructure/database/database.js';
 import { FiscalSchemaCatalog } from '../../src/shared/infrastructure/xml/fiscal-schema-catalog.js';
@@ -46,12 +46,14 @@ const preparer = new XmlNfcePreparer(
   'orbita-nfe-teste',
 );
 
+const alerts: NfceUnknownAlert[] = [];
+
 function buildWorker(g: NfceAuthorizerGateway = gateway) {
   const composed = composeFiscalWorker({
     db: worker.db,
     certificateKeks: [testCertificateKek().privateKey],
     trustStore: X509TrustStore.fromPem(pki.trustBundlePem),
-    nfce: { gateway: g, preparer, municipalities },
+    nfce: { gateway: g, preparer, municipalities, alerts: { raise: (a) => alerts.push(a) } },
     now,
   });
   if (composed.nfce === undefined) throw new Error('nfce não composto');
@@ -211,6 +213,13 @@ describe('envio da NFC-e (ADR-0072, ADR-0070)', () => {
     expect((await events(id)).map((e) => e['status'])).toEqual(['UNKNOWN', 'AUTHORIZED']);
     expect(s.nfe_proc_xml).toContain('<protNFe');
     expect(gateway.submits).toBe(1);
+
+    // ADR-0078: o diagnóstico mostra a tentativa incerta e as consultas pela chave, sem XML nem digest.
+    const d = await t.modules.nfce.diagnostics(companyId, app.id, 'HOMOLOGATION', id);
+    expect(d.invoice).toMatchObject({ status: 'AUTHORIZED', accessKey: s.access_key });
+    expect(d.attempts).toEqual([expect.objectContaining({ seq: 1, state: 'CLOSED', outcome: 'UNKNOWN', accessKey: s.access_key, outcomeCode: 'ECONNRESET', lookups: 1 })]);
+    expect(JSON.stringify(d.attempts)).not.toMatch(/digest|signed|<NFe/i);
+    await expect(t.modules.nfce.diagnostics(companyId, app.id, 'PRODUCTION', id)).rejects.toMatchObject({ code: 'CONSUMER_INVOICE_NOT_FOUND' });
   });
 
   it('nada chegou: duas respostas "não consta" espaçadas → PENDING e nova tentativa; a nota sai uma vez só', async () => {
@@ -229,6 +238,29 @@ describe('envio da NFC-e (ADR-0072, ADR-0070)', () => {
     expect(s.status).toBe('AUTHORIZED');
     expect(s.attempts.map((a) => a.outcome)).toEqual(['UNKNOWN', 'AUTHORIZED']);
     expect(gateway.received.get(s.access_key ?? '')).toBe(1);
+  });
+
+  it('alerta de UNKNOWN pela idade (ADR-0079): agendado na entrada, WARNING aos 15 min, para quando a nota sai de UNKNOWN', async () => {
+    gateway.onSubmit('PROCESS_THEN_DROP');
+    const id = await accept();
+    const { nfce } = buildWorker();
+    const sentAt = clock;
+    await nfce?.processor.process(companyId, id, WORKER);
+    const scheduled = await jobs(id, 'nfce.escalate');
+    expect(scheduled).toHaveLength(1);
+    expect(new Date(scheduled[0]?.run_at ?? 0).getTime()).toBe(sentAt.getTime() + 15 * MIN);
+
+    alerts.length = 0;
+    expect(await nfce?.escalator?.escalate(companyId, id, WORKER)).toMatchObject({ kind: 'NOT_YET' });
+    advance(16 * MIN);
+    expect(await nfce?.escalator?.escalate(companyId, id, WORKER)).toMatchObject({ kind: 'ALERTED', level: 'WARNING', next: new Date(sentAt.getTime() + 120 * MIN) });
+    expect(alerts).toEqual([{ level: 'WARNING', companyId, consumerInvoiceId: id, environment: 'HOMOLOGATION', ageSeconds: 16 * 60, attemptSeq: 1, lookups: 0 }]);
+    // O alerta só tem identificadores e contagens: nada da venda nem do XML.
+    expect(Object.keys(alerts[0] ?? {}).sort()).toEqual(['ageSeconds', 'attemptSeq', 'companyId', 'consumerInvoiceId', 'environment', 'level', 'lookups']);
+    expect((await state(id)).status).toBe('UNKNOWN');
+
+    expect(await nfce?.reconciler.reconcile(companyId, id, WORKER)).toEqual({ kind: 'AUTHORIZED' });
+    expect(await nfce?.escalator?.escalate(companyId, id, WORKER)).toEqual({ kind: 'STOPPED', reason: 'NOT_UNKNOWN' });
   });
 
   it('erro de consulta nunca leva a FAILED: backoff e nova consulta', async () => {

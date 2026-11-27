@@ -25,6 +25,8 @@ export const SCOPES = [
   /** NFC-e (ADR-0072): emitir e consultar. */
   'nfce:issue',
   'nfce:read',
+  /** Diagnóstico da NFC-e (tentativas, consultas, arquivamento), ADR-0078. Não implica nenhum outro. */
+  'nfce:debug',
 ] as const;
 
 export type Scope = (typeof SCOPES)[number];

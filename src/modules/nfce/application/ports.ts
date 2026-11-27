@@ -2,6 +2,7 @@ import type { KeyObject } from 'node:crypto';
 import type { AuditTrail } from '../../../shared/application/audit.js';
 import type { JobScheduler } from '../../../shared/application/job-queue.js';
 import type { EventOutbox } from '../../../shared/application/outbox.js';
+import type { EscalationLevel } from '../../../shared/domain/unknown-escalation.js';
 import type { ConsumerSale } from '../domain/consumer-sale.js';
 import type { AttemptOutcome, AttemptState, ConsumerInvoiceStatus } from '../domain/consumer-invoice.js';
 
@@ -63,6 +64,28 @@ export interface ConsumerInvoiceRepository {
   insert(invoice: NewConsumerInvoice): Promise<ConsumerInvoice>;
   /** `nfeProc` da nota autorizada e o SHA-256 gravado junto (ADR-0073). */
   storedXml(id: string): Promise<{ readonly xml: string | null; readonly sha256: string | null } | undefined>;
+  /** Arquivamento e tentativas, só metadados (ADR-0078): nenhum XML, nenhum digest. */
+  diagnostics(id: string): Promise<NfceDiagnosticsData>;
+}
+
+/** O que a API pode ler de uma tentativa (grant por coluna da 0039: sem o XML assinado e sem o digest). */
+export interface NfceAttemptSummary {
+  readonly seq: number;
+  readonly state: AttemptState;
+  readonly accessKey: string;
+  readonly issuedAt: Date;
+  readonly outcome: AttemptOutcome | null;
+  readonly outcomeCode: string | null;
+  readonly preparedAt: Date;
+  readonly sendingAt: Date | null;
+  readonly closedAt: Date | null;
+  readonly lookups: number;
+  readonly consecutiveLookupErrors: number;
+}
+
+export interface NfceDiagnosticsData {
+  readonly archive: { readonly sha256: string | null; readonly archivedAt: Date | null; readonly retainUntil: Date | null };
+  readonly attempts: readonly NfceAttemptSummary[];
 }
 
 /** O emitente no aceite: só o que decide se a loja pode emitir NFC-e (ADR-0071). */
@@ -258,6 +281,21 @@ export type NfceLookup =
 export interface NfceAuthorizerGateway {
   submit(signedXml: string, expected: { readonly accessKey: string; readonly digestValue: string }, context: NfceGatewayContext): Promise<NfceSubmission>;
   lookup(expected: { readonly accessKey: string; readonly digestValue: string }, context: NfceGatewayContext): Promise<NfceLookup>;
+}
+
+/** Alerta de NFC-e em UNKNOWN pela idade (ADR-0079): só identificadores e contagens. */
+export interface NfceUnknownAlert {
+  readonly level: EscalationLevel;
+  readonly companyId: string;
+  readonly consumerInvoiceId: string;
+  readonly environment: FiscalEnvironment;
+  readonly ageSeconds: number;
+  readonly attemptSeq: number;
+  readonly lookups: number;
+}
+
+export interface NfceUnknownAlertSink {
+  raise(alert: NfceUnknownAlert): void;
 }
 
 export interface NfceWorkerRepositories {

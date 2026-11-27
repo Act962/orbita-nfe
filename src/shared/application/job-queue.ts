@@ -174,6 +174,14 @@ export const QUEUES = {
     timeoutSeconds: 30,
     priority: 2,
   },
+  /** Alerta de NFC-e em UNKNOWN pela idade (ADR-0079); a próxima verificação é um job novo. */
+  'nfce.escalate': {
+    lane: 'fiscal',
+    maxAttempts: 5,
+    backoff: { baseSeconds: 60, maxSeconds: 900, jitter: 0.2 },
+    timeoutSeconds: 30,
+    priority: 2,
+  },
   /** Distribui um evento do outbox às assinaturas de webhook interessadas. */
   'webhooks.fanout': {
     lane: 'general',

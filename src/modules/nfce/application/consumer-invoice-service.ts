@@ -4,7 +4,7 @@ import { BusinessRuleError, ConflictError, ForbiddenError, InternalError, NotFou
 import type { IdGenerator, UnitOfWork } from '../../../shared/application/unit-of-work.js';
 import { isAcceptableNumericCode } from '../domain/access-key.js';
 import { checkConsumerSale, type ConsumerSale } from '../domain/consumer-sale.js';
-import type { ConsumerInvoice, FiscalEnvironment, NfceApiRepositories, NfceDanfeRenderer, NfceIssuer, NfceSeries } from './ports.js';
+import type { ConsumerInvoice, FiscalEnvironment, NfceApiRepositories, NfceDanfeRenderer, NfceDiagnosticsData, NfceIssuer, NfceSeries } from './ports.js';
 
 export interface AcceptConsumerInvoice {
   readonly companyId: string;
@@ -20,6 +20,9 @@ export interface AcceptConsumerInvoice {
   /** Contrato v1 (ADR-0069), já conferido na forma pela apresentação. */
   readonly sale: ConsumerSale;
 }
+
+/** O que a validação sem emitir precisa: o aceite sem a idempotência (ADR-0077). */
+export type ValidateConsumerInvoice = Omit<AcceptConsumerInvoice, 'idempotencyKey' | 'requestHash'>;
 
 /** XML pronto para download: os bytes, o SHA-256 conferido e o nome sugerido. */
 export interface NfceXmlDownload {
@@ -83,6 +86,15 @@ export class ConsumerInvoiceService {
     }
   }
 
+  /**
+   * Validação sem emitir (ADR-0077): as mesmas conferências do aceite, na mesma ordem e com os mesmos
+   * erros, sem numerar, gravar, auditar nem enfileirar. A transação só lê.
+   */
+  async validate(input: ValidateConsumerInvoice): Promise<{ readonly series: NfceSeries }> {
+    const { series } = await this.uow.inCompany(input.companyId, (r) => this.check(r, input));
+    return { series };
+  }
+
   /** Nota de outra aplicação ou de outro ambiente é tratada como inexistente. */
   async get(companyId: string, clientApplicationId: string, environment: FiscalEnvironment, id: string): Promise<ConsumerInvoice> {
     const found = await this.uow.inCompany(companyId, (r) => r.invoices.findById(id));
@@ -105,6 +117,19 @@ export class ConsumerInvoiceService {
       const sha256 = createHash('sha256').update(stored.xml, 'utf8').digest('hex');
       if (sha256 !== stored.sha256) throw new InternalError('NFCE_XML_HASH_MISMATCH');
       return { xml: stored.xml, sha256, fileName: `${invoice.accessKey}-procNFe.xml` };
+    });
+  }
+
+  /**
+   * Diagnóstico da NFC-e (ADR-0078, molde do ADR-0055): arquivamento e cada tentativa, com o código
+   * do resultado e as consultas pela chave. Só metadados: nenhum XML, nenhum dado do consumidor.
+   * A mesma visibilidade do `get`.
+   */
+  async diagnostics(companyId: string, clientApplicationId: string, environment: FiscalEnvironment, id: string): Promise<{ readonly invoice: ConsumerInvoice } & NfceDiagnosticsData> {
+    return this.uow.inCompany(companyId, async (r) => {
+      const invoice = await r.invoices.findById(id);
+      if (invoice?.clientApplicationId !== clientApplicationId || invoice.environment !== environment) throw notFound();
+      return { invoice, ...(await r.invoices.diagnostics(id)) };
     });
   }
 
@@ -150,7 +175,7 @@ export class ConsumerInvoiceService {
   }
 
   /** Conferências antes de numerar, sem escrever nada. A ordem é a do NFS-e. */
-  private async check(r: NfceApiRepositories, input: AcceptConsumerInvoice): Promise<{ readonly issuer: NfceIssuer; readonly series: NfceSeries }> {
+  private async check(r: NfceApiRepositories, input: ValidateConsumerInvoice): Promise<{ readonly issuer: NfceIssuer; readonly series: NfceSeries }> {
     const reference = input.sale.externalReference;
     if (reference !== undefined) {
       const occupied = await r.invoices.findActiveByExternalReference(input.clientApplicationId, input.environment, reference);

@@ -6,6 +6,7 @@ import { retryDelaySeconds } from '../../../shared/domain/backoff.js';
 import { DEFAULT_RECONCILIATION_POLICY, type ReconciliationPolicy } from '../../../shared/domain/reconciliation.js';
 import { recoverStuck, type ConsumerInvoiceStatus } from '../domain/consumer-invoice.js';
 import { scheduleNfceArchive } from './nfce-archiver.js';
+import { scheduleNfceEscalation } from './nfce-unknown-escalator.js';
 import type {
   ConsumerInvoice,
   ConsumerInvoiceStatusChange,
@@ -185,6 +186,7 @@ export class NfceSubmissionProcessor {
           await this.settle(r, invoice, 'PROCESSING', 'UNKNOWN', context, { leaseUntil: null });
           // Duplicidade: a chave (ou o número) existe lá; consulta já. Senão, a espera mínima.
           await scheduleLookup(r, companyId, invoice.id, attempt.seq, 0, outcome.kind === 'ALREADY_EXISTS' ? at : new Date(sendingAt.getTime() + this.options.reconciliation.minWaitAfterSendingMs), context);
+          await scheduleNfceEscalation(r.jobs, { companyId, invoiceId: invoice.id, attemptSeq: attempt.seq, since: sendingAt, correlationId: context.correlationId });
           return;
       }
     });
@@ -206,6 +208,7 @@ export class NfceSubmissionProcessor {
         await this.settle(r, invoice, 'PROCESSING', 'UNKNOWN', context, { leaseUntil: null });
         const sendingAt = open.sendingAt ?? at;
         await scheduleLookup(r, companyId, invoice.id, open.seq, 0, new Date(sendingAt.getTime() + this.options.reconciliation.minWaitAfterSendingMs), context);
+        await scheduleNfceEscalation(r.jobs, { companyId, invoiceId: invoice.id, attemptSeq: open.seq, since: sendingAt, correlationId: context.correlationId });
         return { kind: 'TRANSMITTED', outcome: 'UNKNOWN' } as const;
       }
       if (open !== undefined) await r.attempts.close(open.id, 'RECOVERED_NOT_SENT', null, at);

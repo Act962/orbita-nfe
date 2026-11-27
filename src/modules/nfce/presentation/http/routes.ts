@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { HttpApp } from '../../../../shared/presentation/http/http-app.js';
 import { withIssueFields } from '../../../../shared/presentation/http/issue-fields.js';
+import { MAX_WAIT_SECONDS, settle, type WaitPolicy } from '../../../../shared/presentation/http/prefer-wait.js';
 import { ProblemSchema, commonErrorResponses } from '../../../../shared/presentation/http/problem.js';
 import { auditContextOf, authErrorResponses, callerOf, companyIdOf, CompanyHeaders } from '../../../../shared/presentation/http/request-context.js';
 import type { ConsumerInvoiceService } from '../../application/consumer-invoice-service.js';
@@ -25,7 +26,28 @@ const IdempotencyHeaders = CompanyHeaders.extend({
     .min(1)
     .max(255)
     .meta({ description: 'Obrigatório. Repetir a mesma chave com o mesmo corpo devolve a mesma nota (nunca emite outra).' }),
+  prefer: z
+    .string()
+    .optional()
+    .meta({ description: `Opcional. \`wait=<segundos>\` (RFC 7240, máximo ${String(MAX_WAIT_SECONDS)}): espera o resultado antes de responder.` }),
 });
+
+/**
+ * `Prefer: wait` na NFC-e (ADR-0077). UNKNOWN não é final nem em andamento: a espera para e a
+ * resposta é 202, porque a consulta pela chave leva mais tempo.
+ */
+const CONSUMER_INVOICE_WAIT: WaitPolicy<ConsumerInvoice> = {
+  inFlight: (i) => i.status === 'PENDING' || i.status === 'PROCESSING',
+  final: (i) => i.status === 'AUTHORIZED' || i.status === 'REJECTED' || i.status === 'DENIED' || i.status === 'FAILED',
+};
+
+const ValidationResponse = z
+  .object({
+    valid: z.literal(true),
+    environment: z.enum(['PRODUCTION', 'HOMOLOGATION']),
+    series: z.object({ id: z.uuid(), series: z.string() }).meta({ description: 'Série que seria usada. Nenhum número é reservado.' }),
+  })
+  .meta({ id: 'ConsumerInvoiceValidation' });
 
 const ConsumerInvoiceResponse = z
   .object({
@@ -56,6 +78,41 @@ const ConsumerInvoiceResponse = z
     }),
   })
   .meta({ id: 'ConsumerInvoice' });
+
+/** Diagnóstico (ADR-0078): só metadados e códigos. Nenhum XML, nenhum digest, nenhum dado do consumidor. */
+const DiagnosticsResponse = z
+  .object({
+    consumerInvoiceId: z.uuid(),
+    status: z.enum(CONSUMER_INVOICE_STATUSES),
+    protocol: z.object({
+      accessKey: z.string().nullable().meta({ description: 'Chave gravada pelo autorizador (nota autorizada ou denegada).' }),
+      authorizerStatusCode: z.string().nullable(),
+      protocolNumber: z.string().nullable(),
+      nfeProcSha256: z.string().nullable().meta({ description: 'SHA-256 do nfeProc (o mesmo do ETag do download).' }),
+      archivedAt: z.iso.datetime().nullable().meta({ description: 'Quando a cópia imutável foi gravada no bucket (ADR-0074).' }),
+      retainUntil: z.iso.datetime().nullable(),
+    }),
+    attempts: z
+      .array(
+        z.object({
+          seq: z.number().int(),
+          state: z.string().meta({ description: 'PREPARED, SENDING ou CLOSED.' }),
+          accessKey: z.string().meta({ description: 'Chave montada nesta tentativa (o XML é montado a cada tentativa, regra B09-40).' }),
+          issuedAt: z.iso.datetime().meta({ description: 'dhEmi desta tentativa.' }),
+          outcome: z.string().nullable().meta({ description: 'AUTHORIZED, REJECTED, DENIED, NOT_SENT, UNKNOWN, ALREADY_EXISTS, RECOVERED_NOT_SENT ou RECOVERED_UNKNOWN.' }),
+          outcomeCode: z.string().nullable().meta({ description: 'cStat do autorizador ou código do erro de transporte. Nunca mensagem livre.' }),
+          preparedAt: z.iso.datetime(),
+          sendingAt: z.iso.datetime().nullable(),
+          closedAt: z.iso.datetime().nullable(),
+          lookups: z.number().int().meta({ description: 'Consultas pela chave desta tentativa.' }),
+          consecutiveLookupErrors: z.number().int(),
+        }),
+      )
+      .meta({ description: 'Tentativas de transmissão, da primeira para a última.' }),
+  })
+  .meta({ id: 'ConsumerInvoiceDiagnostics' });
+
+const iso = (at: Date | null): string | null => at?.toISOString() ?? null;
 
 const invoicePath = (id: string): string => `/v1/consumer-invoices/${id}`;
 
@@ -115,12 +172,14 @@ export function registerNfceRoutes(app: HttpApp, service: ConsumerInvoiceService
           'Aceita a venda, reserva o número e devolve 202 com status PENDING; a transmissão é assíncrona (acompanhe por GET). ' +
           'Os dados fiscais da venda (CFOP, NCM, CSOSN, PIS/COFINS, valores) são seus: o motor confere o formato do leiaute e as regras oficiais da NFC-e (ADR-0069), e nunca os escolhe. ' +
           'O emitente sai do cadastro do estabelecimento (perfil estadual, ADR-0071). O ambiente vem da credencial. ' +
-          'Repetir a mesma `Idempotency-Key` com o mesmo corpo devolve 200 com a mesma nota.',
+          'Repetir a mesma `Idempotency-Key` com o mesmo corpo devolve 200 com a mesma nota. ' +
+          'Com `Prefer: wait=<segundos>`, a resposta espera o resultado: 201 se a nota terminou dentro do prazo (AUTHORIZED, REJECTED, DENIED ou FAILED), 202 se ainda não (inclusive UNKNOWN).',
         security: [{ apiKey: [] }],
         headers: IdempotencyHeaders,
         body: ConsumerInvoiceBody,
         response: {
           200: ConsumerInvoiceResponse.describe('Repetição idempotente: a nota já aceita.'),
+          201: ConsumerInvoiceResponse.describe('Com `Prefer: wait`: a nota terminou dentro da espera (AUTHORIZED, REJECTED, DENIED ou FAILED).'),
           202: ConsumerInvoiceResponse,
           ...commonErrorResponses,
           400: ProblemSchema.describe('VALIDATION_FAILED: corpo fora do contrato (formatos e tamanhos do XSD do PL_010h) ou sem Idempotency-Key.'),
@@ -145,10 +204,52 @@ export function registerNfceRoutes(app: HttpApp, service: ConsumerInvoiceService
           auditContextOf(request),
         ),
       );
-      return reply
-        .status(result.replayed ? 200 : 202)
-        .header('location', invoicePath(result.invoice.id))
-        .send(invoiceJson(result.invoice));
+      const settled = await settle(
+        request.headers.prefer,
+        reply.raw,
+        { value: result.invoice, replayed: result.replayed },
+        () => service.get(companyIdOf(request), caller.clientApplicationId, environment, result.invoice.id),
+        CONSUMER_INVOICE_WAIT,
+      );
+      if (settled.applied !== undefined) reply.header('preference-applied', settled.applied);
+      return reply.status(settled.status).header('location', invoicePath(result.invoice.id)).send(invoiceJson(settled.value));
+    },
+  );
+
+  app.post(
+    '/v1/consumer-invoices/validation',
+    {
+      config: { auth: { scope: 'nfce:issue', company: true } },
+      schema: {
+        tags: [TAG],
+        summary: 'Validar NFC-e sem emitir',
+        description:
+          'Confere a venda como no `POST /v1/consumer-invoices`, na mesma ordem e com os mesmos erros: contrato, referência externa, estabelecimento, perfil estadual, ' +
+          'regras oficiais da NFC-e (ADR-0069), habilitação de produção e série. **Não tem efeitos:** não numera, não grava, não audita nem transmite, e não pede Idempotency-Key. ' +
+          'Passar aqui não garante a autorização: o cadastro do contribuinte e as regras que dependem da base da SEFAZ são do autorizador.',
+        security: [{ apiKey: [] }],
+        headers: CompanyHeaders,
+        body: ConsumerInvoiceBody,
+        response: {
+          200: ValidationResponse,
+          ...commonErrorResponses,
+          400: ProblemSchema.describe('VALIDATION_FAILED: corpo fora do contrato (formatos e tamanhos do XSD do PL_010h).'),
+          ...authErrorResponses,
+          403: ProblemSchema.describe('Sem escopo/concessão, ou PRODUCTION_NOT_ENABLED.'),
+          404: ProblemSchema.describe('ESTABLISHMENT_NOT_FOUND'),
+          409: ProblemSchema.describe('DOCUMENT_IN_PROGRESS ou DOCUMENT_ALREADY_AUTHORIZED (referência externa ocupada).'),
+          422: ProblemSchema.describe('NFCE_RULES_VIOLATED, NFCE_STATE_PROFILE_REQUIRED, NFCE_SERIES_NOT_AVAILABLE, NFCE_SERIES_REQUIRED, ESTABLISHMENT_INACTIVE.'),
+        },
+      },
+    },
+    async (request) => {
+      const caller = callerOf(request);
+      const environment = environmentOf(caller.environment);
+      const { establishmentId, seriesId, ...sale } = request.body;
+      const result = await withIssueFields('body', () =>
+        service.validate({ companyId: companyIdOf(request), clientApplicationId: caller.clientApplicationId, environment, establishmentId, seriesId, sale }),
+      );
+      return { valid: true as const, environment, series: { id: result.series.id, series: result.series.series } };
     },
   );
 
@@ -239,6 +340,58 @@ export function registerNfceRoutes(app: HttpApp, service: ConsumerInvoiceService
         .header('content-disposition', `inline; filename="${danfe.fileName}"`)
         .header('cache-control', 'private, no-store')
         .send(Buffer.from(danfe.pdf));
+    },
+  );
+
+  app.get(
+    '/v1/consumer-invoices/:id/diagnostics',
+    {
+      config: { auth: { scope: 'nfce:debug', company: true } },
+      schema: {
+        tags: [TAG],
+        summary: 'Diagnóstico da NFC-e',
+        description:
+          'Para investigar uma nota: protocolo, arquivamento e cada tentativa de transmissão (chave e dhEmi montados, código do resultado e consultas pela chave). ' +
+          'Só metadados e códigos: nenhum XML e nenhum dado do consumidor. Exige o escopo próprio `nfce:debug` (ADR-0078), que `nfce:read` não inclui.',
+        security: [{ apiKey: [] }],
+        headers: CompanyHeaders,
+        params: z.object({ id: z.uuid() }),
+        response: {
+          200: DiagnosticsResponse,
+          ...commonErrorResponses,
+          ...authErrorResponses,
+          404: ProblemSchema.describe('CONSUMER_INVOICE_NOT_FOUND (inexistente, de outra empresa, de outra aplicação ou de outro ambiente).'),
+        },
+      },
+    },
+    async (request) => {
+      const caller = callerOf(request);
+      const d = await service.diagnostics(companyIdOf(request), caller.clientApplicationId, environmentOf(caller.environment), request.params.id);
+      return {
+        consumerInvoiceId: d.invoice.id,
+        status: d.invoice.status,
+        protocol: {
+          accessKey: d.invoice.accessKey,
+          authorizerStatusCode: d.invoice.authorizerStatusCode,
+          protocolNumber: d.invoice.protocolNumber,
+          nfeProcSha256: d.archive.sha256,
+          archivedAt: iso(d.archive.archivedAt),
+          retainUntil: iso(d.archive.retainUntil),
+        },
+        attempts: d.attempts.map((a) => ({
+          seq: a.seq,
+          state: a.state,
+          accessKey: a.accessKey,
+          issuedAt: a.issuedAt.toISOString(),
+          outcome: a.outcome,
+          outcomeCode: a.outcomeCode,
+          preparedAt: a.preparedAt.toISOString(),
+          sendingAt: iso(a.sendingAt),
+          closedAt: iso(a.closedAt),
+          lookups: a.lookups,
+          consecutiveLookupErrors: a.consecutiveLookupErrors,
+        })),
+      };
     },
   );
 

@@ -13,6 +13,7 @@ import { connect } from './support/db.js';
 let t: TestApi;
 let key: string;
 let otherAppKey: string;
+let debugKey: string;
 let companyId: string;
 let establishmentId: string;
 let bareEstablishmentId: string;
@@ -44,6 +45,8 @@ beforeAll(async () => {
   t = await startTestApi();
   const app = await createClientApp(t.admin, 'nfce-api');
   key = await app.key(['companies:create', 'companies:manage', 'fiscal-settings:manage', 'nfce:issue', 'nfce:read']);
+  // Mesma aplicação, credencial só com o diagnóstico (ADR-0078).
+  debugKey = await app.key(['nfce:debug']);
   const other = await createClientApp(t.admin, 'nfce-outra');
   otherAppKey = await other.key(['nfce:issue', 'nfce:read']);
   const company = await createCompany(t.app, key);
@@ -127,6 +130,76 @@ describe('POST /v1/consumer-invoices', () => {
     const res = await post({ establishmentId, ...MINIMAL_SALE }, 'nfce-live', live);
     expect(res.statusCode).toBe(403);
     expect(problemCode(res)).toBe('PRODUCTION_NOT_ENABLED');
+  });
+});
+
+describe('POST /v1/consumer-invoices/validation (ADR-0077)', () => {
+  const validate = (body: unknown, credential = key) =>
+    t.app.inject({ method: 'POST', url: '/v1/consumer-invoices/validation', headers: bearer(credential, companyId), payload: body as object });
+
+  it('venda válida → 200 com a série, sem numerar, gravar nem enfileirar', async () => {
+    const superuser = connect('superuser');
+    const count = async () =>
+      new CompanyTransactions(superuser.db).run(companyId, async (tx) => ({
+        invoices: Number((await tx.execute<{ n: string }>(sql`select count(*) as n from consumer_invoices`)).rows[0]?.n),
+        jobs: Number((await tx.execute<{ n: string }>(sql`select count(*) as n from jobs where queue = 'nfce.process'`)).rows[0]?.n),
+        audit: Number((await tx.execute<{ n: string }>(sql`select count(*) as n from audit_log`)).rows[0]?.n),
+        next: (await tx.execute<{ next_number: string }>(sql`select next_number from document_series where establishment_id = ${establishmentId} and kind = 'NFCE'`)).rows[0]?.next_number,
+      }));
+    const before = await count();
+    const res = await validate({ establishmentId, externalReference: 'so-validar', ...MINIMAL_SALE });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({ valid: true, environment: 'HOMOLOGATION', series: { series: '1' } });
+    expect(await count()).toEqual(before);
+    await superuser.close();
+  });
+
+  it('os mesmos erros da emissão: regras oficiais (422), perfil estadual (422), forma (400), referência ocupada (409)', async () => {
+    const cfop = await validate({ establishmentId, ...MINIMAL_SALE, items: [{ ...MINIMAL_SALE.items[0], cfop: '5405' }] });
+    expect(cfop.json()).toMatchObject({ code: 'NFCE_RULES_VIOLATED', issues: [{ ruleId: 'N12a-40', field: 'body.items[0].cfop' }] });
+    expect(problemCode(await validate({ establishmentId: bareEstablishmentId, ...MINIMAL_SALE }))).toBe('NFCE_STATE_PROFILE_REQUIRED');
+    expect((await validate({ establishmentId, ...MINIMAL_SALE, delivery: {} })).statusCode).toBe(400);
+    await post({ establishmentId, externalReference: 'validar-ocupada', ...MINIMAL_SALE }, 'nfce-validar-ocupada');
+    const occupied = await validate({ establishmentId, externalReference: 'validar-ocupada', ...MINIMAL_SALE });
+    expect(occupied.statusCode).toBe(409);
+    expect(problemCode(occupied)).toBe('DOCUMENT_IN_PROGRESS');
+  });
+});
+
+describe('Prefer: wait na emissão (ADR-0077)', () => {
+  it('sem worker, a nota segue PENDING: 202 depois da espera, com Preference-Applied', async () => {
+    const res = await t.app.inject({
+      method: 'POST',
+      url: '/v1/consumer-invoices',
+      headers: { ...bearer(key, companyId), 'idempotency-key': 'nfce-wait', prefer: 'wait=1' },
+      payload: { establishmentId, ...MINIMAL_SALE },
+    });
+    expect(res.statusCode, res.body).toBe(202);
+    expect(res.headers['preference-applied']).toBe('wait=1');
+    expect(res.json()).toMatchObject({ status: 'PENDING' });
+  });
+});
+
+describe('GET /v1/consumer-invoices/:id/diagnostics (ADR-0078)', () => {
+  it('exige nfce:debug (nfce:read não basta); com o escopo, nota sem tentativa ainda', async () => {
+    const created = await post({ establishmentId, ...MINIMAL_SALE }, 'nfce-diag');
+    const id = created.json<{ id: string }>().id;
+    const denied = await t.app.inject({ method: 'GET', url: `/v1/consumer-invoices/${id}/diagnostics`, headers: bearer(key, companyId) });
+    expect(denied.statusCode).toBe(403);
+    const own = await t.app.inject({ method: 'GET', url: `/v1/consumer-invoices/${id}/diagnostics`, headers: bearer(debugKey, companyId) });
+    expect(own.statusCode, own.body).toBe(200);
+    expect(own.json()).toEqual({
+      consumerInvoiceId: id,
+      status: 'PENDING',
+      protocol: { accessKey: null, authorizerStatusCode: null, protocolNumber: null, nfeProcSha256: null, archivedAt: null, retainUntil: null },
+      attempts: [],
+    });
+    const otherApp = await createClientApp(t.admin, 'nfce-debug-outra');
+    const otherDebugKey = await otherApp.key(['nfce:debug']);
+    await t.admin.grantCompany(otherApp.id, companyId);
+    // A nota é da primeira aplicação: outra, mesmo com o escopo, não a enxerga.
+    const other = await t.app.inject({ method: 'GET', url: `/v1/consumer-invoices/${id}/diagnostics`, headers: bearer(otherDebugKey, companyId) });
+    expect(problemCode(other)).toBe('CONSUMER_INVOICE_NOT_FOUND');
   });
 });
 

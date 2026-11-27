@@ -1,12 +1,26 @@
 ---
 title: Changelog da API
 status: current
-last_updated: 2026-11-26
+last_updated: 2026-11-27
 ---
 
 # Changelog da API
 
 Mudanças da API pública por data, da mais recente para a mais antiga. Política de compatibilidade em [versionamento](/guides/versionamento.md).
+
+## 2026-11-27 — v1 (acompanhamento da NFC-e)
+
+**Adicionado:**
+
+- **`Prefer: wait=<segundos>` em `POST /v1/consumer-invoices`** (máximo de 20 s), ADR-0077:
+  - 201 se a nota terminou dentro da espera (`AUTHORIZED`, `REJECTED`, `DENIED` ou `FAILED`);
+  - 202 se não terminou, inclusive em `UNKNOWN`.
+- **`POST /v1/consumer-invoices/validation`** (`nfce:issue`): as mesmas conferências e os mesmos erros da emissão, sem numerar, gravar nem transmitir, e sem `Idempotency-Key`. Responde 200 com a série que seria usada (ADR-0077).
+- **Escopo `nfce:debug` e `GET /v1/consumer-invoices/{id}/diagnostics`:** protocolo, arquivamento e cada tentativa de transmissão. Só metadados e códigos, sem XML (ADR-0078).
+
+**Alterado (só documentação):**
+
+- `POST /v1/webhook-deliveries/redeliveries` e o filtro `subjectId` aceitam o id da NFC-e: reenviam o último `consumer_invoice.status_changed`.
 
 ## 2026-11-26 — v1 (NFC-e, com o autorizador simulado)
 

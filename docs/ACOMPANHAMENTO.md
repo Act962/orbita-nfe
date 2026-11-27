@@ -183,6 +183,16 @@ Diagnóstico: [nfce-piaui-diagnostico.md](fiscal/nfce-piaui-diagnostico.md). 16 
   - Datas no horário local, vírgula decimal e forma de pagamento pela tabela `tPag` do Anexo I.
   - Em homologação traz "SEM VALOR FISCAL".
   - `GET /v1/consumer-invoices/{id}/danfe`.
+- [x] **Espera e validação na NFC-e** ([ADR-0077](adr/0077-espera-e-validacao-nfce.md)):
+  - `Prefer: wait` na emissão: 201 com o resultado dentro da espera, 202 se não terminou (inclusive `UNKNOWN`). O mecanismo foi para `shared`.
+  - `POST /v1/consumer-invoices/validation`: as mesmas conferências e os mesmos erros do aceite, sem numerar nem gravar.
+- [x] **Diagnóstico da NFC-e** ([ADR-0078](adr/0078-diagnostico-nfce.md)): `GET /v1/consumer-invoices/{id}/diagnostics` com o escopo novo `nfce:debug`.
+  - Mostra o protocolo, o arquivamento e cada tentativa (chave, `dhEmi`, código e consultas).
+  - Nunca mostra XML nem digest: só lê as colunas que a API já tinha permissão de ler.
+  - O reenvio do webhook pelo documento já servia para a NFC-e; só a documentação mudou.
+- [x] **Alerta de NFC-e em UNKNOWN** ([ADR-0079](adr/0079-alerta-unknown-nfce.md)): fila `nfce.escalate`, com a mesma regra da NFS-e (15 min, 2 h, 24 h), agora em `shared/domain`.
+  - O primeiro alerta é agendado na transação que leva a nota a `UNKNOWN`.
+  - A saída é o log `nfce.unknown_age`, só com identificadores.
 - [ ] **Falta para emitir de verdade:** o adaptador real do SVRS, que depende do credenciamento.
 - [ ] **Do responsável:** autorizar o download do `ICP-Brasilv10.crt` do ITI, para conferir a raiz copiada do repositório do Windows.
 
@@ -802,6 +812,9 @@ Node 24.12, TypeScript 6.0, Fastify 5.12, Zod 4.6, fastify-type-provider-zod 7.0
 | 2026-11-26 | Arquivamento do nfeProc da NFC-e com Object Lock, no molde da NFS-e | 0074 |
 | 2026-11-26 | Conferência periódica dos XML arquivados estendida à NFC-e | 0075 |
 | 2026-11-26 | DANFE NFC-e em PDF pelo manual v6.0, só com o que está no XML | 0076 |
+| 2026-11-27 | `Prefer: wait` e validação sem emitir na NFC-e, com o mecanismo da espera em `shared` | 0077 |
+| 2026-11-27 | Diagnóstico da NFC-e com o escopo `nfce:debug`, sem XML nem digest | 0078 |
+| 2026-11-27 | Alerta de NFC-e em UNKNOWN pela idade (fila `nfce.escalate`), regra comum em `shared` | 0079 |
 | 2026-11-23 | XML autorizado da NFS-e arquivado no bucket com Object Lock, com hash e conferência da releitura; retenção sem padrão (prazo legal) | 0048 |
 | 2026-11-23 | Consulta pela referência externa e validação sem efeitos (ADR-0026, itens 1 e 4); referência externa única por ambiente | 0047 |
 | 2026-11-23 | Substituição pela DSF; E0065 (mesmo canal da original) no aceite e no banco; cancelamento pela DSF em espera, por falta de consulta de evento | 0046 |

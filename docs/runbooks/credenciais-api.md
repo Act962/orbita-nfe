@@ -8,7 +8,7 @@ Referências: ADR-0012, docs/architecture/09 §1 e 14 §B3. Código: `src/module
 - **Concessão** (`company_grants`): a aplicação X pode operar a empresa Y. Toda rota de empresa exige `X-Company-Id` e confere a concessão **no servidor, a cada requisição, sem cache**.
 - Quem cria uma empresa (`POST /v1/companies`, escopo `companies:create`) recebe a concessão para ela na mesma transação.
 
-Escopos: `companies:create`, `companies:read`, `companies:manage`, `fiscal-settings:read`, `fiscal-settings:manage`, `certificates:manage`, `webhooks:manage`, `nfse:issue`, `nfse:read`, `nfse:cancel`, `nfse:debug`. `:manage` implica `:read`. `nfse:debug` (diagnóstico da nota, ADR-0055) não implica nem é implicado por nenhum outro: dê só à credencial de suporte.
+Escopos: `companies:create`, `companies:read`, `companies:manage`, `fiscal-settings:read`, `fiscal-settings:manage`, `certificates:manage`, `webhooks:manage`, `nfse:issue`, `nfse:read`, `nfse:cancel`, `nfse:debug`, `nfce:issue`, `nfce:read`, `nfce:debug`. `:manage` implica `:read`. `nfse:debug` e `nfce:debug` (diagnóstico da nota, ADR-0055 e ADR-0078) não implicam nem são implicados por nenhum outro: dê só à credencial de suporte.
 
 ## Pepper (segredo)
 - Arquivo com ≥ 32 bytes, montado **só** no container da API e no job da CLI. Variável: `API_KEY_PEPPER_FILE` (caminho, nunca o valor).

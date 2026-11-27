@@ -1,18 +1,16 @@
 import type { AuditContext } from '../../../shared/application/audit.js';
 import type { JobScheduler } from '../../../shared/application/job-queue.js';
 import type { UnitOfWork } from '../../../shared/application/unit-of-work.js';
+import { escalationJobKey } from '../../../shared/domain/unknown-escalation.js';
 import { DEFAULT_ESCALATION_POLICY, escalationLevel, nextEscalationAt, type EscalationLevel, type EscalationPolicy } from '../domain/unknown-escalation.js';
 import type { NfseWorkerRepositories, UnknownAlertSink } from './ports.js';
+
+export { escalationJobKey };
 
 export type EscalationResult =
   | { readonly kind: 'STOPPED'; readonly reason: 'NOT_FOUND' | 'NOT_UNKNOWN' | 'NO_ATTEMPT' }
   | { readonly kind: 'ALERTED'; readonly level: EscalationLevel; readonly next: Date }
   | { readonly kind: 'NOT_YET'; readonly next: Date };
-
-/** Chave do job de escalonamento: o horário da verificação, para duas cadeias convergirem. */
-export function escalationJobKey(invoiceId: string, attemptSeq: number, at: Date): string {
-  return `${invoiceId}:escalate:${attemptSeq}:${at.getTime()}`;
-}
 
 /** Agenda a primeira verificação quando o documento entra em UNKNOWN (mesma transação). */
 export async function scheduleFirstEscalation(

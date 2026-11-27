@@ -86,12 +86,12 @@ const DeliveryQuery = z.object({
   subscriptionId: z.uuid().optional(),
   eventId: z.uuid().optional(),
   status: z.enum(DELIVERY_STATUSES).optional(),
-  subjectId: z.string().min(1).max(100).optional().meta({ description: 'Documento do evento (`subject.id`), ex.: o id da NFS-e.' }),
+  subjectId: z.string().min(1).max(100).optional().meta({ description: 'Documento do evento (`subject.id`), ex.: o id da NFS-e ou da NFC-e.' }),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
 const SubjectRedeliveryBody = z
-  .object({ subjectId: z.string().min(1).max(100).meta({ description: 'Documento do evento (`subject.id`), ex.: o id da NFS-e.' }) })
+  .object({ subjectId: z.string().min(1).max(100).meta({ description: 'Documento do evento (`subject.id`), ex.: o id da NFS-e ou da NFC-e.' }) })
   .strict();
 
 const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
@@ -325,7 +325,7 @@ export function registerWebhookRoutes(app: HttpApp, service: WebhookService): vo
         tags: [TAG],
         summary: 'Reenviar o último evento de um documento',
         description:
-          'Para cada assinatura ATIVA da aplicação, reenvia o evento mais recente do documento que ela já recebeu (ex.: o último `service_invoice.status_changed` de uma NFS-e), ' +
+          'Para cada assinatura ATIVA da aplicação, reenvia o evento mais recente do documento que ela já recebeu (ex.: o último `service_invoice.status_changed` de uma NFS-e ou `consumer_invoice.status_changed` de uma NFC-e), ' +
           'com o mesmo `webhook-id` e tentativas zeradas. Não cria evento novo nem alcança assinatura de outra aplicação (ADR-0056).',
         security: [{ apiKey: [] }],
         headers: CompanyHeaders,

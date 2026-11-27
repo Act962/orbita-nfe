@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, desc, eq, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
 import type { AuditTrail } from '../../../../shared/application/audit.js';
 import { ConflictError, NotFoundError } from '../../../../shared/application/errors.js';
 import type { JobScheduler } from '../../../../shared/application/job-queue.js';
@@ -134,6 +134,36 @@ export function consumerInvoiceRepository(tx: Transaction): ConsumerInvoiceRepos
     async storedXml(id) {
       const rows = await tx.select({ xml: consumerInvoices.nfeProcXml, sha256: consumerInvoices.nfeProcXmlSha256 }).from(consumerInvoices).where(eq(consumerInvoices.id, id)).limit(1);
       return rows[0];
+    },
+    async diagnostics(id) {
+      const archive = await tx
+        .select({ sha256: consumerInvoices.nfeProcXmlSha256, archivedAt: consumerInvoices.nfeProcXmlArchivedAt, retainUntil: consumerInvoices.nfeProcXmlRetainUntil })
+        .from(consumerInvoices)
+        .where(eq(consumerInvoices.id, id))
+        .limit(1);
+      // Só as colunas do grant da API (0039): nunca signed_xml nem digest_value.
+      const a = consumerInvoiceAttempts;
+      const attempts = await tx
+        .select({
+          seq: a.seq,
+          state: a.state,
+          accessKey: a.accessKey,
+          issuedAt: a.issuedAt,
+          outcome: a.outcome,
+          outcomeCode: a.outcomeCode,
+          preparedAt: a.preparedAt,
+          sendingAt: a.sendingAt,
+          closedAt: a.closedAt,
+          lookups: a.lookups,
+          consecutiveLookupErrors: a.consecutiveLookupErrors,
+        })
+        .from(a)
+        .where(eq(a.invoiceId, id))
+        .orderBy(asc(a.seq));
+      return {
+        archive: archive[0] ?? { sha256: null, archivedAt: null, retainUntil: null },
+        attempts: attempts.map((row) => ({ ...row, state: row.state as AttemptState, outcome: row.outcome as AttemptOutcome | null })),
+      };
     },
   };
 }

@@ -158,6 +158,11 @@ const CASES: Record<string, MatrixCase> = {
     headers: { 'idempotency-key': 'matriz-isolamento-nfce' },
     expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),
   },
+  'POST /v1/consumer-invoices/validation': {
+    // B tenta validar na própria empresa usando o estabelecimento de A.
+    payload: ({ a }) => ({ establishmentId: a.establishmentId, ...MINIMAL_SALE }),
+    expectCrossCompany: expectNotFound('ESTABLISHMENT_NOT_FOUND'),
+  },
   'GET /v1/consumer-invoices': {
     query: `externalReference=${MATRIX_REFERENCE}`,
     expectCrossCompany: (res, { a }) => {
@@ -169,6 +174,7 @@ const CASES: Record<string, MatrixCase> = {
   'GET /v1/consumer-invoices/:id': { expectCrossCompany: expectNotFound('CONSUMER_INVOICE_NOT_FOUND') },
   'GET /v1/consumer-invoices/:id/xml': { expectCrossCompany: expectNotFound('CONSUMER_INVOICE_NOT_FOUND') },
   'GET /v1/consumer-invoices/:id/danfe': { expectCrossCompany: expectNotFound('CONSUMER_INVOICE_NOT_FOUND') },
+  'GET /v1/consumer-invoices/:id/diagnostics': { expectCrossCompany: expectNotFound('CONSUMER_INVOICE_NOT_FOUND') },
   'POST /v1/webhook-subscriptions': {
     payload: () => ({ url: 'http://127.0.0.1:9/matriz', eventTypes: ['certificate.activated'] }),
     expectCrossCompany: (res, { a }) => {
